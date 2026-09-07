@@ -9,11 +9,15 @@ import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.Cursor;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.DateRange;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionPage;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionType;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Repository;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
@@ -42,22 +46,14 @@ public class JpaTransactionRepository implements TransactionRepository {
     @Override
     public TransactionPage findByAccountId(
             Id accountId, DateRange dateRange, Optional<TransactionType> type, Optional<Cursor> cursor, int pageSize) {
-        LocalDate cursorOccurredOn = null;
-        UUID cursorId = null;
-        if (cursor.isPresent()) {
-            CursorPosition position = decodeCursor(cursor.get());
-            cursorOccurredOn = position.occurredOn();
-            cursorId = position.id();
-        }
+        Optional<CursorPosition> position = cursor.map(this::decodeCursor);
 
-        List<TransactionJpaEntity> rows = jpaRepository.findPage(
-                UUID.fromString(accountId.getValue()),
-                dateRange.getFrom().orElse(null),
-                dateRange.getTo().orElse(null),
-                type.orElse(null),
-                cursorOccurredOn,
-                cursorId,
-                PageRequest.of(0, pageSize + 1));
+        Specification<TransactionJpaEntity> spec = buildSpecification(accountId, dateRange, type, position);
+        Sort sort = Sort.by(Sort.Order.desc("occurredOn"), Sort.Order.desc("id"));
+
+        List<TransactionJpaEntity> rows = jpaRepository
+                .findAll(spec, PageRequest.of(0, pageSize + 1, sort))
+                .getContent();
 
         List<Transaction> items = rows.stream().limit(pageSize).map(this::toDomain).toList();
         Optional<Cursor> nextCursor = rows.size() > pageSize
@@ -65,6 +61,23 @@ public class JpaTransactionRepository implements TransactionRepository {
                 : Optional.empty();
 
         return TransactionPage.create(items, nextCursor);
+    }
+
+    private Specification<TransactionJpaEntity> buildSpecification(
+            Id accountId, DateRange dateRange, Optional<TransactionType> type, Optional<CursorPosition> cursor) {
+        return (root, query, builder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(builder.equal(root.get("accountId"), UUID.fromString(accountId.getValue())));
+            dateRange.getFrom().ifPresent(from -> predicates.add(builder.greaterThanOrEqualTo(root.get("occurredOn"), from)));
+            dateRange.getTo().ifPresent(to -> predicates.add(builder.lessThanOrEqualTo(root.get("occurredOn"), to)));
+            type.ifPresent(t -> predicates.add(builder.equal(root.get("type"), t)));
+            cursor.ifPresent(position -> predicates.add(builder.or(
+                    builder.lessThan(root.get("occurredOn"), position.occurredOn()),
+                    builder.and(
+                            builder.equal(root.get("occurredOn"), position.occurredOn()),
+                            builder.lessThan(root.get("id"), position.id())))));
+            return builder.and(predicates.toArray(new Predicate[0]));
+        };
     }
 
     private Cursor encodeCursor(TransactionJpaEntity entity) {
