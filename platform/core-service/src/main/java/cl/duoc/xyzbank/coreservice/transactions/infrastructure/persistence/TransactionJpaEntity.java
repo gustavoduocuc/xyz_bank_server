@@ -37,6 +37,9 @@ public class TransactionJpaEntity {
 
     private String description;
 
+    @Column(name = "idempotency_key", unique = true)
+    private String idempotencyKey;
+
     protected TransactionJpaEntity() {
     }
 
@@ -47,7 +50,8 @@ public class TransactionJpaEntity {
             BigDecimal amount,
             String currency,
             LocalDate occurredOn,
-            String description) {
+            String description,
+            String idempotencyKey) {
         this.id = id;
         this.accountId = accountId;
         this.type = type;
@@ -55,6 +59,7 @@ public class TransactionJpaEntity {
         this.currency = currency;
         this.occurredOn = occurredOn;
         this.description = description;
+        this.idempotencyKey = idempotencyKey;
     }
 
     public UUID getId() {
@@ -83,5 +88,9 @@ public class TransactionJpaEntity {
 
     public String getDescription() {
         return description;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
     }
 }

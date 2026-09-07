@@ -45,6 +45,12 @@ public class JpaTransactionRepository implements TransactionRepository {
     }
 
     @Override
+    public Optional<Transaction> findByIdempotencyKey(String idempotencyKey) {
+        return jpaRepository.findByIdempotencyKey(idempotencyKey)
+                .map(this::toDomain);
+    }
+
+    @Override
     public TransactionPage findByAccountId(
             Id accountId, DateRange dateRange, Optional<TransactionType> type, Optional<Cursor> cursor, int pageSize) {
         Optional<CursorPosition> position = cursor.map(this::decodeCursor);
@@ -104,7 +110,8 @@ public class JpaTransactionRepository implements TransactionRepository {
                 transaction.getAmount().getAmount(),
                 transaction.getAmount().getCurrency(),
                 transaction.getOccurredOn(),
-                transaction.getDescription());
+                transaction.getDescription(),
+                transaction.getIdempotencyKey().orElse(null));
     }
 
     private Transaction toDomain(TransactionJpaEntity entity) {
@@ -114,7 +121,8 @@ public class JpaTransactionRepository implements TransactionRepository {
                 entity.getType(),
                 Money.create(entity.getAmount(), entity.getCurrency()),
                 entity.getOccurredOn(),
-                entity.getDescription());
+                entity.getDescription(),
+                Optional.ofNullable(entity.getIdempotencyKey()));
     }
 
     private record CursorPosition(LocalDate occurredOn, UUID id) {
