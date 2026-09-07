@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.coredomain.accounts.unit;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -9,18 +10,21 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@DisplayName("The Money")
 class MoneyTest {
 
     /*
      * Cases:
      * 1. Creates with a valid amount and currency
      * 2. Rejects a negative amount
-     * 3. Adds two amounts with the same currency
-     * 4. Rejects adding amounts with different currencies
-     * 5. Two amounts with the same value and currency are equal
+     * 3. Rejects a blank currency
+     * 4. Adds two amounts with the same currency
+     * 5. Rejects adding amounts with different currencies
+     * 6. Two amounts with the same value and currency are equal
      */
 
     @Test
+    @DisplayName("creates with a valid amount and currency")
     void createsWithAValidAmountAndCurrency() {
         Money money = Money.create(new BigDecimal("100.00"), "USD");
 
@@ -29,6 +33,7 @@ class MoneyTest {
     }
 
     @Test
+    @DisplayName("rejects a negative amount")
     void rejectsANegativeAmount() {
         DomainException exception = assertThrows(
                 DomainException.class,
@@ -38,6 +43,17 @@ class MoneyTest {
     }
 
     @Test
+    @DisplayName("rejects a blank currency")
+    void rejectsABlankCurrency() {
+        DomainException exception = assertThrows(
+                DomainException.class,
+                () -> Money.create(new BigDecimal("100.00"), "  "));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("adds two amounts with the same currency")
     void addsTwoAmountsWithTheSameCurrency() {
         Money first = Money.create(new BigDecimal("100.00"), "USD");
         Money second = Money.create(new BigDecimal("50.00"), "USD");
@@ -49,6 +65,7 @@ class MoneyTest {
     }
 
     @Test
+    @DisplayName("rejects adding amounts with different currencies")
     void rejectsAddingAmountsWithDifferentCurrencies() {
         Money usd = Money.create(new BigDecimal("100.00"), "USD");
         Money clp = Money.create(new BigDecimal("100.00"), "CLP");
@@ -59,6 +76,7 @@ class MoneyTest {
     }
 
     @Test
+    @DisplayName("considers two amounts with the same value and currency equal")
     void twoAmountsWithTheSameValueAndCurrencyAreEqual() {
         assertEquals(
                 Money.create(new BigDecimal("100.00"), "USD"),

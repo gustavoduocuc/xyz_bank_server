@@ -4,6 +4,7 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.infrastructure.persistence.JpaCustomerRepository;
 import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
+@DisplayName("The JPA customer repository")
 class JpaCustomerRepositoryIT extends AbstractPostgresIT {
 
     /*
@@ -26,6 +28,7 @@ class JpaCustomerRepositoryIT extends AbstractPostgresIT {
     private JpaCustomerRepository customerRepository;
 
     @Test
+    @DisplayName("saves a customer and finds it by id")
     void savesACustomerAndFindsItById() {
         Id id = Id.generate();
         Customer customer = Customer.create(id, "Jane Doe", "jane.doe@xyzbank.cl");
@@ -39,6 +42,7 @@ class JpaCustomerRepositoryIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("returns empty when the customer id does not exist")
     void returnsEmptyWhenTheCustomerIdDoesNotExist() {
         Optional<Customer> found = customerRepository.findById(Id.generate());
 

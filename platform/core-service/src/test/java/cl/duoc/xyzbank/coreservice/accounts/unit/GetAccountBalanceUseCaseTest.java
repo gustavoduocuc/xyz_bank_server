@@ -8,6 +8,7 @@ import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.application.dto.AccountBalanceResponse;
 import cl.duoc.xyzbank.coreservice.accounts.application.usecases.GetAccountBalanceUseCase;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -15,6 +16,7 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@DisplayName("The GetAccountBalance use case")
 class GetAccountBalanceUseCaseTest {
 
     /*
@@ -25,6 +27,7 @@ class GetAccountBalanceUseCaseTest {
      */
 
     @Test
+    @DisplayName("returns the balance and currency of an existing account")
     void returnsTheBalanceAndCurrencyOfAnExistingAccount() {
         Id id = Id.generate();
         Account account = Account.create(
@@ -42,6 +45,7 @@ class GetAccountBalanceUseCaseTest {
     }
 
     @Test
+    @DisplayName("throws not found for an unknown account id")
     void throwsNotFoundForAnUnknownAccountId() {
         GetAccountBalanceUseCase useCase = new GetAccountBalanceUseCase(new InMemoryAccountRepository());
 
@@ -52,6 +56,7 @@ class GetAccountBalanceUseCaseTest {
     }
 
     @Test
+    @DisplayName("throws validation for a malformed account id")
     void throwsValidationForAMalformedAccountId() {
         GetAccountBalanceUseCase useCase = new GetAccountBalanceUseCase(new InMemoryAccountRepository());
 

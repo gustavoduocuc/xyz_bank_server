@@ -6,11 +6,13 @@ import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.application.dto.CustomerProfileResponse;
 import cl.duoc.xyzbank.coreservice.accounts.application.usecases.GetCustomerProfileUseCase;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@DisplayName("The GetCustomerProfile use case")
 class GetCustomerProfileUseCaseTest {
 
     /*
@@ -21,6 +23,7 @@ class GetCustomerProfileUseCaseTest {
      */
 
     @Test
+    @DisplayName("returns the profile of an existing customer")
     void returnsTheProfileOfAnExistingCustomer() {
         Id id = Id.generate();
         Customer customer = Customer.create(id, "Jane Doe", "jane.doe@xyzbank.cl");
@@ -36,6 +39,7 @@ class GetCustomerProfileUseCaseTest {
     }
 
     @Test
+    @DisplayName("throws not found for an unknown customer id")
     void throwsNotFoundForAnUnknownCustomerId() {
         GetCustomerProfileUseCase useCase = new GetCustomerProfileUseCase(new InMemoryCustomerRepository());
 
@@ -46,6 +50,7 @@ class GetCustomerProfileUseCaseTest {
     }
 
     @Test
+    @DisplayName("throws validation for a malformed customer id")
     void throwsValidationForAMalformedCustomerId() {
         GetCustomerProfileUseCase useCase = new GetCustomerProfileUseCase(new InMemoryCustomerRepository());
 

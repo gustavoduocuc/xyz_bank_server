@@ -10,6 +10,7 @@ import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.application.dto.AccountSummaryResponse;
 import cl.duoc.xyzbank.coreservice.accounts.application.usecases.ListAccountsForCustomerUseCase;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -19,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@DisplayName("The ListAccountsForCustomer use case")
 class ListAccountsForCustomerUseCaseTest {
 
     /*
@@ -35,6 +37,7 @@ class ListAccountsForCustomerUseCaseTest {
             new ListAccountsForCustomerUseCase(customerRepository, accountRepository);
 
     @Test
+    @DisplayName("returns every account owned by the customer")
     void returnsEveryAccountOwnedByTheCustomer() {
         Id customerId = Id.generate();
         customerRepository.save(Customer.create(customerId, "Jane Doe", "jane.doe@xyzbank.cl"));
@@ -47,6 +50,7 @@ class ListAccountsForCustomerUseCaseTest {
     }
 
     @Test
+    @DisplayName("returns an empty list when the customer owns no accounts")
     void returnsAnEmptyListWhenTheCustomerOwnsNoAccounts() {
         Id customerId = Id.generate();
         customerRepository.save(Customer.create(customerId, "Jane Doe", "jane.doe@xyzbank.cl"));
@@ -57,6 +61,7 @@ class ListAccountsForCustomerUseCaseTest {
     }
 
     @Test
+    @DisplayName("throws not found for an unknown customer id")
     void throwsNotFoundForAnUnknownCustomerId() {
         DomainException exception = assertThrows(
                 DomainException.class, () -> useCase.execute(Id.generate().getValue()));
@@ -65,6 +70,7 @@ class ListAccountsForCustomerUseCaseTest {
     }
 
     @Test
+    @DisplayName("excludes accounts owned by other customers")
     void excludesAccountsOwnedByOtherCustomers() {
         Id customerId = Id.generate();
         Id otherCustomerId = Id.generate();

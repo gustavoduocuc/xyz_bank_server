@@ -2,11 +2,13 @@ package cl.duoc.xyzbank.coredomain.accounts.unit;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@DisplayName("The AccountNumber")
 class AccountNumberTest {
 
     /*
@@ -20,6 +22,7 @@ class AccountNumberTest {
      */
 
     @Test
+    @DisplayName("accepts a well-formed 10-digit account number")
     void acceptsAWellFormedTenDigitAccountNumber() {
         AccountNumber accountNumber = AccountNumber.create("1234567890");
 
@@ -27,6 +30,7 @@ class AccountNumberTest {
     }
 
     @Test
+    @DisplayName("rejects a null value")
     void rejectsANullValue() {
         DomainException exception = assertThrows(DomainException.class, () -> AccountNumber.create(null));
 
@@ -34,6 +38,7 @@ class AccountNumberTest {
     }
 
     @Test
+    @DisplayName("rejects a blank value")
     void rejectsABlankValue() {
         DomainException exception = assertThrows(DomainException.class, () -> AccountNumber.create("   "));
 
@@ -41,6 +46,7 @@ class AccountNumberTest {
     }
 
     @Test
+    @DisplayName("rejects a value with letters")
     void rejectsAValueWithLetters() {
         DomainException exception = assertThrows(DomainException.class, () -> AccountNumber.create("12345abcde"));
 
@@ -48,6 +54,7 @@ class AccountNumberTest {
     }
 
     @Test
+    @DisplayName("rejects a value with the wrong length")
     void rejectsAValueWithTheWrongLength() {
         DomainException exception = assertThrows(DomainException.class, () -> AccountNumber.create("123"));
 
@@ -55,6 +62,7 @@ class AccountNumberTest {
     }
 
     @Test
+    @DisplayName("considers two account numbers with the same value equal")
     void twoAccountNumbersWithTheSameValueAreEqual() {
         assertEquals(AccountNumber.create("1234567890"), AccountNumber.create("1234567890"));
     }

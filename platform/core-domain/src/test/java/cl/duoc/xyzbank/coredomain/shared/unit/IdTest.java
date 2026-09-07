@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.coredomain.shared.unit;
 
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -9,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@DisplayName("The Id")
 class IdTest {
 
     /*
@@ -22,6 +24,7 @@ class IdTest {
      */
 
     @Test
+    @DisplayName("generates a non-blank value")
     void generatesANonBlankValue() {
         Id id = Id.generate();
 
@@ -29,6 +32,7 @@ class IdTest {
     }
 
     @Test
+    @DisplayName("creates from a non-blank value")
     void createsFromANonBlankValue() {
         Id id = Id.create("customer-123");
 
@@ -36,6 +40,7 @@ class IdTest {
     }
 
     @Test
+    @DisplayName("rejects a null value")
     void rejectsANullValue() {
         DomainException exception = assertThrows(DomainException.class, () -> Id.create(null));
 
@@ -43,6 +48,7 @@ class IdTest {
     }
 
     @Test
+    @DisplayName("rejects a blank value")
     void rejectsABlankValue() {
         DomainException exception = assertThrows(DomainException.class, () -> Id.create("   "));
 
@@ -50,11 +56,13 @@ class IdTest {
     }
 
     @Test
+    @DisplayName("considers two ids with the same value equal")
     void twoIdsWithTheSameValueAreEqual() {
         assertEquals(Id.create("customer-123"), Id.create("customer-123"));
     }
 
     @Test
+    @DisplayName("considers two ids with different values not equal")
     void twoIdsWithDifferentValuesAreNotEqual() {
         assertNotEquals(Id.create("customer-123"), Id.create("customer-456"));
     }

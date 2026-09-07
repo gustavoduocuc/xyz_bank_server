@@ -4,12 +4,14 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+@DisplayName("The Account")
 class AccountTest {
 
     /*
@@ -19,6 +21,7 @@ class AccountTest {
      */
 
     @Test
+    @DisplayName("creates with a valid account number, owner id, balance, and currency")
     void createsWithAValidAccountNumberOwnerIdBalanceAndCurrency() {
         Id id = Id.generate();
         Id customerId = Id.generate();
@@ -34,6 +37,7 @@ class AccountTest {
     }
 
     @Test
+    @DisplayName("exposes its balance as a Money value object")
     void exposesItsBalanceAsAMoneyValueObject() {
         Money balance = Money.create(new BigDecimal("250.50"), "CLP");
 

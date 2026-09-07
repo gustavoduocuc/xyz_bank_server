@@ -8,6 +8,7 @@ import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +20,7 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@DisplayName("The Account controller")
 class AccountControllerE2ETest extends AbstractPostgresIT {
 
     /*
@@ -40,6 +42,7 @@ class AccountControllerE2ETest extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("returns the balance of an existing account")
     void returnsTheBalanceOfAnExistingAccount() {
         Id id = Id.generate();
         Account account = Account.create(
@@ -57,6 +60,7 @@ class AccountControllerE2ETest extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("returns 404 with a problem+json body for an unknown account")
     void returnsNotFoundForAnUnknownAccount() {
         given()
                 .when().get("/internal/accounts/{accountId}/balance", Id.generate().getValue())
@@ -66,6 +70,7 @@ class AccountControllerE2ETest extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("returns 422 with a problem+json body for a malformed account id")
     void returnsUnprocessableEntityForAMalformedAccountId() {
         given()
                 .when().get("/internal/accounts/{accountId}/balance", "   ")

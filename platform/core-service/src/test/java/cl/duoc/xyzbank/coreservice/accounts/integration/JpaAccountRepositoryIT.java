@@ -6,6 +6,7 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.infrastructure.persistence.JpaAccountRepository;
 import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
+@DisplayName("The JPA account repository")
 class JpaAccountRepositoryIT extends AbstractPostgresIT {
 
     /*
@@ -34,6 +36,7 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
     private JpaAccountRepository accountRepository;
 
     @Test
+    @DisplayName("saves an account and finds it by id")
     void savesAnAccountAndFindsItById() {
         Id id = Id.generate();
         Account account = Account.create(
@@ -48,6 +51,7 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("finds only the accounts owned by a given customer")
     void findsOnlyTheAccountsOwnedByAGivenCustomer() {
         Id customerId = Id.generate();
         Id otherCustomerId = Id.generate();
@@ -67,6 +71,7 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("returns an empty list when the customer owns no accounts")
     void returnsAnEmptyListWhenTheCustomerOwnsNoAccounts() {
         List<Account> accounts = accountRepository.findByCustomerId(Id.generate());
 
@@ -74,6 +79,7 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
     }
 
     @Test
+    @DisplayName("rejects two accounts with the same account number")
     void rejectsTwoAccountsWithTheSameAccountNumber() {
         AccountNumber sharedNumber = AccountNumber.create("4444444444");
         Account first = Account.create(
