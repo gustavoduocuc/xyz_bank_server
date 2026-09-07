@@ -4,24 +4,58 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Map;
+import java.util.Optional;
 
 public final class Account {
 
     private final Id id;
     private final AccountNumber accountNumber;
     private final Id customerId;
-    private final Money balance;
+    private Money balance;
+    private final long version;
+    private Money dailyWithdrawnAmount;
+    private Optional<LocalDate> dailyWithdrawnDate;
 
-    private Account(Id id, AccountNumber accountNumber, Id customerId, Money balance) {
+    private Account(
+            Id id,
+            AccountNumber accountNumber,
+            Id customerId,
+            Money balance,
+            long version,
+            Money dailyWithdrawnAmount,
+            Optional<LocalDate> dailyWithdrawnDate) {
         this.id = id;
         this.accountNumber = accountNumber;
         this.customerId = customerId;
         this.balance = balance;
+        this.version = version;
+        this.dailyWithdrawnAmount = dailyWithdrawnAmount;
+        this.dailyWithdrawnDate = dailyWithdrawnDate;
+    }
+
+    public static Account create(
+            Id id,
+            AccountNumber accountNumber,
+            Id customerId,
+            Money balance,
+            long version,
+            Money dailyWithdrawnAmount,
+            Optional<LocalDate> dailyWithdrawnDate) {
+        return new Account(id, accountNumber, customerId, balance, version, dailyWithdrawnAmount, dailyWithdrawnDate);
     }
 
     public static Account create(Id id, AccountNumber accountNumber, Id customerId, Money balance) {
-        return new Account(id, accountNumber, customerId, balance);
+        return create(
+                id,
+                accountNumber,
+                customerId,
+                balance,
+                0L,
+                Money.create(BigDecimal.ZERO, balance.getCurrency()),
+                Optional.empty());
     }
 
     public Id getId() {
@@ -38,6 +72,18 @@ public final class Account {
 
     public Money getBalance() {
         return balance;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public Money getDailyWithdrawnAmount() {
+        return dailyWithdrawnAmount;
+    }
+
+    public Optional<LocalDate> getDailyWithdrawnDate() {
+        return dailyWithdrawnDate;
     }
 
     public Map<String, Object> toPrimitives() {
