@@ -14,6 +14,7 @@ class DomainExceptionTest {
      * 1. notFound() sets type NOT_FOUND and preserves the message
      * 2. validation() sets type VALIDATION and preserves the message
      * 3. create() sets type OTHER and preserves the message
+     * 4. conflict() sets type CONFLICT and preserves the message
      */
 
     @Test
@@ -41,5 +42,14 @@ class DomainExceptionTest {
 
         assertEquals(DomainException.Type.OTHER, exception.getType());
         assertEquals("Unexpected domain error", exception.getMessage());
+    }
+
+    @Test
+    @DisplayName("marks a conflict error with type CONFLICT and preserves the message")
+    void conflictSetsTypeConflict() {
+        DomainException exception = DomainException.conflict("Account was updated concurrently");
+
+        assertEquals(DomainException.Type.CONFLICT, exception.getType());
+        assertEquals("Account was updated concurrently", exception.getMessage());
     }
 }

@@ -7,6 +7,7 @@ public class DomainException extends RuntimeException {
     public enum Type {
         NOT_FOUND,
         VALIDATION,
+        CONFLICT,
         OTHER
     }
 
@@ -25,6 +26,10 @@ public class DomainException extends RuntimeException {
 
     public static DomainException create(String message) {
         return new DomainException(Type.OTHER, message);
+    }
+
+    public static DomainException conflict(String message) {
+        return new DomainException(Type.CONFLICT, message);
     }
 
     public Type getType() {
