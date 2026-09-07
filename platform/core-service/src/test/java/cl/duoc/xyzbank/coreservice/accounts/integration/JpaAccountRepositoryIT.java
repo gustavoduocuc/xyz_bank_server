@@ -3,6 +3,7 @@ package cl.duoc.xyzbank.coreservice.accounts.integration;
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
+import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.infrastructure.persistence.JpaAccountRepository;
 import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import java.time.LocalDate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -30,6 +32,7 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
      * 2. Finds only the accounts owned by a given customer
      * 3. Returns an empty list when the customer owns no accounts
      * 4. Rejects two accounts with the same account number
+     * 5. Rejects a save based on a stale version (optimistic lock conflict)
      */
 
     @Autowired
@@ -91,5 +94,27 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
         accountRepository.save(first);
 
         assertThrows(DataIntegrityViolationException.class, () -> accountRepository.save(second));
+    }
+
+    @Test
+    @DisplayName("rejects a save based on a stale version")
+    void rejectsASaveBasedOnAStaleVersion() {
+        Id id = Id.generate();
+        Account original = Account.create(
+                id, AccountNumber.create("5555555555"), Id.generate(),
+                Money.create(new BigDecimal("500.00"), "USD"));
+        accountRepository.save(original);
+        Account firstCopy = accountRepository.findById(id).orElseThrow();
+        Account secondCopy = accountRepository.findById(id).orElseThrow();
+
+        firstCopy.withdraw(Money.create(new BigDecimal("100.00"), "USD"), LocalDate.of(2026, 1, 1),
+                Money.create(new BigDecimal("1000.00"), "USD"));
+        accountRepository.save(firstCopy);
+
+        secondCopy.withdraw(Money.create(new BigDecimal("50.00"), "USD"), LocalDate.of(2026, 1, 1),
+                Money.create(new BigDecimal("1000.00"), "USD"));
+        DomainException exception = assertThrows(DomainException.class, () -> accountRepository.save(secondCopy));
+
+        assertEquals(DomainException.Type.CONFLICT, exception.getType());
     }
 }

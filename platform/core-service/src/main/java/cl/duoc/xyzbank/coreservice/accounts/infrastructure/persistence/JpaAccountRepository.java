@@ -4,7 +4,9 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
+import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -22,7 +24,11 @@ public class JpaAccountRepository implements AccountRepository {
 
     @Override
     public void save(Account account) {
-        jpaRepository.save(toEntity(account));
+        try {
+            jpaRepository.save(toEntity(account));
+        } catch (ObjectOptimisticLockingFailureException exception) {
+            throw DomainException.conflict("Account was updated concurrently");
+        }
     }
 
     @Override
