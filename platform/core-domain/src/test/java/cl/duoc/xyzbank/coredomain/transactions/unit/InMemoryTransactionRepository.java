@@ -30,6 +30,13 @@ public class InMemoryTransactionRepository implements TransactionRepository {
     }
 
     @Override
+    public Optional<Transaction> findByIdempotencyKey(String idempotencyKey) {
+        return transactions.values().stream()
+                .filter(transaction -> transaction.getIdempotencyKey().equals(Optional.of(idempotencyKey)))
+                .findFirst();
+    }
+
+    @Override
     public TransactionPage findByAccountId(
             Id accountId, DateRange dateRange, Optional<TransactionType> type, Optional<Cursor> cursor, int pageSize) {
         List<Transaction> matching = transactions.values().stream()
