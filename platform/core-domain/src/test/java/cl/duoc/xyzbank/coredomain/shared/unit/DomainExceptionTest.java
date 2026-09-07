@@ -1,5 +1,6 @@
-package cl.duoc.xyzbank.coredomain.shared.domain;
+package cl.duoc.xyzbank.coredomain.shared.unit;
 
+import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
