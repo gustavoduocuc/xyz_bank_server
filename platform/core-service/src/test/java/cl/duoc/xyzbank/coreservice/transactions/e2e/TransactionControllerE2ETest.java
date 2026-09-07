@@ -42,6 +42,9 @@ class TransactionControllerE2ETest extends AbstractPostgresIT {
      * 7. Returns 422 for a non-positive page size
      * 8. Returns 422 for a malformed cursor
      * 9. Clamps an oversized page size instead of rejecting it
+     * 10. Returns the detail of an existing transaction
+     * 11. Returns 404 for an unknown transaction
+     * 12. Returns 422 for a malformed transaction id
      */
 
     @LocalServerPort
@@ -194,6 +197,45 @@ class TransactionControllerE2ETest extends AbstractPostgresIT {
                 .then()
                 .statusCode(200)
                 .body("items", hasSize(5));
+    }
+
+    @Test
+    @DisplayName("returns the detail of an existing transaction")
+    void returnsTheDetailOfAnExistingTransaction() {
+        Id accountId = anExistingAccount();
+        Id transactionId = Id.generate();
+        transactionRepository.save(Transaction.create(
+                transactionId, accountId, TransactionType.DEBIT,
+                Money.create(new BigDecimal("42.00"), "USD"), LocalDate.of(2026, 1, 5), "Groceries"));
+
+        given()
+                .when().get("/internal/transactions/{transactionId}", transactionId.getValue())
+                .then()
+                .statusCode(200)
+                .body("id", equalTo(transactionId.getValue()))
+                .body("accountId", equalTo(accountId.getValue()))
+                .body("type", equalTo("DEBIT"))
+                .body("description", equalTo("Groceries"));
+    }
+
+    @Test
+    @DisplayName("returns 404 for an unknown transaction")
+    void returnsNotFoundForAnUnknownTransaction() {
+        given()
+                .when().get("/internal/transactions/{transactionId}", Id.generate().getValue())
+                .then()
+                .statusCode(404)
+                .contentType("application/problem+json");
+    }
+
+    @Test
+    @DisplayName("returns 422 for a malformed transaction id")
+    void returnsUnprocessableEntityForAMalformedTransactionId() {
+        given()
+                .when().get("/internal/transactions/{transactionId}", "   ")
+                .then()
+                .statusCode(422)
+                .contentType("application/problem+json");
     }
 
     private Id anExistingAccount() {
