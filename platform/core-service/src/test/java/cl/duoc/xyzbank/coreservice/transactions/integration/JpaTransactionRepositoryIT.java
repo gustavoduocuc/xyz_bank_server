@@ -35,6 +35,8 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
      * 3. Filters by date range and type
      * 4. Continues across a page boundary with no gap or repeat
      * 5. Rejects a malformed cursor
+     * 6. Finds a transaction by its idempotency key
+     * 7. Rejects two transactions with the same idempotency key
      */
 
     @Autowired
@@ -129,6 +131,42 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
                 Optional.of(Cursor.create("not-a-real-cursor")), 10));
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("finds a transaction by its idempotency key")
+    void findsATransactionByItsIdempotencyKey() {
+        Transaction transaction = Transaction.create(
+                Id.generate(), Id.generate(), TransactionType.DEBIT,
+                Money.create(new BigDecimal("25.00"), "USD"), LocalDate.of(2026, 1, 1), null,
+                Optional.of("idem-key-1"));
+        transactionRepository.save(transaction);
+
+        Optional<Transaction> found = transactionRepository.findByIdempotencyKey("idem-key-1");
+        Optional<Transaction> notFound = transactionRepository.findByIdempotencyKey("unused-key");
+
+        assertTrue(found.isPresent());
+        assertEquals(new BigDecimal("25.00"), found.get().getAmount().getAmount());
+        assertTrue(notFound.isEmpty());
+    }
+
+    @Test
+    @DisplayName("rejects two transactions with the same idempotency key")
+    void rejectsTwoTransactionsWithTheSameIdempotencyKey() {
+        Id accountId = Id.generate();
+        Transaction first = Transaction.create(
+                Id.generate(), accountId, TransactionType.DEBIT,
+                Money.create(new BigDecimal("10.00"), "USD"), LocalDate.of(2026, 1, 1), null,
+                Optional.of("idem-key-2"));
+        Transaction second = Transaction.create(
+                Id.generate(), accountId, TransactionType.DEBIT,
+                Money.create(new BigDecimal("20.00"), "USD"), LocalDate.of(2026, 1, 1), null,
+                Optional.of("idem-key-2"));
+        transactionRepository.save(first);
+
+        DomainException exception = assertThrows(DomainException.class, () -> transactionRepository.save(second));
+
+        assertEquals(DomainException.Type.CONFLICT, exception.getType());
     }
 
     private void save(Id accountId, TransactionType type, String amount, LocalDate occurredOn) {

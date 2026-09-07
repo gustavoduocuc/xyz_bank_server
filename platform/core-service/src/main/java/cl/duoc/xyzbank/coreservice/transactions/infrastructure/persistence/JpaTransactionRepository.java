@@ -10,6 +10,7 @@ import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.DateRange;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionPage;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionType;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -35,7 +36,11 @@ public class JpaTransactionRepository implements TransactionRepository {
 
     @Override
     public void save(Transaction transaction) {
-        jpaRepository.save(toEntity(transaction));
+        try {
+            jpaRepository.save(toEntity(transaction));
+        } catch (DataIntegrityViolationException exception) {
+            throw DomainException.conflict("Idempotency key already used");
+        }
     }
 
     @Override
