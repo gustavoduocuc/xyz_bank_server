@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -57,9 +58,9 @@ class CustomerControllerE2ETest extends AbstractPostgresIT {
                 .when().get("/internal/customers/{customerId}", id.getValue())
                 .then()
                 .statusCode(200)
-                .body("id", org.hamcrest.Matchers.equalTo(id.getValue()))
-                .body("fullName", org.hamcrest.Matchers.equalTo("Jane Doe"))
-                .body("email", org.hamcrest.Matchers.equalTo("jane.doe@xyzbank.cl"));
+                .body("id", equalTo(id.getValue()))
+                .body("fullName", equalTo("Jane Doe"))
+                .body("email", equalTo("jane.doe@xyzbank.cl"));
     }
 
     @Test
