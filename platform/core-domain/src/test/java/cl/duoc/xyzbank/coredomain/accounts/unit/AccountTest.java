@@ -145,4 +145,19 @@ class AccountTest {
         assertEquals(new BigDecimal("900.00"), account.getDailyWithdrawnAmount().getAmount());
         assertEquals(new BigDecimal("3100.00"), account.getBalance().getAmount());
     }
+
+    @Test
+    @DisplayName("withdraw rejects an amount whose currency does not match the account's balance currency")
+    void withdrawRejectsAnAmountWhoseCurrencyDoesNotMatchTheAccountsBalanceCurrency() {
+        Money balance = Money.create(new BigDecimal("500.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money amount = Money.create(new BigDecimal("100.00"), "CLP");
+        Money dailyLimit = Money.create(new BigDecimal("1000.00"), "USD");
+
+        DomainException exception = assertThrows(
+                DomainException.class, () -> account.withdraw(amount, LocalDate.of(2026, 1, 1), dailyLimit));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
 }
