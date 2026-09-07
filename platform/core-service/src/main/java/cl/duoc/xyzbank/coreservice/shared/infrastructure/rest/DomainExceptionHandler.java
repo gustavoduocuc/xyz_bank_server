@@ -1,4 +1,4 @@
-package cl.duoc.xyzbank.coreservice.accounts.infrastructure.rest;
+package cl.duoc.xyzbank.coreservice.shared.infrastructure.rest;
 
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import org.springframework.http.HttpStatus;
@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
-public class AccountsExceptionHandler {
+public class DomainExceptionHandler {
 
     @ExceptionHandler(DomainException.class)
     public ProblemDetail handleDomainException(DomainException exception) {
