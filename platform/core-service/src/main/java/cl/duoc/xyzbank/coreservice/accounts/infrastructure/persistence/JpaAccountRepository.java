@@ -44,7 +44,10 @@ public class JpaAccountRepository implements AccountRepository {
                 account.getAccountNumber().getValue(),
                 UUID.fromString(account.getCustomerId().getValue()),
                 account.getBalance().getAmount(),
-                account.getBalance().getCurrency());
+                account.getBalance().getCurrency(),
+                account.getVersion(),
+                account.getDailyWithdrawnAmount().getAmount(),
+                account.getDailyWithdrawnDate().orElse(null));
     }
 
     private Account toDomain(AccountJpaEntity entity) {
@@ -52,6 +55,9 @@ public class JpaAccountRepository implements AccountRepository {
                 Id.create(entity.getId().toString()),
                 AccountNumber.create(entity.getAccountNumber()),
                 Id.create(entity.getCustomerId().toString()),
-                Money.create(entity.getBalance(), entity.getCurrency()));
+                Money.create(entity.getBalance(), entity.getCurrency()),
+                entity.getVersion(),
+                Money.create(entity.getDailyWithdrawnAmount(), entity.getCurrency()),
+                Optional.ofNullable(entity.getDailyWithdrawnDate()));
     }
 }

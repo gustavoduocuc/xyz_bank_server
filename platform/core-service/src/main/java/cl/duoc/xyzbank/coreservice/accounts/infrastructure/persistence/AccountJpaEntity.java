@@ -4,8 +4,10 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -27,15 +29,36 @@ public class AccountJpaEntity {
     @Column(nullable = false)
     private String currency;
 
+    @Version
+    @Column(nullable = false)
+    private long version;
+
+    @Column(name = "daily_withdrawn_amount", nullable = false)
+    private BigDecimal dailyWithdrawnAmount;
+
+    @Column(name = "daily_withdrawn_date")
+    private LocalDate dailyWithdrawnDate;
+
     protected AccountJpaEntity() {
     }
 
-    public AccountJpaEntity(UUID id, String accountNumber, UUID customerId, BigDecimal balance, String currency) {
+    public AccountJpaEntity(
+            UUID id,
+            String accountNumber,
+            UUID customerId,
+            BigDecimal balance,
+            String currency,
+            long version,
+            BigDecimal dailyWithdrawnAmount,
+            LocalDate dailyWithdrawnDate) {
         this.id = id;
         this.accountNumber = accountNumber;
         this.customerId = customerId;
         this.balance = balance;
         this.currency = currency;
+        this.version = version;
+        this.dailyWithdrawnAmount = dailyWithdrawnAmount;
+        this.dailyWithdrawnDate = dailyWithdrawnDate;
     }
 
     public UUID getId() {
@@ -56,5 +79,17 @@ public class AccountJpaEntity {
 
     public String getCurrency() {
         return currency;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public BigDecimal getDailyWithdrawnAmount() {
+        return dailyWithdrawnAmount;
+    }
+
+    public LocalDate getDailyWithdrawnDate() {
+        return dailyWithdrawnDate;
     }
 }
