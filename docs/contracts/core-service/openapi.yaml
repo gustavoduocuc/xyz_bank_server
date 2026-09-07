@@ -1,0 +1,144 @@
+openapi: 3.0.3
+info:
+  title: core-service — accounts
+  description: >
+    Internal, read-only endpoints for customer profiles and account balances.
+    core-service is the only component with database access; these endpoints
+    are internal-network-only and are not exposed through any BFF.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8080
+paths:
+  /internal/customers/{customerId}:
+    get:
+      summary: Get a customer's profile
+      operationId: getCustomerProfile
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: The customer's profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerProfileResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /internal/customers/{customerId}/accounts:
+    get:
+      summary: List the accounts owned by a customer
+      operationId: listAccountsForCustomer
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: >
+            The accounts owned by the customer. An empty array when the
+            customer exists but owns no accounts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccountSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /internal/accounts/{accountId}/balance:
+    get:
+      summary: Get an account's current balance
+      operationId: getAccountBalance
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: The account's current balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountBalanceResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+components:
+  parameters:
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      schema:
+        type: string
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    NotFound:
+      description: No resource matches the given identifier
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnprocessableEntity:
+      description: The given identifier is not well-formed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+  schemas:
+    CustomerProfileResponse:
+      type: object
+      required: [id, fullName, email]
+      properties:
+        id:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+    AccountSummaryResponse:
+      type: object
+      required: [id, accountNumber, balance, currency]
+      properties:
+        id:
+          type: string
+        accountNumber:
+          type: string
+        balance:
+          type: number
+          format: decimal
+        currency:
+          type: string
+    AccountBalanceResponse:
+      type: object
+      required: [accountId, balance, currency]
+      properties:
+        accountId:
+          type: string
+        balance:
+          type: number
+          format: decimal
+        currency:
+          type: string
+    ProblemDetail:
+      type: object
+      description: RFC 7807 problem details
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
