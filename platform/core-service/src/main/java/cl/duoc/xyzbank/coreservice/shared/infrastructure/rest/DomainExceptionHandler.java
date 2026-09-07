@@ -14,6 +14,7 @@ public class DomainExceptionHandler {
         HttpStatus status = switch (exception.getType()) {
             case NOT_FOUND -> HttpStatus.NOT_FOUND;
             case VALIDATION -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case CONFLICT -> HttpStatus.CONFLICT;
             case OTHER -> HttpStatus.BAD_REQUEST;
         };
 
