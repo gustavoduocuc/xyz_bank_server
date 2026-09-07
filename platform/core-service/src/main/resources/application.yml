@@ -4,3 +4,13 @@ server:
 spring:
   application:
     name: core-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:core_service}
+    username: ${DB_USERNAME:core_service}
+    password: ${DB_PASSWORD:core_service}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
