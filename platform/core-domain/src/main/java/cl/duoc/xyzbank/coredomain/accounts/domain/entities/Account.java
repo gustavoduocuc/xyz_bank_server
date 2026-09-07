@@ -89,7 +89,10 @@ public final class Account {
 
     public void withdraw(Money amount, LocalDate today, Money dailyLimit) {
         Money newBalance = this.balance.subtract(amount);
-        Money cumulativeToday = this.dailyWithdrawnAmount.add(amount);
+        Money withdrawnSoFarToday = this.dailyWithdrawnDate.filter(today::equals).isPresent()
+                ? this.dailyWithdrawnAmount
+                : Money.create(BigDecimal.ZERO, this.balance.getCurrency());
+        Money cumulativeToday = withdrawnSoFarToday.add(amount);
         if (cumulativeToday.getAmount().compareTo(dailyLimit.getAmount()) > 0) {
             throw DomainException.validation("Daily withdrawal limit exceeded");
         }

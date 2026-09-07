@@ -130,4 +130,19 @@ class AccountTest {
         assertEquals(new BigDecimal("4000.00"), account.getBalance().getAmount());
         assertEquals(new BigDecimal("1000.00"), account.getDailyWithdrawnAmount().getAmount());
     }
+
+    @Test
+    @DisplayName("withdraw resets the cumulative daily total on a new calendar day")
+    void withdrawResetsTheCumulativeDailyTotalOnANewCalendarDay() {
+        Money balance = Money.create(new BigDecimal("5000.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money dailyLimit = Money.create(new BigDecimal("1000.00"), "USD");
+        account.withdraw(Money.create(new BigDecimal("1000.00"), "USD"), LocalDate.of(2026, 1, 1), dailyLimit);
+
+        account.withdraw(Money.create(new BigDecimal("900.00"), "USD"), LocalDate.of(2026, 1, 2), dailyLimit);
+
+        assertEquals(new BigDecimal("900.00"), account.getDailyWithdrawnAmount().getAmount());
+        assertEquals(new BigDecimal("3100.00"), account.getBalance().getAmount());
+    }
 }
