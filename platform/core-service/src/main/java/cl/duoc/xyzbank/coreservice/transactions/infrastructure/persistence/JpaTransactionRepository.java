@@ -17,6 +17,7 @@ import org.springframework.stereotype.Repository;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -90,7 +91,7 @@ public class JpaTransactionRepository implements TransactionRepository {
             String raw = new String(Base64.getUrlDecoder().decode(cursor.getValue()), StandardCharsets.UTF_8);
             String[] parts = raw.split("\\|", 2);
             return new CursorPosition(LocalDate.parse(parts[0]), UUID.fromString(parts[1]));
-        } catch (RuntimeException exception) {
+        } catch (IllegalArgumentException | DateTimeParseException | ArrayIndexOutOfBoundsException exception) {
             throw DomainException.validation("Cursor is malformed");
         }
     }

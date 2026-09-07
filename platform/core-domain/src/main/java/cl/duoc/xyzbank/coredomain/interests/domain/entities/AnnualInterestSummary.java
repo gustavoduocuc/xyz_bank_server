@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.coredomain.interests.domain.entities;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
+import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 
 import java.math.BigDecimal;
@@ -41,6 +42,9 @@ public final class AnnualInterestSummary {
             Money closingBalance,
             BigDecimal interestRate,
             Money interestAmount) {
+        if (interestRate == null || interestRate.signum() < 0) {
+            throw DomainException.validation("Interest rate cannot be negative");
+        }
         return new AnnualInterestSummary(id, accountId, year, openingBalance, closingBalance, interestRate, interestAmount);
     }
 
