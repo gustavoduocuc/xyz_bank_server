@@ -37,7 +37,10 @@ public class JpaTransactionRepository implements TransactionRepository {
     @Override
     public void save(Transaction transaction) {
         try {
-            jpaRepository.save(toEntity(transaction));
+            // saveAndFlush (not save): forces the INSERT (and its unique-constraint check)
+            // to execute now, inside this try/catch, rather than being deferred to
+            // @Transactional commit time where this catch block could not see it.
+            jpaRepository.saveAndFlush(toEntity(transaction));
         } catch (DataIntegrityViolationException exception) {
             throw DomainException.conflict("Idempotency key already used");
         }

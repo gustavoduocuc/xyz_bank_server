@@ -25,7 +25,11 @@ public class JpaAccountRepository implements AccountRepository {
     @Override
     public void save(Account account) {
         try {
-            jpaRepository.save(toEntity(account));
+            // saveAndFlush (not save): merge()-based updates defer the actual UPDATE, and
+            // therefore the version check, to flush time. Without an explicit flush here,
+            // a stale-version failure would surface later at @Transactional commit, outside
+            // this try/catch, as an uncaught exception instead of a clean domain conflict.
+            jpaRepository.saveAndFlush(toEntity(account));
         } catch (ObjectOptimisticLockingFailureException exception) {
             throw DomainException.conflict("Account was updated concurrently");
         }
