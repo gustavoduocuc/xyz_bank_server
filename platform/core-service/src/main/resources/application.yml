@@ -14,3 +14,7 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+
+app:
+  withdrawals:
+    daily-limit: 5000.00
