@@ -86,6 +86,12 @@ public final class Account {
         return dailyWithdrawnDate;
     }
 
+    public void withdraw(Money amount, LocalDate today, Money dailyLimit) {
+        this.balance = this.balance.subtract(amount);
+        this.dailyWithdrawnAmount = this.dailyWithdrawnAmount.add(amount);
+        this.dailyWithdrawnDate = Optional.of(today);
+    }
+
     public Map<String, Object> toPrimitives() {
         return Map.of(
                 "id", id.getValue(),

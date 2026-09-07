@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -18,6 +19,7 @@ class AccountTest {
      * Cases:
      * 1. Creates with a valid account number, owner id, balance, and currency
      * 2. Exposes its balance as a Money value object
+     * 3. Withdraw reduces the balance when within the balance and the daily limit
      */
 
     @Test
@@ -46,5 +48,19 @@ class AccountTest {
 
         assertEquals(new BigDecimal("250.50"), account.getBalance().getAmount());
         assertEquals("CLP", account.getBalance().getCurrency());
+    }
+
+    @Test
+    @DisplayName("withdraw reduces the balance when within the balance and the daily limit")
+    void withdrawReducesTheBalanceWhenWithinTheBalanceAndTheDailyLimit() {
+        Money balance = Money.create(new BigDecimal("500.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money amount = Money.create(new BigDecimal("100.00"), "USD");
+        Money dailyLimit = Money.create(new BigDecimal("1000.00"), "USD");
+
+        account.withdraw(amount, LocalDate.of(2026, 1, 1), dailyLimit);
+
+        assertEquals(new BigDecimal("400.00"), account.getBalance().getAmount());
     }
 }
