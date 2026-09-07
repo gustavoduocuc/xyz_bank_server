@@ -159,6 +159,44 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+  /internal/accounts/{accountId}/withdrawals:
+    post:
+      summary: Withdraw an amount from an account
+      description: >
+        The platform's only write operation. Requires an Idempotency-Key
+        header: retrying the same key with the same account and amount
+        replays the original result rather than withdrawing twice; the same
+        key with different parameters is rejected as a conflict. Enforces
+        a platform-wide daily withdrawal limit and never allows a negative
+        balance. Detects concurrent updates to the same account via
+        optimistic locking and returns a conflict to the losing request.
+      operationId: withdrawFromAccount
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WithdrawRequest'
+      responses:
+        '201':
+          description: The withdrawal succeeded (or replayed an identical prior request)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WithdrawalResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
 components:
   parameters:
     CustomerId:
@@ -182,6 +220,15 @@ components:
             $ref: '#/components/schemas/ProblemDetail'
     UnprocessableEntity:
       description: The given identifier is not well-formed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: >
+        The request conflicts with the current state: either the same
+        Idempotency-Key was reused with different parameters, or the
+        account was updated concurrently by another request.
       content:
         application/problem+json:
           schema:
@@ -301,6 +348,34 @@ components:
           format: decimal
         currency:
           type: string
+    WithdrawRequest:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+    WithdrawalResponse:
+      type: object
+      required: [transactionId, accountId, amount, currency, occurredOn, newBalance]
+      properties:
+        transactionId:
+          type: string
+        accountId:
+          type: string
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        occurredOn:
+          type: string
+          format: date
+        newBalance:
+          type: number
+          format: decimal
     ProblemDetail:
       type: object
       description: RFC 7807 problem details
