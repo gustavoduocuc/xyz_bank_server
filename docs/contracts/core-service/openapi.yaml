@@ -64,6 +64,101 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+  /internal/accounts/{accountId}/transactions:
+    get:
+      summary: List an account's transactions
+      description: >
+        Cursor-paginated, ordered most-recent-first. Pass a previous response's
+        nextCursor value back as the cursor parameter to fetch the next page.
+        pageSize is capped at 100 (returning fewer items, not an error) and
+        defaults to 20 when omitted.
+      operationId: listAccountTransactions
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: from
+          in: query
+          description: Inclusive lower date bound (yyyy-MM-dd)
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          description: Inclusive upper date bound (yyyy-MM-dd)
+          schema:
+            type: string
+            format: date
+        - name: type
+          in: query
+          description: Filter by transaction type
+          schema:
+            type: string
+            enum: [DEBIT, CREDIT]
+        - name: cursor
+          in: query
+          description: >
+            Opaque continuation token from a previous page's nextCursor.
+            Omit for the first page. Never construct or decode this value.
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          description: Maximum items per page. Clamped at 100; defaults to 20.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: A page of the account's transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionPageResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /internal/transactions/{transactionId}:
+    get:
+      summary: Get a transaction's detail
+      operationId: getTransactionDetail
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The transaction's detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /internal/accounts/{accountId}/interest-summary:
+    get:
+      summary: Get an account's annual interest summary
+      operationId: getAnnualInterestSummary
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The account's annual interest summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnualInterestSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
 components:
   parameters:
     CustomerId:
@@ -122,6 +217,86 @@ components:
         accountId:
           type: string
         balance:
+          type: number
+          format: decimal
+        currency:
+          type: string
+    TransactionSummaryResponse:
+      type: object
+      required: [id, type, amount, currency, occurredOn]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [DEBIT, CREDIT]
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        occurredOn:
+          type: string
+          format: date
+        description:
+          type: string
+          nullable: true
+    TransactionPageResponse:
+      type: object
+      description: >
+        The cursor-pagination envelope every consumer of this endpoint codes
+        against. items is ordered most-recent-first. nextCursor is an opaque
+        token: non-null when more results exist beyond this page, null on the
+        last page. Never decode or construct a cursor value.
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionSummaryResponse'
+        nextCursor:
+          type: string
+          nullable: true
+    TransactionDetailResponse:
+      type: object
+      required: [id, accountId, type, amount, currency, occurredOn]
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        type:
+          type: string
+          enum: [DEBIT, CREDIT]
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        occurredOn:
+          type: string
+          format: date
+        description:
+          type: string
+          nullable: true
+    AnnualInterestSummaryResponse:
+      type: object
+      required: [accountId, year, openingBalance, closingBalance, interestRate, interestAmount, currency]
+      properties:
+        accountId:
+          type: string
+        year:
+          type: integer
+        openingBalance:
+          type: number
+          format: decimal
+        closingBalance:
+          type: number
+          format: decimal
+        interestRate:
+          type: number
+          format: decimal
+        interestAmount:
           type: number
           format: decimal
         currency:
