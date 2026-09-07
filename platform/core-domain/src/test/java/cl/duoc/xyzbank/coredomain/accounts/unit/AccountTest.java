@@ -81,4 +81,53 @@ class AccountTest {
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
         assertEquals(new BigDecimal("50.00"), account.getBalance().getAmount());
     }
+
+    @Test
+    @DisplayName("withdraw rejects a single withdrawal that exceeds the daily limit")
+    void withdrawRejectsASingleWithdrawalThatExceedsTheDailyLimit() {
+        Money balance = Money.create(new BigDecimal("5000.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money amount = Money.create(new BigDecimal("1500.00"), "USD");
+        Money dailyLimit = Money.create(new BigDecimal("1000.00"), "USD");
+
+        DomainException exception = assertThrows(
+                DomainException.class, () -> account.withdraw(amount, LocalDate.of(2026, 1, 1), dailyLimit));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+        assertEquals(new BigDecimal("5000.00"), account.getBalance().getAmount());
+    }
+
+    @Test
+    @DisplayName("withdraw rejects a further withdrawal that would push the day's cumulative total over the limit")
+    void withdrawRejectsAFurtherWithdrawalThatWouldPushTheDaysCumulativeTotalOverTheLimit() {
+        Money balance = Money.create(new BigDecimal("5000.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money dailyLimit = Money.create(new BigDecimal("1000.00"), "USD");
+        LocalDate today = LocalDate.of(2026, 1, 1);
+        account.withdraw(Money.create(new BigDecimal("700.00"), "USD"), today, dailyLimit);
+
+        DomainException exception = assertThrows(DomainException.class, () -> account.withdraw(
+                Money.create(new BigDecimal("400.00"), "USD"), today, dailyLimit));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+        assertEquals(new BigDecimal("4300.00"), account.getBalance().getAmount());
+    }
+
+    @Test
+    @DisplayName("withdraw allows cumulative withdrawals that stay within the daily limit")
+    void withdrawAllowsCumulativeWithdrawalsThatStayWithinTheDailyLimit() {
+        Money balance = Money.create(new BigDecimal("5000.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money dailyLimit = Money.create(new BigDecimal("1000.00"), "USD");
+        LocalDate today = LocalDate.of(2026, 1, 1);
+        account.withdraw(Money.create(new BigDecimal("700.00"), "USD"), today, dailyLimit);
+
+        account.withdraw(Money.create(new BigDecimal("300.00"), "USD"), today, dailyLimit);
+
+        assertEquals(new BigDecimal("4000.00"), account.getBalance().getAmount());
+        assertEquals(new BigDecimal("1000.00"), account.getDailyWithdrawnAmount().getAmount());
+    }
 }

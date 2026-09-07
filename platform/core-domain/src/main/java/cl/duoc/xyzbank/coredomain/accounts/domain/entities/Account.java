@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.coredomain.accounts.domain.entities;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
+import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 
 import java.math.BigDecimal;
@@ -87,8 +88,13 @@ public final class Account {
     }
 
     public void withdraw(Money amount, LocalDate today, Money dailyLimit) {
-        this.balance = this.balance.subtract(amount);
-        this.dailyWithdrawnAmount = this.dailyWithdrawnAmount.add(amount);
+        Money newBalance = this.balance.subtract(amount);
+        Money cumulativeToday = this.dailyWithdrawnAmount.add(amount);
+        if (cumulativeToday.getAmount().compareTo(dailyLimit.getAmount()) > 0) {
+            throw DomainException.validation("Daily withdrawal limit exceeded");
+        }
+        this.balance = newBalance;
+        this.dailyWithdrawnAmount = cumulativeToday;
         this.dailyWithdrawnDate = Optional.of(today);
     }
 
