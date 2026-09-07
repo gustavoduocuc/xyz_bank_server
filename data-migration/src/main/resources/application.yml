@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: xyz-bank-data-migration
+  datasource:
+    url: jdbc:mysql://localhost:3306/xyz_bank_migration
+    username: migration
+    password: migration
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: never
+  batch:
+    jdbc:
+      initialize-schema: always
+    job:
+      enabled: false
+
+migration:
+  data:
+    daily-transactions: file:data/semana_3/transacciones.csv
+    monthly-interests: file:data/semana_3/intereses.csv
+    annual-accounts: file:data/semana_3/cuentas_anuales.csv
+  batch:
+    chunk-size: 5
+    throttle-limit: 3
+    skip-limit: 2000
+    retry-limit: 3
+
+logging:
+  level:
+    root: INFO
+    com.xyzbank.migration: INFO
+    org.springframework.batch: INFO

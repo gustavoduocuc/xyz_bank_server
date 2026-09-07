@@ -1,0 +1,13 @@
+spring:
+  config:
+    activate:
+      on-profile: performance
+
+migration:
+  data:
+    daily-transactions: file:data/performance/transacciones.csv
+    monthly-interests: file:data/performance/intereses.csv
+    annual-accounts: file:data/performance/cuentas_anuales.csv
+  batch:
+    chunk-size: 5
+    throttle-limit: 3

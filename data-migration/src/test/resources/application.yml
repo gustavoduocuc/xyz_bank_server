@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:batchdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+  batch:
+    jdbc:
+      initialize-schema: always
+    job:
+      enabled: false
+
+migration:
+  data:
+    daily-transactions: file:data/semana_2/transacciones.csv
+    monthly-interests: file:data/semana_2/intereses.csv
+    annual-accounts: file:data/semana_2/cuentas_anuales.csv
+  batch:
+    chunk-size: 5
+    throttle-limit: 1
+    skip-limit: 100
+    retry-limit: 3
