@@ -3,6 +3,7 @@ package cl.duoc.xyzbank.coredomain.accounts.unit;
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
+import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @DisplayName("The Account")
 class AccountTest {
@@ -62,5 +64,21 @@ class AccountTest {
         account.withdraw(amount, LocalDate.of(2026, 1, 1), dailyLimit);
 
         assertEquals(new BigDecimal("400.00"), account.getBalance().getAmount());
+    }
+
+    @Test
+    @DisplayName("withdraw rejects an amount greater than the current balance")
+    void withdrawRejectsAnAmountGreaterThanTheCurrentBalance() {
+        Money balance = Money.create(new BigDecimal("50.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money amount = Money.create(new BigDecimal("100.00"), "USD");
+        Money dailyLimit = Money.create(new BigDecimal("1000.00"), "USD");
+
+        DomainException exception = assertThrows(
+                DomainException.class, () -> account.withdraw(amount, LocalDate.of(2026, 1, 1), dailyLimit));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+        assertEquals(new BigDecimal("50.00"), account.getBalance().getAmount());
     }
 }
