@@ -14,6 +14,8 @@ public interface TransactionRepository {
 
     Optional<Transaction> findById(Id id);
 
+    Optional<Transaction> findByIdempotencyKey(String idempotencyKey);
+
     TransactionPage findByAccountId(
             Id accountId,
             DateRange dateRange,
