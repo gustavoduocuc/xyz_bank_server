@@ -33,6 +33,17 @@ public final class Money {
         return new Money(this.amount.add(other.amount), this.currency);
     }
 
+    public Money subtract(Money other) {
+        if (!this.currency.equals(other.currency)) {
+            throw DomainException.validation("Cannot subtract money with different currencies");
+        }
+        BigDecimal result = this.amount.subtract(other.amount);
+        if (result.signum() < 0) {
+            throw DomainException.validation("Amount cannot be negative");
+        }
+        return new Money(result, this.currency);
+    }
+
     public BigDecimal getAmount() {
         return amount;
     }

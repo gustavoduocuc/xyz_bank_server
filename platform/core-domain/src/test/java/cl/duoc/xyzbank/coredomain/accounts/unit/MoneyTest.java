@@ -21,6 +21,9 @@ class MoneyTest {
      * 4. Adds two amounts with the same currency
      * 5. Rejects adding amounts with different currencies
      * 6. Two amounts with the same value and currency are equal
+     * 7. Subtracts two amounts with the same currency
+     * 8. Rejects subtracting amounts with different currencies
+     * 9. Rejects a subtraction that would produce a negative amount
      */
 
     @Test
@@ -81,5 +84,39 @@ class MoneyTest {
         assertEquals(
                 Money.create(new BigDecimal("100.00"), "USD"),
                 Money.create(new BigDecimal("100.00"), "USD"));
+    }
+
+    @Test
+    @DisplayName("subtracts two amounts with the same currency")
+    void subtractsTwoAmountsWithTheSameCurrency() {
+        Money first = Money.create(new BigDecimal("100.00"), "USD");
+        Money second = Money.create(new BigDecimal("40.00"), "USD");
+
+        Money result = first.subtract(second);
+
+        assertEquals(new BigDecimal("60.00"), result.getAmount());
+        assertEquals("USD", result.getCurrency());
+    }
+
+    @Test
+    @DisplayName("rejects subtracting amounts with different currencies")
+    void rejectsSubtractingAmountsWithDifferentCurrencies() {
+        Money usd = Money.create(new BigDecimal("100.00"), "USD");
+        Money clp = Money.create(new BigDecimal("50.00"), "CLP");
+
+        DomainException exception = assertThrows(DomainException.class, () -> usd.subtract(clp));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("rejects a subtraction that would produce a negative amount")
+    void rejectsASubtractionThatWouldProduceANegativeAmount() {
+        Money balance = Money.create(new BigDecimal("50.00"), "USD");
+        Money tooMuch = Money.create(new BigDecimal("100.00"), "USD");
+
+        DomainException exception = assertThrows(DomainException.class, () -> balance.subtract(tooMuch));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
     }
 }
