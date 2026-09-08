@@ -3,6 +3,7 @@ package cl.duoc.xyzbank.coreservice.accounts.infrastructure.persistence;
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
+import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.DailyWithdrawalUsage;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
@@ -67,7 +68,8 @@ public class JpaAccountRepository implements AccountRepository {
                 Id.create(entity.getCustomerId().toString()),
                 Money.create(entity.getBalance(), entity.getCurrency()),
                 entity.getVersion(),
-                Money.create(entity.getDailyWithdrawnAmount(), entity.getCurrency()),
-                Optional.ofNullable(entity.getDailyWithdrawnDate()));
+                DailyWithdrawalUsage.create(
+                        Money.create(entity.getDailyWithdrawnAmount(), entity.getCurrency()),
+                        Optional.ofNullable(entity.getDailyWithdrawnDate())));
     }
 }

@@ -39,22 +39,17 @@ public class WithdrawAccountUseCase {
     }
 
     public WithdrawalResponse execute(WithdrawRequest request) {
-        if (request.idempotencyKey() == null || request.idempotencyKey().isBlank()) {
-            throw DomainException.validation("Idempotency key is required");
-        }
+        requireIdempotencyKey(request);
 
         Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(request.idempotencyKey());
         if (existing.isPresent()) {
             return replay(existing.get(), request);
         }
 
-        if (request.amount() == null || request.amount().signum() <= 0) {
-            throw DomainException.validation("Amount must be positive");
-        }
+        requirePositiveAmount(request);
 
         Id accountId = Id.create(request.accountId());
-        Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> DomainException.notFound("Account " + request.accountId() + " not found"));
+        Account account = findAccountOrThrow(accountId);
 
         Money amount = Money.create(request.amount(), request.currency());
         LocalDate today = LocalDate.now(clock);
@@ -71,16 +66,32 @@ public class WithdrawAccountUseCase {
         return toResponse(transaction, account.getBalance());
     }
 
+    private void requireIdempotencyKey(WithdrawRequest request) {
+        if (request.idempotencyKey() == null || request.idempotencyKey().isBlank()) {
+            throw DomainException.validation("Idempotency key is required");
+        }
+    }
+
+    private void requirePositiveAmount(WithdrawRequest request) {
+        if (request.amount() == null || request.amount().signum() <= 0) {
+            throw DomainException.validation("Amount must be positive");
+        }
+    }
+
+    private Account findAccountOrThrow(Id accountId) {
+        return accountRepository.findById(accountId)
+                .orElseThrow(() -> DomainException.notFound("Account " + accountId.getValue() + " not found"));
+    }
+
     private WithdrawalResponse replay(Transaction existing, WithdrawRequest request) {
-        boolean sameAccount = existing.getAccountId().equals(Id.create(request.accountId()));
-        boolean sameAmount = existing.getAmount().getAmount().compareTo(request.amount()) == 0
+        boolean matchesOriginalRequest = existing.getAccountId().equals(Id.create(request.accountId()))
+                && existing.getAmount().getAmount().compareTo(request.amount()) == 0
                 && existing.getAmount().getCurrency().equals(request.currency());
-        if (!sameAccount || !sameAmount) {
+        if (!matchesOriginalRequest) {
             throw DomainException.conflict("Idempotency key already used with different parameters");
         }
 
-        Account account = accountRepository.findById(existing.getAccountId())
-                .orElseThrow(() -> DomainException.notFound("Account " + request.accountId() + " not found"));
+        Account account = findAccountOrThrow(existing.getAccountId());
         return toResponse(existing, account.getBalance());
     }
 

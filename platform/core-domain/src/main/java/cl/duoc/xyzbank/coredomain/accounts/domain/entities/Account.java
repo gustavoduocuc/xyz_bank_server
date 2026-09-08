@@ -1,11 +1,10 @@
 package cl.duoc.xyzbank.coredomain.accounts.domain.entities;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
+import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.DailyWithdrawalUsage;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
-import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
@@ -17,8 +16,7 @@ public final class Account {
     private final Id customerId;
     private Money balance;
     private final long version;
-    private Money dailyWithdrawnAmount;
-    private Optional<LocalDate> dailyWithdrawnDate;
+    private DailyWithdrawalUsage dailyWithdrawalUsage;
 
     private Account(
             Id id,
@@ -26,15 +24,13 @@ public final class Account {
             Id customerId,
             Money balance,
             long version,
-            Money dailyWithdrawnAmount,
-            Optional<LocalDate> dailyWithdrawnDate) {
+            DailyWithdrawalUsage dailyWithdrawalUsage) {
         this.id = id;
         this.accountNumber = accountNumber;
         this.customerId = customerId;
         this.balance = balance;
         this.version = version;
-        this.dailyWithdrawnAmount = dailyWithdrawnAmount;
-        this.dailyWithdrawnDate = dailyWithdrawnDate;
+        this.dailyWithdrawalUsage = dailyWithdrawalUsage;
     }
 
     public static Account create(
@@ -43,20 +39,12 @@ public final class Account {
             Id customerId,
             Money balance,
             long version,
-            Money dailyWithdrawnAmount,
-            Optional<LocalDate> dailyWithdrawnDate) {
-        return new Account(id, accountNumber, customerId, balance, version, dailyWithdrawnAmount, dailyWithdrawnDate);
+            DailyWithdrawalUsage dailyWithdrawalUsage) {
+        return new Account(id, accountNumber, customerId, balance, version, dailyWithdrawalUsage);
     }
 
     public static Account create(Id id, AccountNumber accountNumber, Id customerId, Money balance) {
-        return create(
-                id,
-                accountNumber,
-                customerId,
-                balance,
-                0L,
-                Money.create(BigDecimal.ZERO, balance.getCurrency()),
-                Optional.empty());
+        return create(id, accountNumber, customerId, balance, 0L, DailyWithdrawalUsage.none(balance.getCurrency()));
     }
 
     public Id getId() {
@@ -80,25 +68,17 @@ public final class Account {
     }
 
     public Money getDailyWithdrawnAmount() {
-        return dailyWithdrawnAmount;
+        return dailyWithdrawalUsage.getWithdrawnAmount();
     }
 
     public Optional<LocalDate> getDailyWithdrawnDate() {
-        return dailyWithdrawnDate;
+        return dailyWithdrawalUsage.getDate();
     }
 
     public void withdraw(Money amount, LocalDate today, Money dailyLimit) {
         Money newBalance = this.balance.subtract(amount);
-        Money withdrawnSoFarToday = this.dailyWithdrawnDate.filter(today::equals).isPresent()
-                ? this.dailyWithdrawnAmount
-                : Money.create(BigDecimal.ZERO, this.balance.getCurrency());
-        Money cumulativeToday = withdrawnSoFarToday.add(amount);
-        if (cumulativeToday.getAmount().compareTo(dailyLimit.getAmount()) > 0) {
-            throw DomainException.validation("Daily withdrawal limit exceeded");
-        }
+        this.dailyWithdrawalUsage = this.dailyWithdrawalUsage.recordWithdrawal(amount, today, dailyLimit);
         this.balance = newBalance;
-        this.dailyWithdrawnAmount = cumulativeToday;
-        this.dailyWithdrawnDate = Optional.of(today);
     }
 
     public Map<String, Object> toPrimitives() {
