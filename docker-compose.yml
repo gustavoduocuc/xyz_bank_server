@@ -1,0 +1,138 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: xyz-bank-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: xyz_bank_migration
+      MYSQL_USER: migration
+      MYSQL_PASSWORD: migration
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - xyz_bank_mysql_data:/var/lib/mysql
+      - ./data-migration/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: xyz-bank-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: core_service
+      POSTGRES_USER: core_service
+      POSTGRES_PASSWORD: core_service
+    volumes:
+      - xyz_bank_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U core_service -d core_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  data-migration:
+    build:
+      context: .
+      dockerfile: data-migration/Dockerfile
+    container_name: xyz-bank-data-migration
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: xyz_bank_migration
+      DB_USERNAME: migration
+      DB_PASSWORD: migration
+      MIGRATION_RUN_ALL: "true"
+
+  core-service:
+    build:
+      context: .
+      dockerfile: platform/core-service/Dockerfile
+    container_name: xyz-bank-core-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      data-migration:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: core_service
+      DB_USERNAME: core_service
+      DB_PASSWORD: core_service
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  bff-web:
+    build:
+      context: .
+      dockerfile: bff/bff-web/Dockerfile
+    container_name: xyz-bank-bff-web
+    ports:
+      - "8081:8081"
+    depends_on:
+      core-service:
+        condition: service_healthy
+    environment:
+      CORE_SERVICE_BASE_URL: http://core-service:8080
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8081/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  bff-mobile:
+    build:
+      context: .
+      dockerfile: bff/bff-mobile/Dockerfile
+    container_name: xyz-bank-bff-mobile
+    ports:
+      - "8082:8082"
+    depends_on:
+      core-service:
+        condition: service_healthy
+    environment:
+      CORE_SERVICE_BASE_URL: http://core-service:8080
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8082/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  bff-atm:
+    build:
+      context: .
+      dockerfile: bff/bff-atm/Dockerfile
+    container_name: xyz-bank-bff-atm
+    ports:
+      - "8083:8083"
+    depends_on:
+      core-service:
+        condition: service_healthy
+    environment:
+      CORE_SERVICE_BASE_URL: http://core-service:8080
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8083/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  xyz_bank_mysql_data:
+  xyz_bank_postgres_data:
