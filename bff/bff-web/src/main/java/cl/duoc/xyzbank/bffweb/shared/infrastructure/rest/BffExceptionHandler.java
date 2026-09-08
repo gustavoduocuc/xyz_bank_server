@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.bffweb.shared.infrastructure.rest;
 
+import cl.duoc.xyzbank.bffweb.shared.application.RequestRejectedException;
 import cl.duoc.xyzbank.bffweb.shared.infrastructure.adapters.CoreServiceCallException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerIdentityException;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,11 @@ public class BffExceptionHandler {
                 ? HttpStatus.UNPROCESSABLE_ENTITY
                 : HttpStatus.FORBIDDEN;
         return ProblemDetail.forStatusAndDetail(status, exception.getMessage());
+    }
+
+    @ExceptionHandler(RequestRejectedException.class)
+    public ProblemDetail handleRequestRejected(RequestRejectedException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
     }
 
     @ExceptionHandler(CoreServiceCallException.class)
