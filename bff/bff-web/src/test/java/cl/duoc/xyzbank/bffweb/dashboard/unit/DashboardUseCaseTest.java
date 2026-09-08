@@ -28,6 +28,8 @@ class DashboardUseCaseTest {
      * 1. Successful aggregate: profile, every account with balance, latest transactions per account
      * 2. Customer with no accounts returns an empty accounts list and no transactions
      * 3. Unknown customer propagates the profile port's failure without calling other ports
+     * 4. An accounts port failure propagates and returns no partial aggregate
+     * 5. A transactions port failure propagates and returns no partial aggregate
      */
 
     @Test
@@ -83,6 +85,35 @@ class DashboardUseCaseTest {
                 new PoisonTransactionsPort());
 
         assertThrows(RuntimeException.class, () -> useCase.execute("unknown-customer"));
+    }
+
+    @Test
+    @DisplayName("propagates an accounts port failure with no partial aggregate")
+    void propagatesAccountsPortFailure() {
+        CustomerProfile profile = new CustomerProfile("customer-3", "Marta Diaz", "marta@example.com");
+        DashboardUseCase useCase = new DashboardUseCase(
+                new StubCustomerProfilePort(profile),
+                customerId -> {
+                    throw new RuntimeException("core-service unreachable");
+                },
+                new PoisonTransactionsPort());
+
+        assertThrows(RuntimeException.class, () -> useCase.execute("customer-3"));
+    }
+
+    @Test
+    @DisplayName("propagates a transactions port failure with no partial aggregate")
+    void propagatesTransactionsPortFailure() {
+        CustomerProfile profile = new CustomerProfile("customer-4", "Luis Rojas", "luis@example.com");
+        AccountBalance account = new AccountBalance("account-9", "1000000009", new BigDecimal("300.00"), "USD");
+        DashboardUseCase useCase = new DashboardUseCase(
+                new StubCustomerProfilePort(profile),
+                new StubAccountsPort(List.of(account)),
+                (accountId, pageSize) -> {
+                    throw new RuntimeException("core-service unreachable");
+                });
+
+        assertThrows(RuntimeException.class, () -> useCase.execute("customer-4"));
     }
 
     private record StubCustomerProfilePort(CustomerProfile profile) implements CustomerProfilePort {
