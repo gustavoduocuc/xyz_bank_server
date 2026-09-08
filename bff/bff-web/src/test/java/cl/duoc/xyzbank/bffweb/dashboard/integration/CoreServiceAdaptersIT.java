@@ -7,6 +7,7 @@ import cl.duoc.xyzbank.bffweb.dashboard.infrastructure.adapters.HttpAccountsAdap
 import cl.duoc.xyzbank.bffweb.dashboard.infrastructure.adapters.HttpCustomerProfileAdapter;
 import cl.duoc.xyzbank.bffweb.dashboard.infrastructure.adapters.HttpTransactionsAdapter;
 import cl.duoc.xyzbank.bffweb.shared.infrastructure.adapters.CoreServiceCallException;
+import cl.duoc.xyzbank.bffweb.transactionhistory.application.dto.TransactionHistoryResponse;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,8 +19,11 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -35,6 +39,7 @@ class CoreServiceAdaptersIT {
      * 4. HttpAccountsAdapter raises CoreServiceCallException(404) on a 404 response
      * 5. HttpTransactionsAdapter maps a 200 response correctly
      * 6. HttpTransactionsAdapter raises CoreServiceCallException(404) on a 404 response
+     * 7. HttpTransactionsAdapter forwards from/to/type/cursor/pageSize unchanged
      */
 
     private WireMockServer wireMockServer;
@@ -145,5 +150,33 @@ class CoreServiceAdaptersIT {
                 () -> new HttpTransactionsAdapter(coreServiceClient).fetchLatestTransactions("unknown", 5));
 
         assertEquals(404, exception.getStatus());
+    }
+
+    @Test
+    @DisplayName("HttpTransactionsAdapter forwards from, to, type, cursor and pageSize unchanged")
+    void httpTransactionsAdapterForwardsFilterQueryParametersUnchanged() {
+        wireMockServer.stubFor(get(urlPathEqualTo("/internal/accounts/account-1/transactions"))
+                .withQueryParam("from", equalTo("2026-01-01"))
+                .withQueryParam("to", equalTo("2026-01-31"))
+                .withQueryParam("type", equalTo("DEBIT"))
+                .withQueryParam("cursor", equalTo("cursor-2"))
+                .withQueryParam("pageSize", equalTo("20"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"items\":[],\"nextCursor\":null}")));
+
+        TransactionHistoryResponse response =
+                new cl.duoc.xyzbank.bffweb.transactionhistory.infrastructure.adapters.HttpTransactionsAdapter(
+                                coreServiceClient)
+                        .fetchHistory("account-1", "2026-01-01", "2026-01-31", "DEBIT", "cursor-2", 20);
+
+        assertEquals(List.of(), response.items());
+        wireMockServer.verify(getRequestedFor(urlPathEqualTo("/internal/accounts/account-1/transactions"))
+                .withQueryParam("from", equalTo("2026-01-01"))
+                .withQueryParam("to", equalTo("2026-01-31"))
+                .withQueryParam("type", equalTo("DEBIT"))
+                .withQueryParam("cursor", equalTo("cursor-2"))
+                .withQueryParam("pageSize", equalTo("20")));
     }
 }
