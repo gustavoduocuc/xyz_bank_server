@@ -1,0 +1,166 @@
+openapi: 3.0.3
+info:
+  title: bff-atm
+  description: >
+    ATM channel backend-for-frontend. Exposes balance inquiry and cash
+    withdrawal only. Forwards the terminal Idempotency-Key unchanged so a
+    reconnect after commit replays the original core-service result. Does not
+    access any database and does not expose history, profile, or admin operations.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8083
+paths:
+  /accounts/{accountId}/balance:
+    get:
+      summary: Balance inquiry
+      operationId: getBalance
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/XCustomerId'
+        - $ref: '#/components/parameters/XChannel'
+        - $ref: '#/components/parameters/XTerminalId'
+      responses:
+        '200':
+          description: Current balance and currency
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /accounts/{accountId}/withdrawals:
+    post:
+      summary: Cash withdrawal
+      operationId: withdraw
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/XCustomerId'
+        - $ref: '#/components/parameters/XChannel'
+        - $ref: '#/components/parameters/XTerminalId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WithdrawalRequest'
+      responses:
+        '201':
+          description: >
+            Withdrawal succeeded, or a retry with the same Idempotency-Key
+            after a lost connection replayed the originally committed result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WithdrawalResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: core-service conflict relayed unchanged
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+components:
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+    XCustomerId:
+      name: X-Customer-Id
+      in: header
+      required: true
+      schema:
+        type: string
+    XChannel:
+      name: X-Channel
+      in: header
+      required: true
+      schema:
+        type: string
+        enum: [atm]
+    XTerminalId:
+      name: X-Terminal-Id
+      in: header
+      required: true
+      schema:
+        type: string
+  responses:
+    Forbidden:
+      description: Caller channel is not atm
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: Unknown account
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnprocessableEntity:
+      description: Missing terminal identity, missing Idempotency-Key, or invalid request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+  schemas:
+    BalanceResponse:
+      type: object
+      required: [balance, currency]
+      properties:
+        balance:
+          type: number
+        currency:
+          type: string
+    WithdrawalRequest:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+        currency:
+          type: string
+    WithdrawalResponse:
+      type: object
+      required: [transactionId, accountId, amount, currency, occurredOn, newBalance]
+      properties:
+        transactionId:
+          type: string
+        accountId:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        occurredOn:
+          type: string
+          format: date
+        newBalance:
+          type: number
+    ProblemDetail:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
