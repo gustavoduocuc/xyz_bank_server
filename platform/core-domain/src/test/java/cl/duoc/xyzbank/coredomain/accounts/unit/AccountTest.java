@@ -22,6 +22,13 @@ class AccountTest {
      * 1. Creates with a valid account number, owner id, balance, and currency
      * 2. Exposes its balance as a Money value object
      * 3. Withdraw reduces the balance when within the balance and the daily limit
+     * 4. Withdraw allows withdrawing exactly the full balance
+     * 5. Withdraw rejects an amount greater than the current balance
+     * 6. Withdraw rejects a single withdrawal that exceeds the daily limit
+     * 7. Withdraw rejects a further withdrawal that would push the day's cumulative total over the limit
+     * 8. Withdraw allows cumulative withdrawals that stay within the daily limit
+     * 9. Withdraw resets the cumulative daily total on a new calendar day
+     * 10. Withdraw rejects an amount whose currency does not match the account's balance currency
      */
 
     @Test
@@ -80,6 +87,20 @@ class AccountTest {
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
         assertEquals(new BigDecimal("50.00"), account.getBalance().getAmount());
+    }
+
+    @Test
+    @DisplayName("withdraw allows withdrawing exactly the full balance")
+    void withdrawAllowsWithdrawingExactlyTheFullBalance() {
+        Money balance = Money.create(new BigDecimal("50.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money amount = Money.create(new BigDecimal("50.00"), "USD");
+        Money dailyLimit = Money.create(new BigDecimal("1000.00"), "USD");
+
+        account.withdraw(amount, LocalDate.of(2026, 1, 1), dailyLimit);
+
+        assertEquals(new BigDecimal("0.00"), account.getBalance().getAmount());
     }
 
     @Test
@@ -159,5 +180,6 @@ class AccountTest {
                 DomainException.class, () -> account.withdraw(amount, LocalDate.of(2026, 1, 1), dailyLimit));
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
+        assertEquals(new BigDecimal("500.00"), account.getBalance().getAmount());
     }
 }

@@ -41,12 +41,13 @@ class WithdrawAccountUseCaseTest {
      * 2. Throws not found for an unknown account
      * 3. Throws validation for a missing idempotency key
      * 4. Throws validation for a non-positive amount
-     * 5. Throws validation for a currency mismatch
-     * 6. Throws validation for insufficient funds
-     * 7. Throws validation for an exceeded daily limit
-     * 8. Repeated idempotency key with the same account and amount replays the original result
-     * 9. Repeated idempotency key with a different amount throws a conflict
-     * 10. The daily limit resets on a new day
+     * 5. Throws validation for a negative amount
+     * 6. Throws validation for a currency mismatch
+     * 7. Throws validation for insufficient funds
+     * 8. Throws validation for an exceeded daily limit
+     * 9. Repeated idempotency key with the same account and amount replays the original result
+     * 10. Repeated idempotency key with a different amount throws a conflict, leaving the balance unchanged
+     * 11. The daily limit resets on a new day
      */
 
     @Test
@@ -94,6 +95,18 @@ class WithdrawAccountUseCaseTest {
 
         DomainException exception = assertThrows(DomainException.class, () -> useCase.execute(
                 new WithdrawRequest(accountId.getValue(), new BigDecimal("0.00"), "USD", "key-3")));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("throws validation for a negative amount")
+    void throwsValidationForANegativeAmount() {
+        Id accountId = anExistingAccount("500.00");
+        WithdrawAccountUseCase useCase = useCase(CLOCK_DAY_1);
+
+        DomainException exception = assertThrows(DomainException.class, () -> useCase.execute(
+                new WithdrawRequest(accountId.getValue(), new BigDecimal("-10.00"), "USD", "key-3b")));
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
     }
@@ -150,7 +163,7 @@ class WithdrawAccountUseCaseTest {
     }
 
     @Test
-    @DisplayName("throws a conflict for a repeated idempotency key with a different amount")
+    @DisplayName("throws a conflict for a repeated idempotency key with a different amount, leaving the balance unchanged")
     void throwsAConflictForARepeatedIdempotencyKeyWithADifferentAmount() {
         Id accountId = anExistingAccount("500.00");
         WithdrawAccountUseCase useCase = useCase(CLOCK_DAY_1);
@@ -160,6 +173,7 @@ class WithdrawAccountUseCaseTest {
                 new WithdrawRequest(accountId.getValue(), new BigDecimal("50.00"), "USD", "key-8")));
 
         assertEquals(DomainException.Type.CONFLICT, exception.getType());
+        assertEquals(new BigDecimal("400.00"), accountRepository.findById(accountId).orElseThrow().getBalance().getAmount());
     }
 
     @Test

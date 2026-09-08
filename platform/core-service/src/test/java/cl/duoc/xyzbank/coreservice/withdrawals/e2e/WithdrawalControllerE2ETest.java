@@ -7,6 +7,7 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
 import io.restassured.RestAssured;
+import io.restassured.response.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,10 +16,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -36,8 +40,9 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
      * 6. Returns 422 for insufficient funds, and the balance is unchanged afterward
      * 7. Returns 422 for an exceeded daily limit, and the balance is unchanged afterward
      * 8. Repeating an Idempotency-Key with the same body replays the original result
-     * 9. Repeating an Idempotency-Key with a different amount returns 409
+     * 9. Repeating an Idempotency-Key with a different amount returns 409, leaving the balance unchanged
      * 10. Two concurrent withdrawals on the same account: exactly one succeeds, the other gets 409
+     * 11. Two concurrent withdrawals reusing the same Idempotency-Key and amount: only one withdrawal is applied
      */
 
     @LocalServerPort
@@ -205,7 +210,7 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("repeating an Idempotency-Key with a different amount returns 409")
+    @DisplayName("repeating an Idempotency-Key with a different amount returns 409, leaving the balance unchanged")
     void repeatingAnIdempotencyKeyWithADifferentAmountReturns409() {
         Id accountId = anExistingAccount("500.00");
 
@@ -225,6 +230,12 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
                 .then()
                 .statusCode(409)
                 .contentType("application/problem+json");
+
+        given()
+                .when().get("/internal/accounts/{accountId}/balance", accountId.getValue())
+                .then()
+                .statusCode(200)
+                .body("balance", equalTo(400.00f));
     }
 
     @Test
@@ -252,6 +263,43 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
         long conflictCount = java.util.stream.Stream.of(firstStatus, secondStatus).filter(s -> s == 409).count();
         assertEquals(1, successCount);
         assertEquals(1, conflictCount);
+
+        given()
+                .when().get("/internal/accounts/{accountId}/balance", accountId.getValue())
+                .then()
+                .statusCode(200)
+                .body("balance", equalTo(40.00f));
+    }
+
+    @Test
+    @DisplayName("two concurrent requests reusing the same Idempotency-Key apply the withdrawal only once")
+    void twoConcurrentRequestsReusingTheSameIdempotencyKeyApplyTheWithdrawalOnlyOnce() {
+        Id accountId = anExistingAccount("100.00");
+        Map<String, Object> body = Map.of("amount", 60.00, "currency", "USD");
+
+        CompletableFuture<Response> first = CompletableFuture.supplyAsync(() -> given()
+                .header("Idempotency-Key", "e2e-key-10")
+                .contentType("application/json")
+                .body(body)
+                .when().post("/internal/accounts/{accountId}/withdrawals", accountId.getValue()));
+        CompletableFuture<Response> second = CompletableFuture.supplyAsync(() -> given()
+                .header("Idempotency-Key", "e2e-key-10")
+                .contentType("application/json")
+                .body(body)
+                .when().post("/internal/accounts/{accountId}/withdrawals", accountId.getValue()));
+
+        Response firstResponse = first.join();
+        Response secondResponse = second.join();
+
+        // Whichever request loses the race either replays the winner's transaction (201, same
+        // transactionId) or receives a conflict for the version it read (409) -- it must never
+        // silently apply a second withdrawal. Either way the withdrawal is applied exactly once.
+        for (Response response : List.of(firstResponse, secondResponse)) {
+            assertThat(response.statusCode(), anyOf(equalTo(201), equalTo(409)));
+        }
+        if (firstResponse.statusCode() == 201 && secondResponse.statusCode() == 201) {
+            assertEquals(firstResponse.path("transactionId").toString(), secondResponse.path("transactionId").toString());
+        }
 
         given()
                 .when().get("/internal/accounts/{accountId}/balance", accountId.getValue())
