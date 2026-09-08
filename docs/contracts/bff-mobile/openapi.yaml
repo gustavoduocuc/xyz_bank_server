@@ -1,0 +1,96 @@
+openapi: 3.0.3
+info:
+  title: bff-mobile
+  description: >
+    Mobile channel backend-for-frontend. Returns a small, flattened account
+    summary with a fixed page of recent transactions. Does not access any database.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8082
+paths:
+  /accounts/{accountId}/summary:
+    get:
+      summary: Account summary
+      operationId: getAccountSummary
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Customer-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Channel
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [mobile]
+      responses:
+        '200':
+          description: Flattened balance plus a fixed-size list of recent transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSummaryResponse'
+        '403':
+          description: Caller channel is not mobile
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Unknown account
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '422':
+          description: Missing or invalid caller identity
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+components:
+  schemas:
+    AccountSummaryResponse:
+      type: object
+      required: [balance, currency, transactions]
+      properties:
+        balance:
+          type: number
+        currency:
+          type: string
+        transactions:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/RecentTransaction'
+    RecentTransaction:
+      type: object
+      required: [id, type, amount, occurredOn]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [DEBIT, CREDIT]
+        amount:
+          type: number
+        occurredOn:
+          type: string
+          format: date
+    ProblemDetail:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
