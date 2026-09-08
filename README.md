@@ -165,3 +165,13 @@ Los ITs de PostgreSQL/MySQL usan Testcontainers. Sin Docker se omiten (`disabled
 | `X-Correlation-Id` | opcional | si falta, cada BFF genera un UUID y lo propaga a `core-service` |
 
 No hay login, OAuth2, mTLS ni PIN. No despliegues esto en un entorno real tal como está.
+
+## Pruebas con Postman
+### GET Dashboard (BFF WEB)
+<img width="1025" height="1200" alt="Web-Dashboard" src="https://github.com/user-attachments/assets/000259c9-599a-4978-9a94-ea390f8a8e2a" />
+
+### GET Account Summary (BFF Mobile)
+<img width="1015" height="1068" alt="Mobile-Account-Summary" src="https://github.com/user-attachments/assets/0263cb6f-5b4c-4e07-8c21-f4c62af82d72" />
+
+### GET Balance (BFF ATM)
+<img width="1015" height="812" alt="ATM-Balance" src="https://github.com/user-attachments/assets/a4a19745-ab8f-4f32-8513-20c3806f1911" />
