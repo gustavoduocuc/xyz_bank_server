@@ -17,6 +17,7 @@ class HeaderCallerContextAdapterTest {
      * Cases:
      * 1. Resolves a web caller from customer id and channel headers
      * 2. Resolves a mobile caller from customer id and channel headers
+     * 3. Resolves an atm caller including its terminal id
      */
 
     @Test
@@ -37,5 +38,16 @@ class HeaderCallerContextAdapterTest {
         assertEquals("customer-2", callerContext.customerId());
         assertEquals(Channel.MOBILE, callerContext.channel());
         assertEquals(Set.of("mobile:*"), callerContext.scopes());
+    }
+
+    @Test
+    @DisplayName("resolves an atm caller including its terminal id")
+    void resolvesAnAtmCallerIncludingItsTerminalId() {
+        CallerContext callerContext = HeaderCallerContextAdapter.resolve("customer-3", "atm", "terminal-9");
+
+        assertEquals("customer-3", callerContext.customerId());
+        assertEquals(Channel.ATM, callerContext.channel());
+        assertEquals(Set.of("atm:read-balance", "atm:withdraw"), callerContext.scopes());
+        assertEquals("terminal-9", callerContext.terminalId().orElseThrow());
     }
 }
