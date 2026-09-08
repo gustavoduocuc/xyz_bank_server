@@ -22,8 +22,25 @@ public final class HeaderCallerContextAdapter implements CallerContext {
     }
 
     public static CallerContext resolve(String customerIdHeader, String channelHeader, String terminalIdHeader) {
-        Channel channel = Channel.valueOf(channelHeader.toUpperCase());
+        if (customerIdHeader == null || customerIdHeader.isBlank()) {
+            throw CallerIdentityException.invalid("Customer id is required");
+        }
+        Channel channel = parseChannel(channelHeader);
+        if (channel == Channel.ATM && (terminalIdHeader == null || terminalIdHeader.isBlank())) {
+            throw CallerIdentityException.invalid("Terminal id is required for the atm channel");
+        }
         return new HeaderCallerContextAdapter(customerIdHeader, channel, terminalIdHeader);
+    }
+
+    private static Channel parseChannel(String channelHeader) {
+        if (channelHeader == null || channelHeader.isBlank()) {
+            throw CallerIdentityException.invalid("Channel is required");
+        }
+        try {
+            return Channel.valueOf(channelHeader.toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw CallerIdentityException.invalid("Unrecognized channel: " + channelHeader);
+        }
     }
 
     @Override
