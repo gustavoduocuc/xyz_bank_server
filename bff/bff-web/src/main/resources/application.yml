@@ -4,3 +4,8 @@ server:
 spring:
   application:
     name: bff-web
+
+core-service:
+  base-url: http://localhost:8080
+  connect-timeout-ms: 3000
+  read-timeout-ms: 3000
