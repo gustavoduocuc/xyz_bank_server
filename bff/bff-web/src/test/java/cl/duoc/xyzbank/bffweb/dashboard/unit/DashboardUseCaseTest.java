@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 
 @DisplayName("The Dashboard use case")
 class DashboardUseCaseTest {
@@ -24,6 +26,8 @@ class DashboardUseCaseTest {
     /*
      * Cases:
      * 1. Successful aggregate: profile, every account with balance, latest transactions per account
+     * 2. Customer with no accounts returns an empty accounts list and no transactions
+     * 3. Unknown customer propagates the profile port's failure without calling other ports
      */
 
     @Test
@@ -52,6 +56,35 @@ class DashboardUseCaseTest {
                 response.accounts());
     }
 
+    @Test
+    @DisplayName("returns an empty accounts list and no transactions for a customer with no accounts")
+    void returnsEmptyAccountsForACustomerWithNoAccounts() {
+        CustomerProfile profile = new CustomerProfile("customer-2", "Jose Soto", "jose@example.com");
+
+        DashboardUseCase useCase = new DashboardUseCase(
+                new StubCustomerProfilePort(profile),
+                new StubAccountsPort(List.of()),
+                new PoisonTransactionsPort());
+
+        DashboardResponse response = useCase.execute("customer-2");
+
+        assertEquals(profile, response.profile());
+        assertEquals(List.of(), response.accounts());
+    }
+
+    @Test
+    @DisplayName("propagates the profile port's failure without calling other ports")
+    void propagatesUnknownCustomerFailureWithoutCallingOtherPorts() {
+        DashboardUseCase useCase = new DashboardUseCase(
+                customerId -> {
+                    throw new RuntimeException("Customer " + customerId + " not found");
+                },
+                new PoisonAccountsPort(),
+                new PoisonTransactionsPort());
+
+        assertThrows(RuntimeException.class, () -> useCase.execute("unknown-customer"));
+    }
+
     private record StubCustomerProfilePort(CustomerProfile profile) implements CustomerProfilePort {
         @Override
         public CustomerProfile fetchProfile(String customerId) {
@@ -71,6 +104,20 @@ class DashboardUseCaseTest {
         @Override
         public List<RecentTransaction> fetchLatestTransactions(String accountId, int pageSize) {
             return transactionsByAccountId.getOrDefault(accountId, List.of());
+        }
+    }
+
+    private static final class PoisonAccountsPort implements AccountsPort {
+        @Override
+        public List<AccountBalance> fetchAccountsForCustomer(String customerId) {
+            return fail("accounts port should not be called");
+        }
+    }
+
+    private static final class PoisonTransactionsPort implements TransactionsPort {
+        @Override
+        public List<RecentTransaction> fetchLatestTransactions(String accountId, int pageSize) {
+            return fail("transactions port should not be called");
         }
     }
 }
