@@ -13,8 +13,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class CallerContextInterceptor implements HandlerInterceptor {
 
-    static final String CALLER_CONTEXT_ATTRIBUTE = CallerContext.class.getName();
-
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         if (!(handler instanceof HandlerMethod)) {
@@ -27,7 +25,6 @@ public class CallerContextInterceptor implements HandlerInterceptor {
         if (callerContext.channel() != Channel.WEB) {
             throw CallerIdentityException.forbidden("This endpoint requires the web channel");
         }
-        request.setAttribute(CALLER_CONTEXT_ATTRIBUTE, callerContext);
         return true;
     }
 }

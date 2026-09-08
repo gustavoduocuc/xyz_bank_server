@@ -12,7 +12,7 @@ import java.util.List;
 @Component
 public class HttpTransactionsAdapter implements TransactionsPort {
 
-    static final int FIXED_PAGE_SIZE = 5;
+    private static final int FIXED_PAGE_SIZE = 5;
 
     private final RestClient coreServiceClient;
 

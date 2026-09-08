@@ -25,7 +25,6 @@ public class CallerContextInterceptor implements HandlerInterceptor {
         if (callerContext.channel() != Channel.ATM) {
             throw CallerIdentityException.forbidden("This endpoint requires the atm channel");
         }
-        request.setAttribute(CallerContext.class.getName(), callerContext);
         return true;
     }
 }

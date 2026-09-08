@@ -7,10 +7,15 @@ import cl.duoc.xyzbank.sharedsecurity.callercontext.HeaderCallerContextAdapter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("The HeaderCallerContextAdapter")
 class HeaderCallerContextAdapterTest {
@@ -18,12 +23,14 @@ class HeaderCallerContextAdapterTest {
     /*
      * Cases:
      * 1. Resolves a web caller from customer id and channel headers
-     * 2. Resolves a mobile caller from customer id and channel headers
-     * 3. Resolves an atm caller including its terminal id
-     * 4. Rejects a missing customer id
-     * 5. Rejects a missing channel
-     * 6. Rejects an unrecognized channel
-     * 7. Rejects an atm channel missing its terminal id
+     * 2. Treats a blank terminal id as absent for non-atm channels
+     * 3. Resolves a mobile caller from customer id and channel headers
+     * 4. Resolves an atm caller including its terminal id
+     * 5. Rejects a missing customer id
+     * 6. Rejects a missing channel
+     * 7. Rejects an unrecognized channel
+     * 8. Rejects an atm channel missing its terminal id
+     * 9. Documents itself as a phase-1-only placeholder with no authentication guarantee
      */
 
     @Test
@@ -34,6 +41,15 @@ class HeaderCallerContextAdapterTest {
         assertEquals("customer-1", callerContext.customerId());
         assertEquals(Channel.WEB, callerContext.channel());
         assertEquals(Set.of("web:*"), callerContext.scopes());
+        assertEquals(Optional.empty(), callerContext.terminalId());
+    }
+
+    @Test
+    @DisplayName("treats a blank terminal id as absent for non-atm channels")
+    void treatsABlankTerminalIdAsAbsentForNonAtmChannels() {
+        CallerContext callerContext = HeaderCallerContextAdapter.resolve("customer-1", "web", "  ");
+
+        assertEquals(Optional.empty(), callerContext.terminalId());
     }
 
     @Test
@@ -95,5 +111,26 @@ class HeaderCallerContextAdapterTest {
                 () -> HeaderCallerContextAdapter.resolve("customer-1", "atm", null));
 
         assertEquals(CallerIdentityException.Type.INVALID, exception.getType());
+    }
+
+    @Test
+    @DisplayName("documents itself as a phase-1-only placeholder with no authentication guarantee")
+    void documentsItselfAsAPhase1OnlyPlaceholder() throws IOException {
+        Path source = resolveAdapterSource();
+        String documentation = Files.readString(source);
+
+        assertTrue(documentation.contains("Phase-1-only placeholder"));
+        assertTrue(documentation.contains("no authentication or authorization guarantee"));
+        assertTrue(documentation.contains("OAuth2/OIDC"));
+    }
+
+    private static Path resolveAdapterSource() {
+        Path fromModule = Path.of(
+                "src/main/java/cl/duoc/xyzbank/sharedsecurity/callercontext/HeaderCallerContextAdapter.java");
+        if (Files.exists(fromModule)) {
+            return fromModule;
+        }
+        return Path.of(
+                "platform/shared-security/src/main/java/cl/duoc/xyzbank/sharedsecurity/callercontext/HeaderCallerContextAdapter.java");
     }
 }

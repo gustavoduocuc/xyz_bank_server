@@ -12,11 +12,15 @@ public final class CoreServiceCalls {
 
     public static <T> T fetch(Supplier<T> request) {
         try {
-            return request.get();
+            T response = request.get();
+            if (response == null) {
+                throw new CoreServiceCallException(502, "Core service returned an empty response");
+            }
+            return response;
         } catch (RestClientResponseException exception) {
             throw new CoreServiceCallException(exception.getStatusCode().value(), exception.getStatusText());
         } catch (RestClientException exception) {
-            throw new CoreServiceCallException(503, exception.getMessage());
+            throw new CoreServiceCallException(503, "Core service is unavailable");
         }
     }
 }

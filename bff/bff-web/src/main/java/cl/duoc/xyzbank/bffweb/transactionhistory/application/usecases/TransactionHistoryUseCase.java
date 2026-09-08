@@ -6,6 +6,7 @@ import cl.duoc.xyzbank.bffweb.transactionhistory.application.ports.TransactionsP
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.Optional;
 
 public class TransactionHistoryUseCase {
 
@@ -26,19 +27,19 @@ public class TransactionHistoryUseCase {
     }
 
     private void validateDateRange(String from, String to) {
-        LocalDate fromDate = parseDate(from);
-        LocalDate toDate = parseDate(to);
-        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+        Optional<LocalDate> fromDate = parseDate(from);
+        Optional<LocalDate> toDate = parseDate(to);
+        if (fromDate.isPresent() && toDate.isPresent() && fromDate.get().isAfter(toDate.get())) {
             throw RequestRejectedException.validation("From date cannot be after to date");
         }
     }
 
-    private LocalDate parseDate(String value) {
+    private Optional<LocalDate> parseDate(String value) {
         if (value == null || value.isBlank()) {
-            return null;
+            return Optional.empty();
         }
         try {
-            return LocalDate.parse(value);
+            return Optional.of(LocalDate.parse(value));
         } catch (DateTimeParseException exception) {
             throw RequestRejectedException.validation("Date must be in yyyy-MM-dd format");
         }

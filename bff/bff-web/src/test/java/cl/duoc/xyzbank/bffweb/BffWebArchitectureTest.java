@@ -4,6 +4,7 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
+import org.springframework.web.bind.annotation.RestController;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
@@ -27,4 +28,24 @@ class BffWebArchitectureTest {
             .should()
             .dependOnClassesThat()
             .resideInAnyPackage("cl.duoc.xyzbank.bffmobile..", "cl.duoc.xyzbank.bffatm..");
+
+    @ArchTest
+    static final ArchRule useCasesControllersAndAdaptersDoNotReadServletIdentityHeaders = noClasses()
+            .that()
+            .resideInAnyPackage("..application..", "..infrastructure.adapters..")
+            .or()
+            .areAnnotatedWith(RestController.class)
+            .should()
+            .dependOnClassesThat()
+            .haveFullyQualifiedName("jakarta.servlet.http.HttpServletRequest");
+
+    @ArchTest
+    static final ArchRule useCasesControllersAndAdaptersObtainIdentityThroughCallerContext = noClasses()
+            .that()
+            .resideInAnyPackage("..application..", "..infrastructure.adapters..")
+            .or()
+            .areAnnotatedWith(RestController.class)
+            .should()
+            .dependOnClassesThat()
+            .haveFullyQualifiedName("cl.duoc.xyzbank.sharedsecurity.callercontext.HeaderCallerContextAdapter");
 }

@@ -38,4 +38,24 @@ class BffAtmArchitectureTest {
             .haveSimpleName("BalanceController")
             .orShould()
             .haveSimpleName("WithdrawalController");
+
+    @ArchTest
+    static final ArchRule useCasesControllersAndAdaptersDoNotReadServletIdentityHeaders = noClasses()
+            .that()
+            .resideInAnyPackage("..application..", "..infrastructure.adapters..")
+            .or()
+            .areAnnotatedWith(RestController.class)
+            .should()
+            .dependOnClassesThat()
+            .haveFullyQualifiedName("jakarta.servlet.http.HttpServletRequest");
+
+    @ArchTest
+    static final ArchRule useCasesControllersAndAdaptersObtainIdentityThroughCallerContext = noClasses()
+            .that()
+            .resideInAnyPackage("..application..", "..infrastructure.adapters..")
+            .or()
+            .areAnnotatedWith(RestController.class)
+            .should()
+            .dependOnClassesThat()
+            .haveFullyQualifiedName("cl.duoc.xyzbank.sharedsecurity.callercontext.HeaderCallerContextAdapter");
 }

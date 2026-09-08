@@ -25,7 +25,6 @@ public class CallerContextInterceptor implements HandlerInterceptor {
         if (callerContext.channel() != Channel.MOBILE) {
             throw CallerIdentityException.forbidden("This endpoint requires the mobile channel");
         }
-        request.setAttribute(CallerContext.class.getName(), callerContext);
         return true;
     }
 }

@@ -26,10 +26,18 @@ public final class HeaderCallerContextAdapter implements CallerContext {
             throw CallerIdentityException.invalid("Customer id is required");
         }
         Channel channel = parseChannel(channelHeader);
-        if (channel == Channel.ATM && (terminalIdHeader == null || terminalIdHeader.isBlank())) {
+        Optional<String> terminalId = optionalTerminalId(terminalIdHeader);
+        if (channel == Channel.ATM && terminalId.isEmpty()) {
             throw CallerIdentityException.invalid("Terminal id is required for the atm channel");
         }
-        return new HeaderCallerContextAdapter(customerIdHeader, channel, terminalIdHeader);
+        return new HeaderCallerContextAdapter(customerIdHeader, channel, terminalId.orElse(null));
+    }
+
+    private static Optional<String> optionalTerminalId(String terminalIdHeader) {
+        if (terminalIdHeader == null || terminalIdHeader.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(terminalIdHeader);
     }
 
     private static Channel parseChannel(String channelHeader) {
