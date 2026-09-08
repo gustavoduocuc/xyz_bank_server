@@ -168,10 +168,11 @@ No hay login, OAuth2, mTLS ni PIN. No despliegues esto en un entorno real tal co
 
 ## Pruebas con Postman
 ### GET Dashboard (BFF WEB)
-<img width="1025" height="1200" alt="Web-Dashboard" src="https://github.com/user-attachments/assets/000259c9-599a-4978-9a94-ea390f8a8e2a" />
+<img width="1025" height="1200" alt="Web-Dashboard" src="https://github.com/user-attachments/assets/0ebdb6f3-067e-4c31-9711-778908a8409e" />
 
 ### GET Account Summary (BFF Mobile)
-<img width="1015" height="1068" alt="Mobile-Account-Summary" src="https://github.com/user-attachments/assets/0263cb6f-5b4c-4e07-8c21-f4c62af82d72" />
+<img width="1015" height="1068" alt="Mobile-Account-Summary" src="https://github.com/user-attachments/assets/8561a394-6046-40e6-a002-159a4f41de51" />
 
 ### GET Balance (BFF ATM)
-<img width="1015" height="812" alt="ATM-Balance" src="https://github.com/user-attachments/assets/a4a19745-ab8f-4f32-8513-20c3806f1911" />
+<img width="1015" height="812" alt="ATM-Balance" src="https://github.com/user-attachments/assets/a22b0a09-9a48-47fc-bacb-268b4be13cbf" />
+
