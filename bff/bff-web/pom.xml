@@ -22,25 +22,23 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.xyzbank</groupId>
+            <artifactId>shared-security</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>com.xyzbank</groupId>
-            <artifactId>core-domain</artifactId>
-            <version>${project.version}</version>
-            <classifier>tests</classifier>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
