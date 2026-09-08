@@ -1,0 +1,244 @@
+openapi: 3.0.3
+info:
+  title: bff-web
+  description: >
+    Web channel backend-for-frontend. Aggregates core-service data into full
+    payloads for the dashboard, filterable transaction history, and annual
+    interest view. Does not access any database.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8081
+paths:
+  /customers/{customerId}/dashboard:
+    get:
+      summary: Dashboard aggregate
+      operationId: getDashboard
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+        - $ref: '#/components/parameters/XCustomerId'
+        - $ref: '#/components/parameters/XChannel'
+      responses:
+        '200':
+          description: Profile, every account with balance, and latest transactions per account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /accounts/{accountId}/transactions:
+    get:
+      summary: Full transaction history
+      operationId: getTransactionHistory
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/XCustomerId'
+        - $ref: '#/components/parameters/XChannel'
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [DEBIT, CREDIT]
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: A page of filtered transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionHistoryResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /accounts/{accountId}/interest-summary:
+    get:
+      summary: Annual interest view
+      operationId: getInterestView
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/XCustomerId'
+        - $ref: '#/components/parameters/XChannel'
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Annual interest summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterestViewResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+components:
+  parameters:
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      schema:
+        type: string
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+    XCustomerId:
+      name: X-Customer-Id
+      in: header
+      required: true
+      schema:
+        type: string
+    XChannel:
+      name: X-Channel
+      in: header
+      required: true
+      schema:
+        type: string
+        enum: [web]
+  responses:
+    Forbidden:
+      description: Caller channel is not web
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: No resource matches the given identifier
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnprocessableEntity:
+      description: Missing or invalid caller identity or request filter
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+  schemas:
+    DashboardResponse:
+      type: object
+      required: [profile, accounts]
+      properties:
+        profile:
+          $ref: '#/components/schemas/CustomerProfile'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountSummary'
+    CustomerProfile:
+      type: object
+      required: [id, fullName, email]
+      properties:
+        id:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+    AccountSummary:
+      type: object
+      required: [id, accountNumber, balance, currency, transactions]
+      properties:
+        id:
+          type: string
+        accountNumber:
+          type: string
+        balance:
+          type: number
+        currency:
+          type: string
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecentTransaction'
+    RecentTransaction:
+      type: object
+      required: [id, type, amount, currency, occurredOn]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [DEBIT, CREDIT]
+        amount:
+          type: number
+        currency:
+          type: string
+        occurredOn:
+          type: string
+          format: date
+        description:
+          type: string
+          nullable: true
+    TransactionHistoryResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecentTransaction'
+        nextCursor:
+          type: string
+          nullable: true
+    InterestViewResponse:
+      type: object
+      required: [accountId, year, openingBalance, closingBalance, interestRate, interestAmount, currency]
+      properties:
+        accountId:
+          type: string
+        year:
+          type: integer
+        openingBalance:
+          type: number
+        closingBalance:
+          type: number
+        interestRate:
+          type: number
+        interestAmount:
+          type: number
+        currency:
+          type: string
+    ProblemDetail:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
