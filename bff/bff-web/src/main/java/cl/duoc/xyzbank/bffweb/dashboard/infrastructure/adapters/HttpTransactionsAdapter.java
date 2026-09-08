@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.bffweb.dashboard.infrastructure.adapters;
 
 import cl.duoc.xyzbank.bffweb.dashboard.application.dto.RecentTransaction;
 import cl.duoc.xyzbank.bffweb.dashboard.application.ports.TransactionsPort;
+import cl.duoc.xyzbank.bffweb.shared.infrastructure.adapters.CoreServiceCalls;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -19,10 +20,10 @@ public class HttpTransactionsAdapter implements TransactionsPort {
 
     @Override
     public List<RecentTransaction> fetchLatestTransactions(String accountId, int pageSize) {
-        TransactionPageWire page = coreServiceClient.get()
+        TransactionPageWire page = CoreServiceCalls.fetch(() -> coreServiceClient.get()
                 .uri("/internal/accounts/{accountId}/transactions?pageSize={pageSize}", accountId, pageSize)
                 .retrieve()
-                .body(TransactionPageWire.class);
+                .body(TransactionPageWire.class));
         return page.items().stream()
                 .map(item -> new RecentTransaction(
                         item.id(), item.type(), item.amount(), item.currency(), item.occurredOn(), item.description()))
