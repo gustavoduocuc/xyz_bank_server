@@ -2,9 +2,9 @@ spring:
   application:
     name: xyz-bank-data-migration
   datasource:
-    url: jdbc:mysql://localhost:3306/xyz_bank_migration
-    username: migration
-    password: migration
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:xyz_bank_migration}
+    username: ${DB_USERNAME:migration}
+    password: ${DB_PASSWORD:migration}
     driver-class-name: com.mysql.cj.jdbc.Driver
   sql:
     init:
@@ -16,10 +16,11 @@ spring:
       enabled: false
 
 migration:
+  run-all: ${MIGRATION_RUN_ALL:false}
   data:
-    daily-transactions: file:data/semana_3/transacciones.csv
-    monthly-interests: file:data/semana_3/intereses.csv
-    annual-accounts: file:data/semana_3/cuentas_anuales.csv
+    daily-transactions: ${MIGRATION_DAILY_TRANSACTIONS:file:data/semana_3/transacciones.csv}
+    monthly-interests: ${MIGRATION_MONTHLY_INTERESTS:file:data/semana_3/intereses.csv}
+    annual-accounts: ${MIGRATION_ANNUAL_ACCOUNTS:file:data/semana_3/cuentas_anuales.csv}
   batch:
     chunk-size: 5
     throttle-limit: 3
