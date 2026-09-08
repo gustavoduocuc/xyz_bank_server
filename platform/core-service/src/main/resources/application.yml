@@ -18,3 +18,22 @@ spring:
 app:
   withdrawals:
     daily-limit: 5000.00
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%X{correlationId}] [%15.15t] %-40.40logger{39} : %m%n"
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
