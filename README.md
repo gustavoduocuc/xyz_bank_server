@@ -10,7 +10,38 @@ Plataforma BFF de XYZ Bank: tres backends por canal (`bff-web`, `bff-mobile`, `b
 - Docker Desktop (o un daemon Docker compatible) con Compose v2
 - Maven 3.9+ (o el wrapper del módulo de migración si se usa de forma aislada)
 
-## Arranque local (camino soportado)
+## Topología actual del proyecto
+
+```mermaid
+flowchart LR
+  subgraph clients [Clients]
+    WebClient[Web client]
+    MobileClient[Mobile client]
+    AtmClient[ATM client]
+  end
+
+  subgraph bffs [BFFs - header CallerContext temporary]
+    BffWeb[bff-web :8081]
+    BffMobile[bff-mobile :8082]
+    BffAtm[bff-atm :8083]
+  end
+
+  CoreService[core-service :8080]
+  Postgres[(PostgreSQL 16)]
+  MySQL[(MySQL 8.4)]
+  Migration[data-migration one-shot]
+
+  WebClient --> BffWeb
+  MobileClient --> BffMobile
+  AtmClient --> BffAtm
+  BffWeb --> CoreService
+  BffMobile --> CoreService
+  BffAtm --> CoreService
+  CoreService --> Postgres
+  Migration --> MySQL
+```
+
+## Arranque local
 
 Desde la raíz del repositorio:
 
