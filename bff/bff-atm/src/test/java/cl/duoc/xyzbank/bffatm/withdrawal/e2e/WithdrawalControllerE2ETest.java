@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.bffatm.withdrawal.e2e;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.WireMock;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,10 +15,13 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.emptyOrNullString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The Withdrawal controller")
@@ -110,5 +114,34 @@ class WithdrawalControllerE2ETest {
                 .then()
                 .statusCode(409)
                 .contentType("application/problem+json");
+    }
+
+    @Test
+    @DisplayName("propagates a generated correlation id when the inbound header is absent")
+    void propagatesAGeneratedCorrelationIdWhenTheInboundHeaderIsAbsent() {
+        CORE_SERVICE.stubFor(post(urlEqualTo("/internal/accounts/account-1/withdrawals"))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(
+                                "{\"transactionId\":\"tx-1\",\"accountId\":\"account-1\",\"amount\":40.00,\"currency\":\"USD\",\"occurredOn\":\"2026-01-01\",\"newBalance\":210.00}")));
+
+        String correlationId = given()
+                .header("X-Customer-Id", "customer-1")
+                .header("X-Channel", "atm")
+                .header("X-Terminal-Id", "terminal-1")
+                .header("Idempotency-Key", "key-1")
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body("{\"amount\":40.00,\"currency\":\"USD\"}")
+                .when()
+                .post("/accounts/{accountId}/withdrawals", "account-1")
+                .then()
+                .statusCode(201)
+                .header("X-Correlation-Id", not(emptyOrNullString()))
+                .extract()
+                .header("X-Correlation-Id");
+
+        CORE_SERVICE.verify(postRequestedFor(urlEqualTo("/internal/accounts/account-1/withdrawals"))
+                .withHeader("X-Correlation-Id", WireMock.equalTo(correlationId)));
     }
 }

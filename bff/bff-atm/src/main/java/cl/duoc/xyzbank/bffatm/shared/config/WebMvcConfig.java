@@ -16,6 +16,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(callerContextInterceptor);
+        registry.addInterceptor(callerContextInterceptor)
+                .excludePathPatterns("/actuator/**", "/v3/api-docs", "/v3/api-docs/**");
     }
 }

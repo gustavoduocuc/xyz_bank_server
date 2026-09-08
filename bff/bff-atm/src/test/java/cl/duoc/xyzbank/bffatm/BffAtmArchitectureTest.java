@@ -37,7 +37,9 @@ class BffAtmArchitectureTest {
             .should()
             .haveSimpleName("BalanceController")
             .orShould()
-            .haveSimpleName("WithdrawalController");
+            .haveSimpleName("WithdrawalController")
+            .orShould()
+            .haveSimpleName("OpenApiDocumentController");
 
     @ArchTest
     static final ArchRule useCasesControllersAndAdaptersDoNotReadServletIdentityHeaders = noClasses()
