@@ -20,7 +20,7 @@ public class JpaInterestSummaryRepository implements InterestSummaryRepository {
 
     @Override
     public void save(AnnualInterestSummary summary) {
-        jpaRepository.save(toEntity(summary));
+        jpaRepository.saveAndFlush(toEntity(summary));
     }
 
     @Override

@@ -205,14 +205,16 @@ class EnforcementFilterTest {
                 Arguments.of(
                         "GET",
                         "/internal/accounts/account-1/balance",
-                        EnumSet.of(Channel.WEB, Channel.MOBILE, Channel.ATM)),
+                        EnumSet.of(Channel.WEB, Channel.MOBILE, Channel.ATM, Channel.INTERESTS)),
                 Arguments.of(
                         "GET",
                         "/internal/accounts/account-1/transactions",
                         EnumSet.of(Channel.WEB, Channel.MOBILE)),
                 Arguments.of("GET", "/internal/accounts/account-1/interest-summary", EnumSet.of(Channel.WEB)),
                 Arguments.of("GET", "/internal/transactions/transaction-1", EnumSet.of(Channel.WEB, Channel.MOBILE)),
-                Arguments.of("POST", "/internal/accounts/account-1/withdrawals", EnumSet.of(Channel.ATM)));
+                Arguments.of("POST", "/internal/accounts/account-1/withdrawals", EnumSet.of(Channel.ATM)),
+                Arguments.of(
+                        "POST", "/internal/accounts/account-1/interest-credits", EnumSet.of(Channel.INTERESTS)));
     }
 
     @ParameterizedTest(name = "{0} {1} allows only {2}")

@@ -29,6 +29,8 @@ class AccountTest {
      * 8. Withdraw allows cumulative withdrawals that stay within the daily limit
      * 9. Withdraw resets the cumulative daily total on a new calendar day
      * 10. Withdraw rejects an amount whose currency does not match the account's balance currency
+     * 11. Credit increases the balance by the credited amount
+     * 12. Credit rejects an amount whose currency does not match the account's balance currency
      */
 
     @Test
@@ -178,6 +180,33 @@ class AccountTest {
 
         DomainException exception = assertThrows(
                 DomainException.class, () -> account.withdraw(amount, LocalDate.of(2026, 1, 1), dailyLimit));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+        assertEquals(new BigDecimal("500.00"), account.getBalance().getAmount());
+    }
+
+    @Test
+    @DisplayName("credit increases the balance by the credited amount")
+    void creditIncreasesTheBalanceByTheCreditedAmount() {
+        Money balance = Money.create(new BigDecimal("500.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money amount = Money.create(new BigDecimal("35.00"), "USD");
+
+        account.credit(amount);
+
+        assertEquals(new BigDecimal("535.00"), account.getBalance().getAmount());
+    }
+
+    @Test
+    @DisplayName("credit rejects an amount whose currency does not match the account's balance currency")
+    void creditRejectsAnAmountWhoseCurrencyDoesNotMatchTheAccountsBalanceCurrency() {
+        Money balance = Money.create(new BigDecimal("500.00"), "USD");
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create("1234567890"), Id.generate(), balance);
+        Money amount = Money.create(new BigDecimal("35.00"), "CLP");
+
+        DomainException exception = assertThrows(DomainException.class, () -> account.credit(amount));
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
         assertEquals(new BigDecimal("500.00"), account.getBalance().getAmount());

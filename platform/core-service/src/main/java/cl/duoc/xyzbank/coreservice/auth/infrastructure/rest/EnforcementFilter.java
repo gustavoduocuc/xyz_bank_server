@@ -10,6 +10,7 @@ import cl.duoc.xyzbank.coreservice.auth.infrastructure.rest.DomainEndpointOwners
 import cl.duoc.xyzbank.coreservice.auth.infrastructure.rest.DomainEndpointOwnership.OwnershipCheck;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerContext;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerIdentityException;
+import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
@@ -114,6 +115,9 @@ public class EnforcementFilter extends OncePerRequestFilter {
     private boolean ownsRequestedResource(
             HttpServletRequest request, CallerContext callerContext, HttpServletResponse response)
             throws IOException {
+        if (callerContext.channel() == Channel.INTERESTS) {
+            return true;
+        }
         Optional<OwnershipCheck> ownershipCheck =
                 DomainEndpointOwnership.ownershipCheckFor(request.getMethod(), request.getRequestURI());
         if (ownershipCheck.isEmpty()) {

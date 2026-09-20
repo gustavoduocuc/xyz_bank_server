@@ -4,7 +4,6 @@ import cl.duoc.xyzbank.interestsservice.interestview.application.dto.InterestSum
 import cl.duoc.xyzbank.interestsservice.interestview.application.usecases.GetInterestSummaryUseCase;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -20,8 +19,8 @@ public class InterestController {
     @GetMapping("/accounts/{accountId}/interest-summary")
     public InterestSummaryResponse getInterestSummary(
             @PathVariable String accountId,
-            @RequestParam String year,
-            @RequestHeader(value = "Authorization", required = false) String authorization) {
-        return getInterestSummaryUseCase.execute(accountId, year, authorization);
+            @RequestParam String year) {
+        // Authorization is stashed in MDC by CallerContextInterceptor for outbound forwarding
+        return getInterestSummaryUseCase.execute(accountId, year);
     }
 }
