@@ -52,7 +52,9 @@ class EnforcementFilterTest {
      */
 
     private static final String SECRET = "unit-test-signing-secret-unit-test-signing-secret";
-    private static final Map<String, String> CREDENTIALS = Map.of("web", "web-secret");
+    private static final Map<String, String> CREDENTIALS = Map.of(
+            "web", "web-secret",
+            "interests", "interests-secret");
     private static final String OWNING_CUSTOMER_ID = "customer-1";
 
     private final JwtCallerContextAdapter tokenAdapter = new JwtCallerContextAdapter(SECRET);
@@ -239,5 +241,39 @@ class EnforcementFilterTest {
                     chainCalled.get(),
                     "channel " + channel + " on " + method + " " + path);
         }
+    }
+
+    @Test
+    @DisplayName("interests channel balance read skips customer ownership")
+    void interestsChannelBalanceReadSkipsOwnership() throws Exception {
+        String interestsToken = tokenAdapter.issue("interests-service", Channel.INTERESTS, null);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/accounts/account-1/balance");
+        request.addHeader("X-Service-Credential", "interests-secret");
+        request.addHeader("Authorization", "Bearer " + interestsToken);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+        FilterChain chain = (req, res) -> chainCalled.set(true);
+
+        filter(true).doFilter(request, response, chain);
+
+        assertTrue(chainCalled.get());
+    }
+
+    @Test
+    @DisplayName("interest credit rejects an unrecognized service credential")
+    void interestCreditRejectsUnrecognizedServiceCredential() throws Exception {
+        String interestsToken = tokenAdapter.issue("interests-service", Channel.INTERESTS, null);
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("POST", "/internal/accounts/account-1/interest-credits");
+        request.addHeader("X-Service-Credential", "not-a-configured-credential");
+        request.addHeader("Authorization", "Bearer " + interestsToken);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+        FilterChain chain = (req, res) -> chainCalled.set(true);
+
+        filter(true).doFilter(request, response, chain);
+
+        assertFalse(chainCalled.get());
+        assertEquals(401, response.getStatus());
     }
 }
