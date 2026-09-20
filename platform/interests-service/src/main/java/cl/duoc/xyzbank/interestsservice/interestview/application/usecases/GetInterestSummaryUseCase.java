@@ -12,10 +12,10 @@ public class GetInterestSummaryUseCase {
         this.coreServicePort = coreServicePort;
     }
 
-    public InterestSummaryResponse execute(String accountId, String year, String bearerToken) {
+    public InterestSummaryResponse execute(String accountId, String year) {
         validateAccountId(accountId);
         validateYear(year);
-        return coreServicePort.fetchInterestSummary(accountId, year, bearerToken);
+        return coreServicePort.fetchInterestSummary(accountId, year);
     }
 
     private void validateAccountId(String accountId) {

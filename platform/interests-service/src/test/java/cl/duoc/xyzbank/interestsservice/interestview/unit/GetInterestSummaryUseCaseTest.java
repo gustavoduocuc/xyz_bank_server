@@ -1,5 +1,8 @@
 package cl.duoc.xyzbank.interestsservice.interestview.unit;
 
+import cl.duoc.xyzbank.interestsservice.interestview.application.dto.AccountBalanceResponse;
+import cl.duoc.xyzbank.interestsservice.interestview.application.dto.CreditInterestCommand;
+import cl.duoc.xyzbank.interestsservice.interestview.application.dto.InterestCreditResponse;
 import cl.duoc.xyzbank.interestsservice.interestview.application.dto.InterestSummaryResponse;
 import cl.duoc.xyzbank.interestsservice.interestview.application.ports.CoreServicePort;
 import cl.duoc.xyzbank.interestsservice.interestview.application.usecases.GetInterestSummaryUseCase;
@@ -48,7 +51,7 @@ class GetInterestSummaryUseCaseTest {
                     new BigDecimal("0.035"), new BigDecimal("35.00"), "USD");
             coreServicePort.setResponse("account-123", "2025", expected);
 
-            InterestSummaryResponse result = useCase.execute("account-123", "2025", "Bearer user-token");
+            InterestSummaryResponse result = useCase.execute("account-123", "2025");
 
             assertEquals(expected, result);
         }
@@ -62,7 +65,7 @@ class GetInterestSummaryUseCaseTest {
         @DisplayName("rejects null account ID")
         void rejectsNullAccountId() {
             DomainException exception = assertThrows(DomainException.class,
-                    () -> useCase.execute(null, "2025", "Bearer user-token"));
+                    () -> useCase.execute(null, "2025"));
             assertEquals(DomainException.Type.VALIDATION, exception.getType());
             assertEquals("Account ID is required", exception.getMessage());
         }
@@ -71,7 +74,7 @@ class GetInterestSummaryUseCaseTest {
         @DisplayName("rejects blank account ID")
         void rejectsBlankAccountId() {
             DomainException exception = assertThrows(DomainException.class,
-                    () -> useCase.execute("   ", "2025", "Bearer user-token"));
+                    () -> useCase.execute("   ", "2025"));
             assertEquals(DomainException.Type.VALIDATION, exception.getType());
         }
     }
@@ -84,7 +87,7 @@ class GetInterestSummaryUseCaseTest {
         @DisplayName("rejects null year")
         void rejectsNullYear() {
             DomainException exception = assertThrows(DomainException.class,
-                    () -> useCase.execute("account-123", null, "Bearer user-token"));
+                    () -> useCase.execute("account-123", null));
             assertEquals(DomainException.Type.VALIDATION, exception.getType());
             assertEquals("Year is required", exception.getMessage());
         }
@@ -93,7 +96,7 @@ class GetInterestSummaryUseCaseTest {
         @DisplayName("rejects blank year")
         void rejectsBlankYear() {
             DomainException exception = assertThrows(DomainException.class,
-                    () -> useCase.execute("account-123", "   ", "Bearer user-token"));
+                    () -> useCase.execute("account-123", "   "));
             assertEquals(DomainException.Type.VALIDATION, exception.getType());
         }
 
@@ -101,7 +104,7 @@ class GetInterestSummaryUseCaseTest {
         @DisplayName("rejects non-numeric year")
         void rejectsNonNumericYear() {
             DomainException exception = assertThrows(DomainException.class,
-                    () -> useCase.execute("account-123", "abc", "Bearer user-token"));
+                    () -> useCase.execute("account-123", "abc"));
             assertEquals(DomainException.Type.VALIDATION, exception.getType());
             assertEquals("Year must be a valid number", exception.getMessage());
         }
@@ -119,12 +122,22 @@ class GetInterestSummaryUseCaseTest {
         }
 
         @Override
-        public InterestSummaryResponse fetchInterestSummary(String accountId, String year, String bearerToken) {
+        public InterestSummaryResponse fetchInterestSummary(String accountId, String year) {
             if (expectedAccountId != null && expectedAccountId.equals(accountId)
                     && expectedYear != null && expectedYear.equals(year)) {
                 return response;
             }
             throw DomainException.notFound("Interest summary not found");
+        }
+
+        @Override
+        public AccountBalanceResponse fetchAccountBalance(String accountId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public InterestCreditResponse creditInterest(CreditInterestCommand command) {
+            throw new UnsupportedOperationException();
         }
     }
 }

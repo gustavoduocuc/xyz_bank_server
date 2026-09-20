@@ -297,14 +297,14 @@ paths:
     post:
       summary: Withdraw an amount from an account
       description: >
-        The platform's only write operation. Requires an Idempotency-Key
-        header: retrying the same key with the same account and amount
-        replays the original result rather than withdrawing twice; the same
-        key with different parameters is rejected as a conflict. Enforces
-        a platform-wide daily withdrawal limit and never allows a negative
-        balance. Detects concurrent updates to the same account via
-        optimistic locking and returns a conflict to the losing request.
-        Domain endpoint. Requires the `atm:withdraw` scope.
+        Requires an Idempotency-Key header: retrying the same key with the
+        same account and amount replays the original result rather than
+        withdrawing twice; the same key with different parameters is
+        rejected as a conflict. Enforces a platform-wide daily withdrawal
+        limit and never allows a negative balance. Detects concurrent
+        updates to the same account via optimistic locking and returns a
+        conflict to the losing request. Domain endpoint. Requires the
+        `atm:withdraw` scope.
       operationId: withdrawFromAccount
       security:
         - ServiceCredential: []
@@ -329,6 +329,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WithdrawalResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /internal/accounts/{accountId}/interest-credits:
+    post:
+      summary: Credit annual interest to an account
+      description: >
+        Service-to-service write used by interests-service. Requires an
+        Idempotency-Key header: retrying the same key with the same account
+        and amount replays the original result; the same key with different
+        parameters is rejected as a conflict. Persists a CREDIT transaction
+        and an annual interest summary for the given year; a second credit
+        for the same account and year is rejected as a conflict. Detects
+        concurrent account updates via optimistic locking. Domain endpoint
+        requiring the `interests:write` scope. No customer ownership check
+        (service call).
+      operationId: creditInterestToAccount
+      security:
+        - ServiceCredential: []
+          BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InterestCreditRequest'
+      responses:
+        '201':
+          description: The interest credit succeeded (or replayed an identical prior request)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterestCreditResponse'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -526,6 +569,47 @@ components:
           type: string
         accountId:
           type: string
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        occurredOn:
+          type: string
+          format: date
+        newBalance:
+          type: number
+          format: decimal
+    InterestCreditRequest:
+      type: object
+      required: [year, amount, currency, interestRate, openingBalance, closingBalance]
+      properties:
+        year:
+          type: integer
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        interestRate:
+          type: number
+          format: decimal
+        openingBalance:
+          type: number
+          format: decimal
+        closingBalance:
+          type: number
+          format: decimal
+    InterestCreditResponse:
+      type: object
+      required: [transactionId, accountId, year, amount, currency, occurredOn, newBalance]
+      properties:
+        transactionId:
+          type: string
+        accountId:
+          type: string
+        year:
+          type: integer
         amount:
           type: number
           format: decimal

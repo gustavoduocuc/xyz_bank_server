@@ -14,7 +14,7 @@ El login de `bff-web`/`bff-mobile` pasa por ese proveedor OIDC simulado, que sol
 
 ## Topología del proyecto
 
-Cada canal prueba la identidad del llamante con una credencial real en vez de una cabecera de confianza: cookie de sesión OAuth2/OIDC para web, JWT de dispositivo para mobile, y mTLS más una sesión verificada por PIN para ATM. Todo borde de cara al cliente es TLS; el borde BFF→`core-service` sigue siendo HTTP plano salvo la única llamada que transporta un PIN, que es TLS-only por diseño. `bff-web` enruta el resumen de intereses a `interests-service` cuando `FEATURE_USE_INTERESTS_SERVICE=true`; `interests-service` reenvía a `core-service` con el Bearer del llamante y `X-Service-Credential`.
+Cada canal prueba la identidad del llamante con una credencial real en vez de una cabecera de confianza: cookie de sesión OAuth2/OIDC para web, JWT de dispositivo para mobile, y mTLS más una sesión verificada por PIN para ATM. Todo borde de cara al cliente es TLS; el borde BFF→plataforma sigue siendo HTTP plano salvo la única llamada que transporta un PIN, que es TLS-only por diseño. `bff-web` enruta el resumen de intereses a `interests-service` (flag `FEATURE_USE_INTERESTS_SERVICE`, default `true`). `interests-service` calcula y acredita intereses vía `core-service` con credencial propia y scope `interests:write`; el summary GET reenvía el Bearer del usuario.
 
 ```mermaid
 flowchart LR
@@ -45,20 +45,21 @@ flowchart LR
   WebClient -- HTTPS --> BffWeb
   MobileClient -- HTTPS --> BffMobile
   AtmClient -- HTTPS + mTLS --> BffAtm
-  BffWeb -- HTTP --> CoreService
   BffWeb -- HTTP --> InterestsService
+  BffWeb -- HTTP --> CoreService
   BffMobile -- HTTP --> CoreService
   BffAtm -- HTTP --> CoreService
   BffAtm -- HTTPS --> CoreServicePin
   InterestsService -- HTTP --> CoreService
   InterestsService --> ConfigServer
   InterestsService --> EurekaServer
+  CoreService --> EurekaServer
   CoreService --> Postgres
   CoreServicePin -.-> CoreService
   Migration --> MySQL
 ```
 
-`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` es un deployable aparte: toma configuración de `config-server` (repo nativo `config-repo/`) y se registra en `eureka-server`. `bff-web` lo llama por URL estática (`INTERESTS_SERVICE_BASE_URL`), no por discovery. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
+`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka y descubre `core-service` por nombre de servicio. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
 
 ## Arranque local
 
@@ -78,7 +79,7 @@ Eso levanta:
 | config-server | 8888 | Configuración nativa (`config-repo/`) |
 | eureka-server | 8761 | Service discovery |
 | core-service | 8080 | API interna de dominio |
-| interests-service | 8084 | Resumen anual de intereses |
+| interests-service | 8084 | Cálculo/acreditación de intereses anuales |
 | bff-web | 8081 | Dashboard, historial e intereses |
 | bff-mobile | 8082 | Resumen aplanado de cuenta |
 | bff-atm | 8083 | Saldo y retiro |

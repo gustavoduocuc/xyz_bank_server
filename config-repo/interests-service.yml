@@ -1,14 +1,16 @@
-# ══════════════════════════════════════════════════════════════════════════════
-# Configuración centralizada de interests-service
-# Cambios aquí se reflejan con POST /actuator/refresh (sin redeploy)
-# ══════════════════════════════════════════════════════════════════════════════
-
 core-service:
-  base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
+  base-url: http://core-service
   connect-timeout-ms: 3000
   read-timeout-ms: 3000
+  service-credential: ${CORE_SERVICE_CREDENTIAL:dev-service-credential-interests}
 
-# Resilience4j - Circuit Breaker
+interests:
+  annual-rate: ${INTERESTS_ANNUAL_RATE:0.035}
+
+channel-auth:
+  jwt:
+    secret: ${CHANNEL_AUTH_JWT_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
+
 resilience4j:
   circuitbreaker:
     instances:
@@ -33,7 +35,6 @@ resilience4j:
         timeoutDuration: 5s
         cancelRunningFuture: true
 
-# Logging level (ajustable sin redeploy)
 logging:
   level:
     cl.duoc.xyzbank.interestsservice: INFO

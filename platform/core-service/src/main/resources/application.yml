@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: core-service
+  cloud:
+    compatibility-verifier:
+      enabled: false
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:core_service}
     username: ${DB_USERNAME:core_service}
@@ -19,10 +22,15 @@ app:
   withdrawals:
     daily-limit: 5000.00
 
-features:
-  interests:
-    enabled: ${FEATURE_INTERESTS_ENABLED:true}
-    shadow-mode: ${FEATURE_INTERESTS_SHADOW:false}
+eureka:
+  client:
+    enabled: ${EUREKA_CLIENT_ENABLED:false}
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761}/eureka/
+    register-with-eureka: true
+    fetch-registry: false
+  instance:
+    prefer-ip-address: true
 
 security:
   pin-verification-tls:
@@ -36,6 +44,7 @@ security:
     web: ${SERVICE_CREDENTIAL_WEB:dev-service-credential-web}
     mobile: ${SERVICE_CREDENTIAL_MOBILE:dev-service-credential-mobile}
     atm: ${SERVICE_CREDENTIAL_ATM:dev-service-credential-atm}
+    interests: ${SERVICE_CREDENTIAL_INTERESTS:dev-service-credential-interests}
 
 channel-auth:
   jwt:

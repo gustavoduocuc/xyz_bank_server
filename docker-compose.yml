@@ -101,6 +101,8 @@ services:
         condition: service_healthy
       data-migration:
         condition: service_completed_successfully
+      eureka-server:
+        condition: service_healthy
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -112,6 +114,9 @@ services:
       SERVICE_CREDENTIAL_WEB: dev-service-credential-web
       SERVICE_CREDENTIAL_MOBILE: dev-service-credential-mobile
       SERVICE_CREDENTIAL_ATM: dev-service-credential-atm
+      SERVICE_CREDENTIAL_INTERESTS: dev-service-credential-interests
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_SERVER_URL: http://eureka-server:8761
     healthcheck:
       test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
       interval: 10s
@@ -136,8 +141,8 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761
-      CORE_SERVICE_BASE_URL: http://core-service:8080
-      CORE_SERVICE_CREDENTIAL: dev-service-credential-web
+      CORE_SERVICE_CREDENTIAL: dev-service-credential-interests
+      CHANNEL_AUTH_JWT_SECRET: dev-channel-auth-jwt-signing-secret-please-rotate-in-prod
     healthcheck:
       test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8084/actuator/health | grep -q UP"]
       interval: 10s
