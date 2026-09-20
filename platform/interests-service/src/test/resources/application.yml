@@ -1,0 +1,45 @@
+spring:
+  config:
+    import: "optional:configserver:"
+  cloud:
+    compatibility-verifier:
+      enabled: false
+    config:
+      enabled: false
+
+core-service:
+  base-url: http://localhost:9999
+  service-credential: dev-service-credential-web
+
+eureka:
+  client:
+    enabled: false
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      coreServiceInterests:
+        registerHealthIndicator: true
+        slidingWindowSize: 4
+        minimumNumberOfCalls: 2
+        failureRateThreshold: 50
+        waitDurationInOpenState: 5s
+        permittedNumberOfCallsInHalfOpenState: 1
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        ignoreExceptions:
+          - cl.duoc.xyzbank.interestsservice.shared.domain.DomainException
+  retry:
+    instances:
+      coreServiceInterests:
+        maxAttempts: 1
+        waitDuration: 100ms
+        ignoreExceptions:
+          - cl.duoc.xyzbank.interestsservice.shared.domain.DomainException
+  timelimiter:
+    instances:
+      coreServiceInterests:
+        timeoutDuration: 2s
+
+logging:
+  level:
+    io.github.resilience4j: DEBUG

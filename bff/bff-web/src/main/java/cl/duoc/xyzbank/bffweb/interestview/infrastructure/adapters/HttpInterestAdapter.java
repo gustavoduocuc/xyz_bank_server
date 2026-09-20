@@ -3,12 +3,14 @@ package cl.duoc.xyzbank.bffweb.interestview.infrastructure.adapters;
 import cl.duoc.xyzbank.bffweb.interestview.application.dto.InterestViewResponse;
 import cl.duoc.xyzbank.bffweb.interestview.application.ports.InterestPort;
 import cl.duoc.xyzbank.bffweb.shared.infrastructure.adapters.CoreServiceCalls;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
 
 @Component
+@Qualifier("httpInterestAdapter")
 public class HttpInterestAdapter implements InterestPort {
 
     private final RestClient coreServiceClient;

@@ -40,6 +40,7 @@ class InterestViewControllerE2ETest {
     @DynamicPropertySource
     static void coreServiceBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("core-service.base-url", CORE_SERVICE::baseUrl);
+        registry.add("features.interests.use-interests-service", () -> "false");
     }
 
     @LocalServerPort

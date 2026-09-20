@@ -19,6 +19,11 @@ app:
   withdrawals:
     daily-limit: 5000.00
 
+features:
+  interests:
+    enabled: ${FEATURE_INTERESTS_ENABLED:true}
+    shadow-mode: ${FEATURE_INTERESTS_SHADOW:false}
+
 security:
   pin-verification-tls:
     port: 8453

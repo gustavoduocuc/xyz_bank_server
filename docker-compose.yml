@@ -51,6 +51,41 @@ services:
       DB_PASSWORD: migration
       MIGRATION_RUN_ALL: "true"
 
+  config-server:
+    build:
+      context: .
+      dockerfile: platform/config-server/Dockerfile
+    container_name: xyz-bank-config-server
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./config-repo:/config-repo:ro
+    environment:
+      CONFIG_REPO_PATH: /config-repo
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8888/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  eureka-server:
+    build:
+      context: .
+      dockerfile: platform/eureka-server/Dockerfile
+    container_name: xyz-bank-eureka-server
+    ports:
+      - "8761:8761"
+    depends_on:
+      config-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8761/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
   core-service:
     build:
       context: .
@@ -84,6 +119,32 @@ services:
       retries: 20
       start_period: 40s
 
+  interests-service:
+    build:
+      context: .
+      dockerfile: platform/interests-service/Dockerfile
+    container_name: xyz-bank-interests-service
+    ports:
+      - "8084:8084"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      core-service:
+        condition: service_healthy
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_SERVER_URL: http://eureka-server:8761
+      CORE_SERVICE_BASE_URL: http://core-service:8080
+      CORE_SERVICE_CREDENTIAL: dev-service-credential-web
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8084/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
   bff-web:
     build:
       context: .
@@ -96,9 +157,13 @@ services:
     depends_on:
       core-service:
         condition: service_healthy
+      interests-service:
+        condition: service_healthy
     environment:
       CORE_SERVICE_BASE_URL: http://core-service:8080
       CORE_SERVICE_CREDENTIAL: dev-service-credential-web
+      INTERESTS_SERVICE_BASE_URL: http://interests-service:8084
+      FEATURE_USE_INTERESTS_SERVICE: ${FEATURE_USE_INTERESTS_SERVICE:-true}
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
       TLS_KEYSTORE_PASSWORD: xyzbank-dev
     healthcheck:
