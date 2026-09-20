@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "XYZ Bank — BFFs",
-    "description": "End-to-end requests for the three channel BFFs against the local compose stack (`docker compose up --build`), using each channel's real credential instead of trusted headers.\n\n**Before running anything:**\n1. Generate the dev certs: `./scripts/generate-dev-tls-certs.sh` (from the repo root).\n2. Postman → Settings → General → turn OFF \"SSL certificate verification\" (the dev CA is self-signed; Postman collections can't embed a custom trust store).\n3. For the **bff-atm** folder only: Postman → Settings → Certificates → Add Certificate for host `localhost` port `8083`, PFX file `dev/certs/atm-terminal/keystore.p12`, passphrase `xyzbank-dev`. Every bff-atm request needs this client certificate (mTLS) or it will be rejected at the TLS layer before reaching the app.\n\n**bff-web and bff-mobile logins are not exercisable from Postman**: both go through an OIDC redirect to a provider that, in this repo, only exists as a JUnit/WireMock test fixture (see the root README) — there's nothing at the identity-provider end for Postman to redirect to. Their folders instead use a pre-request script that mints a session/device JWT locally, signed with the same dev secret every service already trusts (`channel-auth.jwt.secret`, default `dev-channel-auth-jwt-signing-secret-please-rotate-in-prod`). This is a dev-only shortcut to exercise the *domain* endpoints end-to-end without a real login — it never touches core-service's actual login/refresh machinery, and only works because that signing secret is a well-known local default. If you've overridden `CHANNEL_AUTH_JWT_SECRET` in your environment, update the `jwtSecret` collection variable to match.\n\n**bff-atm's flow is fully real end-to-end**: PIN verification against the seeded demo card issues a genuine 120-second session from core-service; everything downstream uses that real session, no shortcuts.",
+    "description": "End-to-end requests for the three channel BFFs against the local compose stack (`docker compose up --build`), using each channel's real credential instead of trusted headers.\n\n**Before running anything:**\n1. Generate the dev certs: `./scripts/generate-dev-tls-certs.sh` (from the repo root).\n2. Postman → Settings → General → turn OFF \"SSL certificate verification\" (the dev CA is self-signed; Postman collections can't embed a custom trust store).\n3. For the **bff-atm** folder only: Postman → Settings → Certificates → Add Certificate for host `localhost` port `8083`, PFX file `dev/certs/atm-terminal/keystore.p12`, passphrase `xyzbank-dev`. Every bff-atm request needs this client certificate (mTLS) or it will be rejected at the TLS layer before reaching the app.\n4. For **config-server / eureka / interests-service**: run the `interests-service` folder after `docker compose up --build`. Those requests are plain HTTP on ports 8888 / 8761 / 8084 — no TLS.\n\n**bff-web and bff-mobile logins are not exercisable from Postman**: both go through an OIDC redirect to a provider that, in this repo, only exists as a JUnit/WireMock test fixture (see the root README) — there's nothing at the identity-provider end for Postman to redirect to. Their folders instead use a pre-request script that mints a session/device JWT locally, signed with the same dev secret every service already trusts (`channel-auth.jwt.secret`, default `dev-channel-auth-jwt-signing-secret-please-rotate-in-prod`). This is a dev-only shortcut to exercise the *domain* endpoints end-to-end without a real login — it never touches core-service's actual login/refresh machinery, and only works because that signing secret is a well-known local default. If you've overridden `CHANNEL_AUTH_JWT_SECRET` in your environment, update the `jwtSecret` collection variable to match.\n\n**bff-atm's flow is fully real end-to-end**: PIN verification against the seeded demo card issues a genuine 120-second session from core-service; everything downstream uses that real session, no shortcuts.\n\n**Interest apply note:** the demo seed already has a 2025 annual summary. Use `applyYear=2026` (collection default) for `POST .../interest-applications` so core does not reject a duplicate year.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,6 +10,10 @@
     { "key": "accountId", "value": "22222222-2222-2222-2222-222222222222" },
     { "key": "unknownId", "value": "99999999-9999-9999-9999-999999999999" },
     { "key": "interestYear", "value": "2025" },
+    { "key": "applyYear", "value": "2026" },
+    { "key": "interestsBaseUrl", "value": "http://localhost:8084" },
+    { "key": "configServerUrl", "value": "http://localhost:8888" },
+    { "key": "eurekaUrl", "value": "http://localhost:8761" },
     { "key": "from", "value": "2026-01-01" },
     { "key": "to", "value": "2026-01-31" },
     { "key": "type", "value": "DEBIT" },
@@ -21,9 +25,268 @@
     { "key": "withdrawalAmount", "value": "40.00" },
     { "key": "withdrawalCurrency", "value": "USD" },
     { "key": "correlationId", "value": "postman-bff-demo" },
-    { "key": "atmSessionToken", "value": "" }
+    { "key": "atmSessionToken", "value": "" },
+    { "key": "webBearerJwt", "value": "" }
   ],
   "item": [
+    {
+      "name": "interests-service",
+      "description": "Plain-HTTP smoke for Config Server (:8888), Eureka (:8761), and interests-service (:8084). Run after `docker compose up --build`. Apply uses `{{applyYear}}` (default 2026) because the demo seed already has year 2025. GET interest-summary forwards a minted WEB Bearer to core; POST interest-applications authenticates to core with the interests service JWT issued inside the service.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Mint a WEB JWT for summary GETs that forward Authorization to core-service.",
+              "function base64url(wordArrayOrString) {",
+              "  const wordArray = typeof wordArrayOrString === 'string'",
+              "    ? CryptoJS.enc.Utf8.parse(wordArrayOrString)",
+              "    : wordArrayOrString;",
+              "  return CryptoJS.enc.Base64.stringify(wordArray)",
+              "    .replace(/=+$/, '').replace(/\\+/g, '-').replace(/\\//g, '_');",
+              "}",
+              "",
+              "const secret = pm.collectionVariables.get('jwtSecret');",
+              "const now = Math.floor(Date.now() / 1000);",
+              "const header = { alg: 'HS256' };",
+              "const payload = {",
+              "  sub: pm.collectionVariables.get('customerId'),",
+              "  channel: 'WEB',",
+              "  scope: 'web:accounts:read web:customers:read web:transactions:read web:interests:read',",
+              "  iat: now,",
+              "  exp: now + 900",
+              "};",
+              "const encodedHeader = base64url(JSON.stringify(header));",
+              "const encodedPayload = base64url(JSON.stringify(payload));",
+              "const toSign = encodedHeader + '.' + encodedPayload;",
+              "const signature = CryptoJS.HmacSHA256(toSign, secret);",
+              "pm.collectionVariables.set('webBearerJwt', toSign + '.' + base64url(signature));"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "GET config-server health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('config-server is UP', function () { pm.expect(pm.response.json().status).to.eql('UP'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{configServerUrl}}/actuator/health"
+          }
+        },
+        {
+          "name": "GET interests-service config (native)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('serves interests-service property sources', function () {",
+                  "  const text = pm.response.text();",
+                  "  pm.expect(text).to.include('interests-service');",
+                  "  pm.expect(text).to.match(/core-service|coreServiceInterests|resilience4j/i);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{configServerUrl}}/interests-service/default",
+            "description": "Config Server native backend serving config-repo/interests-service.yml."
+          }
+        },
+        {
+          "name": "GET eureka health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('eureka-server is UP', function () { pm.expect(pm.response.json().status).to.eql('UP'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{eurekaUrl}}/actuator/health"
+          }
+        },
+        {
+          "name": "GET eureka registered apps",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('registry lists INTERESTS-SERVICE and CORE-SERVICE', function () {",
+                  "  const text = pm.response.text().toUpperCase();",
+                  "  pm.expect(text).to.include('INTERESTS-SERVICE');",
+                  "  pm.expect(text).to.include('CORE-SERVICE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{eurekaUrl}}/eureka/apps",
+            "description": "Service Discovery registry. Expect INTERESTS-SERVICE and CORE-SERVICE after a healthy compose up."
+          }
+        },
+        {
+          "name": "GET interests-service health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('interests-service is UP', function () { pm.expect(pm.response.json().status).to.eql('UP'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{interestsBaseUrl}}/actuator/health"
+          }
+        },
+        {
+          "name": "GET interest summary (direct)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('summary is the seeded year row', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.accountId).to.eql(pm.collectionVariables.get('accountId'));",
+                  "  pm.expect(String(body.year)).to.eql(pm.collectionVariables.get('interestYear'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{webBearerJwt}}" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": {
+              "raw": "{{interestsBaseUrl}}/accounts/{{accountId}}/interest-summary?year={{interestYear}}",
+              "host": ["{{interestsBaseUrl}}"],
+              "path": ["accounts", "{{accountId}}", "interest-summary"],
+              "query": [
+                { "key": "year", "value": "{{interestYear}}" }
+              ]
+            },
+            "description": "Hits interests-service directly (bypassing bff-web). Forwards the minted WEB Bearer so core can enforce web:interests:read."
+          }
+        },
+        {
+          "name": "POST apply annual interest",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('response credits the apply year', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.accountId).to.eql(pm.collectionVariables.get('accountId'));",
+                  "  pm.expect(String(body.year)).to.eql(pm.collectionVariables.get('applyYear'));",
+                  "  pm.expect(Number(body.interestAmount)).to.be.above(0);",
+                  "  pm.collectionVariables.set('lastAppliedInterestAmount', String(body.interestAmount));",
+                  "  pm.collectionVariables.set('lastAppliedClosingBalance', String(body.closingBalance));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": {
+              "raw": "{{interestsBaseUrl}}/accounts/{{accountId}}/interest-applications?year={{applyYear}}",
+              "host": ["{{interestsBaseUrl}}"],
+              "path": ["accounts", "{{accountId}}", "interest-applications"],
+              "query": [
+                { "key": "year", "value": "{{applyYear}}" }
+              ]
+            },
+            "description": "Applies annual interest via interests-service → core interest-credits (service JWT interests:write + Idempotency-Key interest-{accountId}-{year}). Default applyYear=2026 avoids clashing with the seeded 2025 summary."
+          }
+        },
+        {
+          "name": "POST apply annual interest (retry idempotent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('replay matches first apply (no double credit)', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(String(body.interestAmount)).to.eql(pm.collectionVariables.get('lastAppliedInterestAmount'));",
+                  "  pm.expect(String(body.closingBalance)).to.eql(pm.collectionVariables.get('lastAppliedClosingBalance'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
+            ],
+            "url": {
+              "raw": "{{interestsBaseUrl}}/accounts/{{accountId}}/interest-applications?year={{applyYear}}",
+              "host": ["{{interestsBaseUrl}}"],
+              "path": ["accounts", "{{accountId}}", "interest-applications"],
+              "query": [
+                { "key": "year", "value": "{{applyYear}}" }
+              ]
+            },
+            "description": "Retry the same applyYear. Same Idempotency-Key must replay without a second balance bump. Run immediately after POST apply annual interest."
+          }
+        }
+      ]
+    },
     {
       "name": "bff-web",
       "description": "Web channel on https://localhost:8081. The folder's pre-request script mints a dev-signed WEB session JWT and sends it as the `session` cookie (the same cookie CallerContextInterceptor reads in the real login flow) -- see the collection description for why this stands in for a real login here.",
