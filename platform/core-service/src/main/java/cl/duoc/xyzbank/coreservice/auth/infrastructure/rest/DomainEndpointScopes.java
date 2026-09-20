@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The seven domain endpoints and the scope each one requires, matching channel-auth's
+ * The eight domain endpoints and the scope each one requires, matching channel-auth's
  * domain-endpoint table exactly. A plain, explicit table rather than annotations or AOP,
  * so it can be audited line-for-line against the spec.
  */
