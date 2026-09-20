@@ -81,6 +81,10 @@ public final class Account {
         this.balance = newBalance;
     }
 
+    public void credit(Money amount) {
+        this.balance = this.balance.add(amount);
+    }
+
     public Map<String, Object> toPrimitives() {
         return Map.of(
                 "id", id.getValue(),

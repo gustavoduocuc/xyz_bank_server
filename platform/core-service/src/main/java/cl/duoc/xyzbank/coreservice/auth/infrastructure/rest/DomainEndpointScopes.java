@@ -25,7 +25,7 @@ public final class DomainEndpointScopes {
             new Route(
                     HttpMethod.GET,
                     "/internal/accounts/*/balance",
-                    Set.of("web:accounts:read", "mobile:accounts:read", "atm:read-balance")),
+                    Set.of("web:accounts:read", "mobile:accounts:read", "atm:read-balance", "interests:write")),
             new Route(
                     HttpMethod.GET,
                     "/internal/accounts/*/transactions",
@@ -35,7 +35,8 @@ public final class DomainEndpointScopes {
                     HttpMethod.GET,
                     "/internal/transactions/*",
                     Set.of("web:transactions:read", "mobile:transactions:read")),
-            new Route(HttpMethod.POST, "/internal/accounts/*/withdrawals", Set.of("atm:withdraw")));
+            new Route(HttpMethod.POST, "/internal/accounts/*/withdrawals", Set.of("atm:withdraw")),
+            new Route(HttpMethod.POST, "/internal/accounts/*/interest-credits", Set.of("interests:write")));
 
     private DomainEndpointScopes() {
     }

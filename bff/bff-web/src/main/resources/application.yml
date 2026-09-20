@@ -41,7 +41,7 @@ interests-service:
 
 features:
   interests:
-    use-interests-service: ${FEATURE_USE_INTERESTS_SERVICE:false}
+    use-interests-service: ${FEATURE_USE_INTERESTS_SERVICE:true}
 
 channel-auth:
   jwt:

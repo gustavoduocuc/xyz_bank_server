@@ -6,10 +6,21 @@ spring:
       enabled: false
     config:
       enabled: false
+    loadbalancer:
+      enabled: false
 
 core-service:
   base-url: http://localhost:9999
-  service-credential: dev-service-credential-web
+  connect-timeout-ms: 3000
+  read-timeout-ms: 3000
+  service-credential: dev-service-credential-interests
+
+interests:
+  annual-rate: 0.035
+
+channel-auth:
+  jwt:
+    secret: dev-channel-auth-jwt-signing-secret-please-rotate-in-prod
 
 eureka:
   client:

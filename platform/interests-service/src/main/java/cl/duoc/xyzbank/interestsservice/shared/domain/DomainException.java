@@ -6,7 +6,6 @@ public class DomainException extends RuntimeException {
         NOT_FOUND,
         VALIDATION,
         CONFLICT,
-        SERVICE_UNAVAILABLE,
         OTHER
     }
 
@@ -29,11 +28,7 @@ public class DomainException extends RuntimeException {
         return new DomainException(Type.CONFLICT, message);
     }
 
-    public static DomainException serviceUnavailable(String message) {
-        return new DomainException(Type.SERVICE_UNAVAILABLE, message);
-    }
-
-    public static DomainException other(String message) {
+    public static DomainException create(String message) {
         return new DomainException(Type.OTHER, message);
     }
 

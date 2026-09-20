@@ -26,6 +26,9 @@ public class EnforcementFilterConfig {
     @Value("${security.service-credentials.atm}")
     private String atmServiceCredential;
 
+    @Value("${security.service-credentials.interests}")
+    private String interestsServiceCredential;
+
     @Bean
     public FilterRegistrationBean<EnforcementFilter> enforcementFilter(
             JwtCallerContextAdapter tokenAdapter,
@@ -34,7 +37,8 @@ public class EnforcementFilterConfig {
         Map<String, String> serviceCredentials = Map.of(
                 "web", webServiceCredential,
                 "mobile", mobileServiceCredential,
-                "atm", atmServiceCredential);
+                "atm", atmServiceCredential,
+                "interests", interestsServiceCredential);
         FilterRegistrationBean<EnforcementFilter> registration = new FilterRegistrationBean<>(new EnforcementFilter(
                 enforcementEnabled, serviceCredentials, tokenAdapter, accountRepository, transactionRepository));
         registration.addUrlPatterns("/internal/*");
