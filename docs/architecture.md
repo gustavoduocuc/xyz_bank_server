@@ -6,7 +6,7 @@ XYZ Bank exposes three channel-specific backends for frontend (BFFs) in front of
 
 Each channel proves who the caller is with a real credential instead of a trusted header: OAuth2/OIDC session cookie for web, a device-bound JWT for mobile, and mTLS plus a PIN-verified session for ATM. Every client-facing edge is TLS; BFF→platform edges stay plain HTTP except the one call that carries a raw PIN, which is TLS-only by design.
 
-`bff-web` routes interest-summary traffic to `interests-service` (feature flag on by default). Mobile and ATM keep talking to `core-service` directly. `interests-service` loads config from `config-server`, registers with Eureka, discovers `core-service`, and is the only writer of interest credits.
+`bff-web` routes interest-summary traffic to `interests-service` (feature flag on by default). Mobile and ATM keep talking to `core-service` directly. `interests-service` loads config from `config-server`, registers with Eureka, discovers `core-service` by service id (LoadBalancer), wraps outbound core calls with a Resilience4j circuit breaker, authenticates interest credits with service credential + JWT scope `interests:write`, and is the only writer of interest credits.
 
 ```mermaid
 flowchart LR
@@ -100,4 +100,4 @@ sequenceDiagram
   Interests-->>Caller: InterestSummaryResponse
 ```
 
-Optimistic locking on `accounts.version` and the unique `(account_id, year)` on summaries prevent double application; repeating the same `Idempotency-Key` replays the original credit.
+Optimistic locking on `accounts.version` and the unique `(account_id, year)` on summaries prevent double application; repeating the same `Idempotency-Key` replays the original credit. Outbound calls from `interests-service` to `core-service` use Resilience4j circuit breaker/retry so repeated core failures open the breaker and fail fast.
