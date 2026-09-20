@@ -1,0 +1,45 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: interests-service
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+  cloud:
+    compatibility-verifier:
+      enabled: false
+
+# Defaults (overridden by config-server if available)
+core-service:
+  base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
+  connect-timeout-ms: 3000
+  read-timeout-ms: 3000
+  service-credential: ${CORE_SERVICE_CREDENTIAL:dev-service-credential-web}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761}/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,refresh
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%X{correlationId}] [%15.15t] %-40.40logger{39} : %m%n"

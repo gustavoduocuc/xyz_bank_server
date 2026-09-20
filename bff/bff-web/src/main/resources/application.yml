@@ -34,6 +34,15 @@ core-service:
   read-timeout-ms: 3000
   service-credential: ${CORE_SERVICE_CREDENTIAL:dev-service-credential-web}
 
+interests-service:
+  base-url: ${INTERESTS_SERVICE_BASE_URL:http://localhost:8084}
+  connect-timeout-ms: 3000
+  read-timeout-ms: 3000
+
+features:
+  interests:
+    use-interests-service: ${FEATURE_USE_INTERESTS_SERVICE:false}
+
 channel-auth:
   jwt:
     secret: ${CHANNEL_AUTH_JWT_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}

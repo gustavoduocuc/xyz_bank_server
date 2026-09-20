@@ -1,6 +1,6 @@
 # XYZ Bank Server
 
-Plataforma BFF de XYZ Bank: tres backends por canal (`bff-web`, `bff-mobile`, `bff-atm`) frente a un `core-service` interno, más un job de migración CSV hacia MySQL.
+Plataforma BFF de XYZ Bank: tres backends por canal (`bff-web`, `bff-mobile`, `bff-atm`) frente a un `core-service` interno y un `interests-service` extraído (con `config-server` y `eureka-server`), más un job de migración CSV hacia MySQL.
 
 **Autenticación y HTTPS están implementadas con configuración de desarrollo.** Cada canal se autentica con una credencial real — cookie de sesión (web), JWT de dispositivo (mobile), o certificado mTLS del terminal más un PIN de tarjeta (ATM) — pero todo el material de confianza es de dev/test: un proveedor OIDC simulado (mock, ver `platform/*/src/test/.../MockOidcProvider`), un secreto de firma de sesión fijo, credenciales de servicio por BFF fijas, y una CA de desarrollo autofirmada (`scripts/generate-dev-tls-certs.sh`). Antes de un despliegue real hace falta: un IdP externo real, una CA gestionada que emita certificados reales, y credenciales de servicio rotadas por BFF.
 
@@ -14,7 +14,7 @@ El login de `bff-web`/`bff-mobile` pasa por ese proveedor OIDC simulado, que sol
 
 ## Topología del proyecto
 
-Cada canal prueba la identidad del llamante con una credencial real en vez de una cabecera de confianza: cookie de sesión OAuth2/OIDC para web, JWT de dispositivo para mobile, y mTLS más una sesión verificada por PIN para ATM. Todo borde de cara al cliente es TLS; el borde BFF→`core-service` sigue siendo HTTP plano salvo la única llamada que transporta un PIN, que es TLS-only por diseño.
+Cada canal prueba la identidad del llamante con una credencial real en vez de una cabecera de confianza: cookie de sesión OAuth2/OIDC para web, JWT de dispositivo para mobile, y mTLS más una sesión verificada por PIN para ATM. Todo borde de cara al cliente es TLS; el borde BFF→`core-service` sigue siendo HTTP plano salvo la única llamada que transporta un PIN, que es TLS-only por diseño. `bff-web` enruta el resumen de intereses a `interests-service` cuando `FEATURE_USE_INTERESTS_SERVICE=true`; `interests-service` reenvía a `core-service` con el Bearer del llamante y `X-Service-Credential`.
 
 ```mermaid
 flowchart LR
@@ -30,6 +30,12 @@ flowchart LR
     BffAtm[bff-atm :8083 mTLS + PIN session]
   end
 
+  subgraph platform [Platform]
+    ConfigServer[config-server :8888]
+    EurekaServer[eureka-server :8761]
+    InterestsService[interests-service :8084]
+  end
+
   CoreService[core-service :8080]
   CoreServicePin[core-service :8453 PIN-verification connector]
   Postgres[(PostgreSQL 16)]
@@ -40,15 +46,19 @@ flowchart LR
   MobileClient -- HTTPS --> BffMobile
   AtmClient -- HTTPS + mTLS --> BffAtm
   BffWeb -- HTTP --> CoreService
+  BffWeb -- HTTP --> InterestsService
   BffMobile -- HTTP --> CoreService
   BffAtm -- HTTP --> CoreService
   BffAtm -- HTTPS --> CoreServicePin
+  InterestsService -- HTTP --> CoreService
+  InterestsService --> ConfigServer
+  InterestsService --> EurekaServer
   CoreService --> Postgres
   CoreServicePin -.-> CoreService
   Migration --> MySQL
 ```
 
-`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
+`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` es un deployable aparte: toma configuración de `config-server` (repo nativo `config-repo/`) y se registra en `eureka-server`. `bff-web` lo llama por URL estática (`INTERESTS_SERVICE_BASE_URL`), no por discovery. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
 
 ## Arranque local
 
@@ -65,12 +75,24 @@ Eso levanta:
 | MySQL 8.4 | 3306 | Reportes de la migración CSV |
 | PostgreSQL 16 | 5432 | Datos de `core-service` |
 | data-migration | (one-shot) | Procesa los CSV y sale con código 0 |
+| config-server | 8888 | Configuración nativa (`config-repo/`) |
+| eureka-server | 8761 | Service discovery |
 | core-service | 8080 | API interna de dominio |
+| interests-service | 8084 | Resumen anual de intereses |
 | bff-web | 8081 | Dashboard, historial e intereses |
 | bff-mobile | 8082 | Resumen aplanado de cuenta |
 | bff-atm | 8083 | Saldo y retiro |
 
-El job espera a que MySQL esté sano. `core-service` espera a PostgreSQL **y** a que la migración termine con éxito. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP.
+El job espera a que MySQL esté sano. `core-service` espera a PostgreSQL **y** a que la migración termine con éxito. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server` y `core-service`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`.
+
+Enrutamiento de intereses en `bff-web`:
+
+| Variable | Default en Compose | Efecto |
+|---|---|---|
+| `FEATURE_USE_INTERESTS_SERVICE` | `true` | `true`: `bff-web` llama a `interests-service`. `false`: llama a `core-service` en `/internal/accounts/{id}/interest-summary`. |
+| `INTERESTS_SERVICE_BASE_URL` | `http://interests-service:8084` | Base URL de `interests-service`. |
+
+Para forzar el path legacy: `FEATURE_USE_INTERESTS_SERVICE=false docker compose up -d bff-web`.
 
 Para apagar: `docker compose down`. Para resetear volúmenes (incluido el seed de demo): `docker compose down -v`.
 
@@ -165,6 +187,10 @@ curl -sS --cacert dev/certs/ca.crt \
   -b "session=$SESSION_COOKIE" \
   https://localhost:8081/customers/11111111-1111-1111-1111-111111111111/dashboard
 
+curl -sS --cacert dev/certs/ca.crt \
+  -b "session=$SESSION_COOKIE" \
+  "https://localhost:8081/accounts/22222222-2222-2222-2222-222222222222/interest-summary?year=2025"
+
 # bff-mobile (JWT de dispositivo)
 curl -sS --cacert dev/certs/ca.crt \
   -H "Authorization: Bearer $DEVICE_TOKEN" \
@@ -176,6 +202,9 @@ Health y OpenAPI:
 
 ```bash
 curl -sS http://localhost:8080/actuator/health
+curl -sS http://localhost:8084/actuator/health
+curl -sS http://localhost:8888/actuator/health
+curl -sS http://localhost:8761/actuator/health
 curl -sS --cacert dev/certs/ca.crt https://localhost:8081/v3/api-docs
 ```
 
@@ -196,6 +225,7 @@ Los ITs de PostgreSQL/MySQL usan Testcontainers. Sin Docker se omiten (`disabled
 ## Troubleshooting
 
 - **Puertos 3306 o 5432 ocupados.** Otro MySQL/Postgres local está usando el puerto. Para este stack esos puertos deben estar libres, o para el stack con `docker compose down` (eso no apaga bases de otros proyectos).
+- **Puertos 8084, 8888 o 8761 ocupados.** Otro proceso está usando el puerto de `interests-service`, `config-server` o `eureka-server`. Libéralos o baja el stack con `docker compose down`.
 - **El seed de demo desapareció o el dashboard da 404.** Flyway no reinserta filas de una versión ya aplicada. Reset: `docker compose down -v` y vuelve a `up --build`.
 - **La migración falló y core-service no arranca.** Compose espera `service_completed_successfully`. Revisa `docker compose logs data-migration`.
 - **PostgreSQL cae con el stack ya arriba.** `GET http://localhost:8080/actuator/health` deja de reportar UP (Actuator incluye el datasource). Los BFFs no tienen base propia: su health sigue UP aunque Postgres esté caído.

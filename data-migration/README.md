@@ -4,7 +4,7 @@ Migración de datos bancarios con **Spring Boot 3.5** y **Spring Batch 5**. Proc
 
 Documentación ampliada:
 
-- **Plataforma completa (MySQL + PostgreSQL + core-service + BFFs):** Compose en la raíz del repo — ver el [README raíz](../README.md). Ese es el camino soportado para levantar todo.
+- **Plataforma completa (MySQL + PostgreSQL + config-server + eureka-server + core-service + interests-service + BFFs):** Compose en la raíz del repo — ver el [README raíz](../README.md). Ese es el camino soportado para levantar todo.
 - [docs/jobs.md](docs/jobs.md) — diagramas y flujo de cada job
 - [docs/mysql.md](docs/mysql.md) — Docker MySQL, conexión y consultas de reportes
 - [docs/entrega/](docs/entrega/) — documentos de entrega del grupo

@@ -1,0 +1,40 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Configuración centralizada de interests-service
+# Cambios aquí se reflejan con POST /actuator/refresh (sin redeploy)
+# ══════════════════════════════════════════════════════════════════════════════
+
+core-service:
+  base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
+  connect-timeout-ms: 3000
+  read-timeout-ms: 3000
+
+# Resilience4j - Circuit Breaker
+resilience4j:
+  circuitbreaker:
+    instances:
+      coreServiceInterests:
+        registerHealthIndicator: true
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+  retry:
+    instances:
+      coreServiceInterests:
+        maxAttempts: 3
+        waitDuration: 500ms
+        exponentialBackoffMultiplier: 2
+  timelimiter:
+    instances:
+      coreServiceInterests:
+        timeoutDuration: 5s
+        cancelRunningFuture: true
+
+# Logging level (ajustable sin redeploy)
+logging:
+  level:
+    cl.duoc.xyzbank.interestsservice: INFO
+    io.github.resilience4j: DEBUG

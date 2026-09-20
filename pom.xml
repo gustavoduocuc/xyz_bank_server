@@ -15,6 +15,9 @@
         <module>data-migration</module>
         <module>platform/core-domain</module>
         <module>platform/shared-security</module>
+        <module>platform/config-server</module>
+        <module>platform/eureka-server</module>
+        <module>platform/interests-service</module>
         <module>platform/core-service</module>
         <module>bff/bff-web</module>
         <module>bff/bff-mobile</module>
