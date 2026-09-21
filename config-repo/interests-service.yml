@@ -4,9 +4,18 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 core-service:
-  base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
+  # Eureka service id (LoadBalancer); no host/puerto fijos
+  base-url: http://core-service
   connect-timeout-ms: 3000
   read-timeout-ms: 3000
+  service-credential: ${CORE_SERVICE_CREDENTIAL:dev-service-credential-interests}
+
+interests:
+  annual-rate: ${INTERESTS_ANNUAL_RATE:0.035}
+
+channel-auth:
+  jwt:
+    secret: ${CHANNEL_AUTH_JWT_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
 
 # Resilience4j - Circuit Breaker
 resilience4j:

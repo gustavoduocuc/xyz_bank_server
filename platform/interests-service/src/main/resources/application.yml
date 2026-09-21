@@ -5,17 +5,10 @@ spring:
   application:
     name: interests-service
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+    import: configserver:${CONFIG_SERVER_URL:http://localhost:8888}
   cloud:
     compatibility-verifier:
       enabled: false
-
-# Defaults (overridden by config-server if available)
-core-service:
-  base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
-  connect-timeout-ms: 3000
-  read-timeout-ms: 3000
-  service-credential: ${CORE_SERVICE_CREDENTIAL:dev-service-credential-web}
 
 eureka:
   client:

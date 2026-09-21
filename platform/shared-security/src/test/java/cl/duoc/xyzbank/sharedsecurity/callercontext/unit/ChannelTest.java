@@ -16,6 +16,7 @@ class ChannelTest {
      * 1. Web channel grants exactly the four enumerated web scopes
      * 2. Mobile channel grants exactly the two enumerated mobile scopes
      * 3. ATM channel grants exactly atm:read-balance and atm:withdraw
+     * 4. Interests channel grants exactly interests:write
      */
 
     @Test
@@ -36,5 +37,11 @@ class ChannelTest {
     @DisplayName("atm channel grants exactly atm:read-balance and atm:withdraw")
     void atmChannelGrantsExactlyReadBalanceAndWithdraw() {
         assertEquals(Set.of("atm:read-balance", "atm:withdraw"), Channel.ATM.scopes());
+    }
+
+    @Test
+    @DisplayName("interests channel grants exactly interests:write")
+    void interestsChannelGrantsExactlyInterestsWrite() {
+        assertEquals(Set.of("interests:write"), Channel.INTERESTS.scopes());
     }
 }
