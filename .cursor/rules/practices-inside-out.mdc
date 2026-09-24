@@ -1,0 +1,293 @@
+---
+description: Inside-Out TDD development approach
+alwaysApply: true
+---
+
+# Inside-Out TDD Development
+
+Follow the TDD cycle defined in @.cursor/rules/practices-tdd.mdc for each layer applying @.cursor/rules/practices-testing.mdc
+
+## Development Flow
+
+Always develop from the inside out:
+
+```
+Domain (Pure logic) → UseCase → Repository Adapter → HTTP
+```
+
+Start from the innermost layer (domain) and work outward. This ensures:
+- Pure business logic first
+- No premature infrastructure decisions
+- Testable from the core
+- Clear dependency flow
+
+---
+
+## Test Strategy by Layer
+
+| Layer | Test Type | Dependencies |
+|-------|-----------|--------------|
+| Domain (entities, VOs) | Unit | None |
+| Domain Services | Unit | None |
+| UseCases | Unit | InMemoryRepositories |
+| Repository Adapters | Integration | Real DB |
+| Application Port Adapters | Integration | Real service/sandbox |
+| HTTP/Controllers | E2E | Full stack |
+
+---
+
+## Unit Tests
+
+### Domain Layer (entities, value objects, services)
+
+Pure unit tests with **no dependencies**.
+
+```java
+// Domain entity test - no dependencies
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class OrderTest {
+
+    @Test
+    void calculatesTotalFromLineItems() {
+        Order order = Order.create(Id.generate());
+        order.addItem(product, 2);
+
+        Money total = order.calculateTotal();
+
+        assertTrue(total.equals(Money.create(200, "EUR")));
+    }
+}
+
+### Use Cases
+
+Unit tests using **InMemoryRepositories** (not mocks).
+
+```java
+// UseCase test - uses InMemoryRepository
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class CreateOrderUseCaseTest {
+
+    @Test
+    void createsAndPersistsAnOrder() {
+        InMemoryOrderRepository orderRepository = new InMemoryOrderRepository();
+        InMemoryProductRepository productRepository = new InMemoryProductRepository(List.of(product));
+        CreateOrderUseCase useCase = new CreateOrderUseCase(orderRepository, productRepository);
+
+        Order order = useCase.execute(productId, 2);
+
+        assertNotNull(order.getId());
+        assertNotNull(orderRepository.findById(order.getId()));
+    }
+}
+```
+
+---
+
+## Integration Tests
+
+### Repository Adapters
+
+Test against **real database** (use testcontainers or similar).
+
+```java
+// Repository adapter test - real DB
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class MongoOrderRepositoryTest {
+
+    @Test
+    void persistsAndRetrievesAnOrder() {
+        MongoOrderRepository repository = new MongoOrderRepository(testDbConnection);
+        Order order = Order.create(Id.generate());
+
+        repository.save(order);
+        Order retrieved = repository.findById(order.getId());
+
+        assertNotNull(retrieved);
+        assertTrue(retrieved.getId().equals(order.getId()));
+    }
+}
+```
+
+### Application Port Adapters
+
+Test against **real external services** (sandbox/test environment). No mocks here.
+
+```java
+// Application port adapter test - real service sandbox
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class StripePaymentAdapterTest {
+
+    @Test
+    void chargesPaymentInTestMode() {
+        StripePaymentAdapter adapter = new StripePaymentAdapter(stripeTestClient);
+
+        PaymentResult result = adapter.charge(Money.create(100, "EUR"), "tok_visa");
+
+        assertTrue(result.isSuccess());
+    }
+}
+```
+
+---
+
+## E2E Tests
+
+### HTTP/Controllers
+
+Test the **full stack** through HTTP.
+
+```java
+// E2E test - full HTTP request
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class OrderControllerE2ETest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    void createsOrderViaApi() throws Exception {
+        mockMvc.perform(post("/orders")
+                .contentType("application/json")
+                .content("""
+                    {
+                      "productId": "prod-123",
+                      "quantity": 2
+                    }
+                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").exists());
+    }
+}
+```
+
+---
+
+## Mocks Policy
+
+### ❌ NEVER mock:
+- Repositories (use InMemoryRepository instead)
+- Domain entities or value objects
+- Domain services
+- External service adapters in integration tests (use real sandbox)
+
+### ✅ Stubs/Spies ONLY in:
+- UseCase tests when the UseCase depends on an external service port
+- Use stubs to control return values, spies to verify calls
+
+```java
+// UseCase test with external service - stubs allowed
+import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.*;
+
+class ProcessPaymentUseCaseTest {
+
+    @Test
+    void processesPaymentAndNotifies() {
+        InMemoryOrderRepository orderRepository = new InMemoryOrderRepository(List.of(order));
+
+        PaymentGateway paymentGateway = stubPaymentGateway(true);
+        Notifier notifier = spyNotifier();
+
+        ProcessPaymentUseCase useCase =
+                new ProcessPaymentUseCase(orderRepository, paymentGateway, notifier);
+
+        useCase.execute(orderId, paymentDetails);
+
+        verify(notifier).notifyPaymentReceived(orderId);
+    }
+}
+```
+
+---
+
+## TDD Cycle in Inside-Out Development
+
+Follow the 5-step TDD cycle defined in @.cursor/rules/practices-tdd.mdc for each layer:
+
+### 0. 🤔 REASON
+- Identify the cases for the current layer
+- Start with the simplest case
+- Write cases as TODO comments in the test file
+
+### 1. 🔴 RED
+- Write one failing test for the simplest case
+- Minimum code to compile, then see it fail
+
+### 2. 🟢 GREEN
+- Implement minimum code to pass the test
+- Follow TPP (Transformation Priority Premise)
+
+### 3. 🔵 REFACTOR
+- Clean up while keeping tests green
+- Apply design rules
+
+### 4. 🔄 RE-EVALUATE
+- Mark case as done
+- Pick next simplest case
+- Repeat until layer is complete, then move outward
+
+---
+
+## Inside-Out Layer Progression
+
+```
+1. Start with Domain value objects
+   -> TDD cycle for each value object behavior
+
+2. Then with Domain entities
+   -> TDD cycle for each entity behavior
+
+3. Build InMemoryRepositories
+   -> TDD cycle for repository behavior
+
+4. Add Domain Services (if needed)
+   -> TDD cycle for complex domain logic
+
+5. Build UseCases
+   -> TDD cycle using InMemoryRepositories
+
+6. Implement Repository Adapters
+   -> Integration tests with real DB
+
+7. Add External Service Adapters
+   -> Integration tests with real sandbox
+
+8. Wire up HTTP/Controllers
+   -> E2E tests for full flow
+```
+
+---
+
+## Non-Negotiable Rules
+
+### ❌ I will NEVER:
+1. Mock repositories in UseCase tests (use InMemory implementations)
+2. Start development from infrastructure (outside-in)
+3. Write integration tests for domain logic
+4. Skip unit tests and go straight to E2E
+5. Mock external services in adapter integration tests
+
+### ✅ I will ALWAYS:
+1. Start from Domain, then UseCase, then Infrastructure
+2. Use InMemoryRepositories for UseCase unit tests
+3. Test repository adapters against real databases
+4. Test external service adapters against real sandboxes
+5. Only use stubs/spies in UseCase tests for external service ports

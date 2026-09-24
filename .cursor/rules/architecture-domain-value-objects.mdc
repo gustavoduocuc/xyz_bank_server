@@ -1,0 +1,225 @@
+---
+description: Rules for domain value objects
+globs: ["**/domain/value-objects/**/*.ts"]
+alwaysApply: false
+---
+
+# Value Objects
+
+Value Objects are **immutable** objects defined by their **attributes**, not by identity. Two value objects are equal if all their attributes are equal.
+
+## Characteristics
+
+- **Immutability**: Once created, they cannot be changed
+- **Equality by value**: Two VOs are equal if their attributes are equal
+- **Self-validation**: Validate their own constraints at creation
+- **No identity**: They don't have a unique identifier
+- **Side-effect free**: Methods return new instances instead of mutating
+- **Serializable**: Provides `toPrimitives()` method
+
+## The Id Value Object
+
+Use a simple `Id` value object for all entity identifiers. One generic `Id` for everything.
+
+```java
+import java.util.UUID;
+import java.util.Objects;
+
+public final class Id {
+
+    private final String value;
+
+    private Id(String value) {
+        this.value = value;
+    }
+
+    public static Id create(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new RuntimeException("Id cannot be empty");
+        }
+        return new Id(value);
+    }
+
+    public static Id generate() {
+        return new Id(UUID.randomUUID().toString());
+    }
+
+    public boolean equals(Id other) {
+        return this.value.equals(other.value);
+    }
+
+    public String toPrimitives() {
+        return this.value;
+    }
+
+    public String getValue() {
+        return value;
+    }
+}
+```
+
+## Structure
+
+```java
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+public final class Money {
+
+    private final double amount;
+    private final String currency;
+
+    private Money(double amount, String currency) {
+        this.amount = amount;
+        this.currency = currency;
+    }
+
+    public static Money create(double amount, String currency) {
+        if (amount < 0) {
+            throw new RuntimeException("Amount cannot be negative");
+        }
+
+        if (!List.of("EUR", "USD", "GBP").contains(currency)) {
+            throw new RuntimeException("Invalid currency");
+        }
+
+        return new Money(amount, currency);
+    }
+
+    public static Money zero(String currency) {
+        return new Money(0, currency);
+    }
+
+    public static Money zero() {
+        return new Money(0, "EUR");
+    }
+
+    public Money add(Money other) {
+        if (!this.currency.equals(other.currency)) {
+            throw new RuntimeException("Cannot add money with different currencies");
+        }
+
+        return new Money(this.amount + other.amount, this.currency);
+    }
+
+    public boolean equals(Money other) {
+        return this.amount == other.amount && this.currency.equals(other.currency);
+    }
+
+    public Map<String, Object> toPrimitives() {
+        return Map.of(
+                "amount", this.amount,
+                "currency", this.currency
+        );
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+}
+```
+
+## Immutability
+
+Operations must return **new instances**, never mutate the original.
+
+```java
+// ⚠️ WORSE - Mutating the value object
+class Money {
+    private double amount;
+
+    public void add(Money other) {
+        this.amount += other.amount; // ❌ Mutation
+    }
+}
+
+// ✅ BETTER - Returning a new instance
+class Money {
+    private final double amount;
+    private final String currency;
+
+    public Money add(Money other) {
+        return new Money(this.amount + other.amount, this.currency);
+    }
+}
+```
+
+## Self-Validation
+
+Value objects validate their constraints in **factory methods**, keeping constructors simple (assignment only).
+
+```java
+// ✅ GOOD - Simple constructor, validation in factory method
+public final class Email {
+
+    private final String value;
+
+    private Email(String value) {
+        this.value = value;
+    }
+
+    public static Email create(String value) {
+        if (value == null || !value.contains("@")) {
+            throw new RuntimeException("Invalid email format");
+        }
+        return new Email(value);
+    }
+
+    public boolean equals(Email other) {
+        return this.value.equals(other.value);
+    }
+
+    public String toPrimitives() {
+        return this.value;
+    }
+
+    public String getValue() {
+        return value;
+    }
+}
+
+// ⚠️ WORSE - Validation in constructor
+class Email {
+
+    private final String value;
+
+    public Email(String value) {
+        if (!value.contains("@")) {  // ❌ Validation in constructor
+            throw new RuntimeException("Invalid email format");
+        }
+        this.value = value;
+    }
+}
+```
+
+## Common Value Objects
+
+- **Identifier**: `Id` (single generic identifier for all entities)
+- **Money**: `Money`, `Price`, `Amount`
+- **Dates**: `DateRange`, `Period`
+- **Contact**: `Email`, `PhoneNumber`, `Address`
+- **Quantities**: `Quantity`, `Percentage`
+
+## Non-Negotiable Rules
+
+### ❌ I will NEVER:
+1. Mutate a value object after creation
+2. Use setters in value objects
+3. Create value objects with invalid state (validate in factory methods)
+4. Compare value objects by reference (implement `equals`)
+5. Create multiple Id types (use single `Id` value object)
+6. Validate in the constructor (use factory methods)
+
+### ✅ I will ALWAYS:
+1. Make all properties `readonly`
+2. Return new instances from operations
+3. Keep constructors simple (assignment only)
+4. Validate constraints in factory methods
+5. Implement `equals` method for value comparison
+6. Implement `toPrimitives()` method for serialization
+7. Use private constructor with static factory methods

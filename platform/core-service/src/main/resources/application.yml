@@ -17,10 +17,32 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    listener:
+      auto-startup: false
+      ack-mode: record
+    consumer:
+      group-id: core-service-interests
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
 app:
   withdrawals:
     daily-limit: 5000.00
+
+interests:
+  kafka:
+    enabled: false
+    calculated-topic: interests.calculated
+    credit-results-topic: interests.credit-results
+  outbox:
+    relay-delay-ms: 1000
 
 eureka:
   client:

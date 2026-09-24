@@ -1,0 +1,235 @@
+---
+description: Testing standards with strict no-mocks policy
+globs: ["**/*.test.ts"]
+alwaysApply: false
+---
+
+# Testing Standards
+
+## Test Pyramid
+
+Follow the test pyramid principle:
+
+```
+        /\
+       /  \      E2E (few)
+      /----\     - Full HTTP flows
+     /      \    - Critical paths only
+    /--------\   Integration (some)
+   /          \  - Repository adapters
+  /------------\ - External service adapters
+ /              \
+/----------------\ Unit (many)
+                   - Domain entities, VOs, services
+                   - UseCases with InMemoryRepositories
+```
+
+- **More unit tests**: Fast, isolated, cover all edge cases
+- **Some integration tests**: Real DB, real sandboxes
+- **Few E2E tests**: Critical user journeys only
+
+## Test Location
+
+Tests live inside each module:
+
+```
+src/main/java/com/example/[module-name]/tests/
+├── unit/              # Fast, no external dependencies
+├── integration/       # Real DB (Testcontainers / H2)
+└── e2e/               # Full HTTP stack
+```
+
+## Parallelization
+
+- **Unit tests**: Always run in parallel
+- **Integration tests**: Run in parallel with isolated DB instances (mongodb-memory-server per test file)
+- **E2E tests**: Run sequentially or with isolated test databases
+
+---
+
+## FIRST Principles
+
+Good tests follow the FIRST principles:
+
+- **Fast**: Tests must run quickly. Slow tests break the feedback loop
+- **Isolated**: Each test is independent. No shared state, no execution order dependency
+- **Repeatable**: Same result every time, in any environment
+- **Self-validating**: Clear pass/fail result. No manual inspection needed
+- **Timely**: Written at the right time (before code in TDD)
+
+---
+
+## Naming
+
+- Names in English
+- Represent business rules, not implementation details
+- Descriptive: what is being tested and what is expected
+- Avoid technical names or names coupled to implementation
+
+### Describe blocks
+- Use "The [Subject]" format to identify the component/module being tested
+- The subject should be a domain concept, not a technical name
+
+### Test cases (it/test)
+- Write tests as business rules, not technical assertions
+- Avoid technical verbs: "returns", "should return", "calls", "throws"
+- Use domain language: "considers", "validates", "accepts", "allows", "calculates"
+- The full sentence (describe + it) should read as a specification
+
+### Structure
+- describe: The [Subject]
+- it: [action] [object] [condition]
+
+```java
+class TheInvoiceCalculatorTest {
+
+    @Test
+    void appliesDiscountForOrdersAboveThreshold() {
+        // ...
+    }
+
+    @Test
+    void doesNotAllowNegativeQuantities() {
+        // ...
+    }
+}
+
+## AAA Structure (Arrange-Act-Assert)
+
+- **Arrange**: Prepare context and necessary data
+- **Act**: Execute the action to test
+- **Assert**: Verify the expected result
+- Visually separate the three sections (blank line between them)
+
+## Mocks
+
+- **NEVER use mocks without asking the Tech Lead first**
+- Mocks hide design problems and couple tests to implementation
+- Before proposing a mock, ask yourself: "Can I solve this with a simpler design?"
+- If you believe a mock is necessary, consult the human programmer with your reasoning
+
+## Examples
+
+```typescript
+// ⚠️ WORSE - Coupled to implementation, doesn't describe business
+@Test
+void calculatePriceReturnsValue() {
+    double result = calculatePrice(100, 10);
+    assertEquals(90, result);
+}
+
+// ✅ BETTER - Describes business rule
+@Test
+void calculatesPriceWithDiscountAppliedToProduct() {
+    double originalPrice = 100;
+    double discountPercentage = 10;
+
+    double finalPrice = calculateDiscountedPrice(originalPrice, discountPercentage);
+
+    assertEquals(90, finalPrice);
+}
+```
+
+## Non-Negotiable Rules
+
+### ❌ I will NEVER:
+1. Delete an existing test - if a test fails, the implementation is wrong, not the test
+2. Modify a test to make the implementation pass - tests define the expected behavior
+3. Create tests that depend on other tests - each test must be independent and isolated
+4. Use mocks without asking the Tech Lead first
+
+### ✅ I will ALWAYS:
+1. Keep tests isolated and independent from each other
+2. Fix the implementation when a test fails, not the test
+3. Ask the Tech Lead before deleting or significantly modifying any test
+
+---
+
+## Integration Tests
+
+### When to Use
+- Repository adapters (real DB)
+- External service adapters (real sandbox)
+
+### Database Setup with mongodb-memory-server
+
+```java
+@Testcontainers
+class TheOrderRepositoryIntegrationTest {
+
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15");
+
+    private OrderRepository repository;
+
+    @BeforeEach
+    void setup() {
+        repository = new PostgresOrderRepository(postgres.getJdbcUrl());
+        repository.clear();
+    }
+
+    @Test
+    void persistsAndRetrievesOrder() {
+        Order order = Order.create(Id.generate());
+
+        repository.save(order);
+        Order retrieved = repository.findById(order.getId()).orElse(null);
+
+        assertEquals(order.getId(), retrieved.getId());
+    }
+}
+```
+
+### Rules
+- **Real dependencies**: Use mongodb-memory-server for MongoDB
+- **Isolation**: Each test cleans its own data (beforeEach)
+- **No shared state**: Tests must not depend on order of execution
+- **File naming**: `*IntegrationTest.java`
+
+---
+
+## E2E Tests
+
+### When to Use
+- Full HTTP flows through the API
+- Critical user journeys
+
+### Structure
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class OrderCreationE2ETest {
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    @BeforeEach
+    void setup() {
+        resetDatabase();
+        seedProducts();
+    }
+
+    @Test
+    void createsOrderAndConfirmsAvailability() {
+        OrderRequest request = new OrderRequest(testProductId, 2);
+
+        ResponseEntity<OrderResponse> response =
+                restTemplate.postForEntity("/orders", request, OrderResponse.class);
+
+        assertEquals(201, response.getStatusCodeValue());
+        assertNotNull(response.getBody().getId());
+    }
+}
+```
+
+### Rules
+- **Test flows, not endpoints**: Cover complete business scenarios
+- **Factories/fixtures**: Use factories to create test data
+- **Clean slate**: Reset database before each test
+- **Sandbox for externals**: External services use test/sandbox mode
+- **File naming**: ` *E2ETest.java`
+
+### What NOT to Test in E2E
+- Edge cases (those belong in unit tests)
+- Error handling details (unit tests)
+- All validation combinations (unit tests)

@@ -1,0 +1,192 @@
+---
+description: Rules for application use cases
+globs: ["**/*UseCase.ts"]
+alwaysApply: false
+---
+
+# Use Cases
+
+Use Cases **orchestrate** the application flow. They are the entry points for business operations, coordinating domain objects and ports to fulfill a specific user intention.
+
+**Design principle**: Use cases should be designed as if they were invoked from the terminal. This means using **primitive parameters** (strings, numbers, booleans) instead of complex objects. Can be DTOS.
+
+## Characteristics
+
+- **Single responsibility**: One use case = one user intention
+- **Orchestration**: Coordinates domain objects and ports
+- **Application boundary**: Entry point from infrastructure to domain
+- **Stateless**: No internal state between executions
+- **Terminal-friendly**: Primitive parameters for easy invocation
+
+## Structure
+
+```java
+import com.example.orders.domain.services.PricingService;
+
+public class CreateOrderUseCase {
+
+    private final OrderRepository orderRepository;
+    private final ProductRepository productRepository;
+
+    public CreateOrderUseCase(
+            OrderRepository orderRepository,
+            ProductRepository productRepository
+    ) {
+        this.orderRepository = orderRepository;
+        this.productRepository = productRepository;
+    }
+
+    public Order execute(String productId, int quantity) {
+        Product product = productRepository.findById(Id.create(productId))
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        Order order = Order.create(Id.generate());
+        order.addItem(product, quantity);
+
+        Discount discount = PricingService.calculateDiscount(order);
+        order.applyDiscount(discount);
+
+        orderRepository.save(order);
+        return order;
+    }
+}
+```
+
+## Terminal-Friendly Parameters
+
+Use cases receive **primitive types** as parameters. Value objects are created inside the use case.
+
+```java
+// ⚠️ WORSE - Complex request object
+class CreateOrderUseCase {
+    public Order execute(CreateOrderRequest request) {
+        // request.getCustomerId(), request.getProductId(), request.getQuantity()
+        return null;
+    }
+}
+
+// ✅ BETTER - Primitive parameters (terminal-friendly)
+class CreateOrderUseCase {
+    public Order execute(String productId, int quantity) {
+        return null;
+    }
+}
+
+// ✅ ALSO GOOD - When more than 3 parameters, group them in a Request DTO
+public class CreateInvoiceRequest {
+    public String customerId;
+    public String description;
+    public double amount;
+    public String currency;
+    public String dueDate;
+}
+
+class CreateInvoiceUseCase {
+    public Invoice execute(CreateInvoiceRequest request) {
+        return null;
+    }
+}
+```
+
+## Single Entry Point
+
+Each use case should have a **single public method**: `execute`.
+
+```java
+// ⚠️ WORSE - Multiple entry points
+class OrderUseCase {
+    public void create() { }
+    public void update() { }
+    public void delete() { }
+}
+
+// ✅ BETTER - Single responsibility
+class CreateOrderUseCase {
+    public Order execute(String productId, int quantity) { return null; }
+}
+
+class UpdateOrderUseCase {
+    public Order execute(String orderId, int quantity) { return null; }
+}
+
+class DeleteOrderUseCase {
+    public void execute(String orderId) { }
+}
+```
+
+## Dependencies
+
+Use Cases can depend on:
+- **Ports** (interfaces): Repositories, external services
+- **Domain Services** (classes with static methods or injected services): For complex business logic
+
+```java
+import com.example.orders.domain.services.ShippingCalculator;
+
+class ProcessPaymentUseCase {
+
+    private final OrderRepository orderRepository;   // Port
+    private final PaymentGateway paymentGateway;     // Port (external service)
+
+    public ProcessPaymentUseCase(
+            OrderRepository orderRepository,
+            PaymentGateway paymentGateway
+    ) {
+        this.orderRepository = orderRepository;
+        this.paymentGateway = paymentGateway;
+    }
+
+    public void execute(String orderId, String paymentMethod) {
+        Order order = orderRepository.findById(Id.create(orderId))
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+
+        Money shippingCost = ShippingCalculator.calculateShippingCost(order, order.getDestination());
+        Money total = order.calculateTotal().add(shippingCost);
+
+        paymentGateway.charge(total, paymentMethod);
+        order.markAsPaid();
+        orderRepository.save(order);
+    }
+}
+```
+
+## Return Values
+
+Use cases return domain objects. The caller is responsible for mapping to response format.
+
+```java
+class GetOrderUseCase {
+
+    private final OrderRepository orderRepository;
+
+    public GetOrderUseCase(OrderRepository orderRepository) {
+        this.orderRepository = orderRepository;
+    }
+
+    public Order execute(String orderId) {
+        return orderRepository.findById(Id.create(orderId))
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+    }
+}
+
+// In controller
+Order order = getOrderUseCase.execute(request.getId());
+return order.toPrimitives();
+```
+
+## Non-Negotiable Rules
+
+### ❌ I will NEVER:
+1. Call another UseCase from a UseCase
+2. Import a UseCase from another module
+3. Put business logic in the use case (delegate to domain)
+4. Have multiple public methods (only `execute`)
+5. Depend on infrastructure directly (use ports)
+
+### ✅ I will ALWAYS:
+1. Have a single `execute` method with primitive parameters (or Request DTO if more than 3 params)
+2. Use dependency injection for ports
+3. Import domain service functions for business logic
+4. Keep use cases thin (orchestration only)
+5. Name use cases with the `UseCase` suffix
+6. Create value objects inside the use case from primitive parameters

@@ -1,6 +1,10 @@
 package cl.duoc.xyzbank.interestsservice.interests.unit;
 
+import cl.duoc.xyzbank.interestsservice.interests.application.dto.InterestCalculatedNotice;
+import cl.duoc.xyzbank.interestsservice.interests.application.ports.InterestCalculatedPublisher;
 import cl.duoc.xyzbank.interestsservice.interests.application.usecases.ApplyAnnualInterestUseCase;
+import cl.duoc.xyzbank.interestsservice.interests.domain.entities.InterestCalculationStatus;
+import cl.duoc.xyzbank.interestsservice.interests.domain.repositories.InMemoryInterestCalculationRepository;
 import cl.duoc.xyzbank.interestsservice.interests.domain.services.InterestRatePolicy;
 import cl.duoc.xyzbank.interestsservice.interestview.application.dto.AccountBalanceResponse;
 import cl.duoc.xyzbank.interestsservice.interestview.application.dto.CreditInterestCommand;
@@ -34,6 +38,7 @@ class ApplyAnnualInterestUseCaseTest {
      * 5. Rejects null year
      * 6. Rejects blank year
      * 7. Rejects non-numeric year
+     * 8. With the Kafka flag on, stores a pending calculation and publishes without calling HTTP credit
      */
 
     private InMemoryCoreServicePort coreServicePort;
@@ -83,6 +88,35 @@ class ApplyAnnualInterestUseCaseTest {
             assertEquals(new BigDecimal("1000.00"), credit.openingBalance());
             assertEquals(new BigDecimal("1035.00"), credit.closingBalance());
             assertEquals(new BigDecimal("0.035"), credit.interestRate());
+        }
+
+        @Test
+        @DisplayName("publishes a pending calculation and does not call the HTTP credit when the Kafka flag is on")
+        void publishesAPendingCalculationAndDoesNotCallTheHttpCreditWhenTheKafkaFlagIsOn() {
+            coreServicePort.setBalance("account-123", new AccountBalanceResponse(
+                    "account-123", new BigDecimal("1000.00"), "USD"));
+            InMemoryInterestCalculationRepository calculations = new InMemoryInterestCalculationRepository();
+            RecordingPublisher publisher = new RecordingPublisher();
+            ApplyAnnualInterestUseCase kafkaUseCase = new ApplyAnnualInterestUseCase(
+                    coreServicePort,
+                    new InterestRatePolicy(new BigDecimal("0.035")),
+                    calculations,
+                    publisher);
+
+            InterestSummaryResponse result = kafkaUseCase.execute("account-123", "2025");
+
+            assertEquals(new BigDecimal("35.00"), result.interestAmount());
+            assertEquals(0, coreServicePort.creditCount());
+            assertEquals(
+                    InterestCalculationStatus.PENDING,
+                    calculations.findByEventId("interest:account-123:2025").orElseThrow().status());
+            assertEquals("interest:account-123:2025", publisher.notice.eventId());
+            assertEquals("InterestCalculated", publisher.notice.eventType());
+            assertEquals("account-123", publisher.notice.accountId());
+            assertEquals(2025, publisher.notice.period());
+            assertEquals(new BigDecimal("35.00"), publisher.notice.amount());
+            assertEquals(new BigDecimal("1000.00"), publisher.notice.openingBalance());
+            assertEquals(new BigDecimal("1035.00"), publisher.notice.closingBalance());
         }
     }
 
@@ -143,6 +177,10 @@ class ApplyAnnualInterestUseCaseTest {
             return credits.get(credits.size() - 1);
         }
 
+        int creditCount() {
+            return credits.size();
+        }
+
         @Override
         public InterestSummaryResponse fetchInterestSummary(String accountId, String year) {
             throw new UnsupportedOperationException();
@@ -168,6 +206,15 @@ class ApplyAnnualInterestUseCaseTest {
                     command.currency(),
                     "2025-01-01T00:00:00Z",
                     command.closingBalance());
+        }
+    }
+
+    static class RecordingPublisher implements InterestCalculatedPublisher {
+        private InterestCalculatedNotice notice;
+
+        @Override
+        public void publish(InterestCalculatedNotice notice) {
+            this.notice = notice;
         }
     }
 }

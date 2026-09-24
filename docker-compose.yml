@@ -103,6 +103,10 @@ services:
         condition: service_completed_successfully
       eureka-server:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -117,12 +121,52 @@ services:
       SERVICE_CREDENTIAL_INTERESTS: dev-service-credential-interests
       EUREKA_CLIENT_ENABLED: "true"
       EUREKA_SERVER_URL: http://eureka-server:8761
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      INTERESTS_KAFKA_ENABLED: "true"
+      SPRING_KAFKA_LISTENER_AUTO_STARTUP: "true"
     healthcheck:
       test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
       interval: 10s
       timeout: 5s
       retries: 20
       start_period: 40s
+
+  kafka:
+    image: apache/kafka:3.8.1
+    container_name: xyz-bank-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  kafka-init:
+    image: apache/kafka:3.8.1
+    container_name: xyz-bank-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic interests.calculated --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic interests.credit-results --partitions 1 --replication-factor 1
 
   interests-service:
     build:
@@ -138,11 +182,17 @@ services:
         condition: service_healthy
       core-service:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761
       CORE_SERVICE_CREDENTIAL: dev-service-credential-interests
       CHANNEL_AUTH_JWT_SECRET: dev-channel-auth-jwt-signing-secret-please-rotate-in-prod
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FEATURE_INTEREST_CREDIT_VIA_KAFKA: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:-false}
     healthcheck:
       test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8084/actuator/health | grep -q UP"]
       interval: 10s

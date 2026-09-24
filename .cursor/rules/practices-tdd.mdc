@@ -1,0 +1,209 @@
+---
+description: TDD cycle with TPP transformations for the GREEN step
+alwaysApply: true
+---
+
+# Test-Driven Development (TDD)
+
+**ALWAYS follow the complete cycle:**
+
+## 0. 🤔 REASON
+
+Before any code, understand the problem:
+- I ask questions to the Technical Lead to clarify requirements
+- I reason about the problem and its cases
+- I create a list of cases that will be the tests (and write them in the test file as a TODO List)
+- I organize cases from least to most difficult:
+  - First: Happy path (simplest and most common case)
+  - Then: Alternative cases
+  - Finally: Edge cases and exceptions
+- I validate the list with the Technical Lead before starting
+
+## 1. 🔴 RED
+
+Write the test before production code:
+- I take the first case from the list (the simplest)
+- "What test do I write for this case?"
+- I write the test → **Doesn't compile** (function/class doesn't exist)
+- I write the **minimum code** to make it compile (empty function, return null, etc.)
+- I run the test → **Fails** (incorrect behavior)
+- "How do we know this works?"
+
+## 2. 🟢 GREEN
+
+Implement the minimum to pass the test:
+- I follow **TPP (Transformation Priority Premise)** to choose the simplest transformation
+- Simple code, no premature optimizations
+- Make it work, we'll improve it later
+- The test passes → I move to the next step
+
+## 3. 🔵 REFACTOR
+
+Once the test passes:
+- "Can I simplify this?"
+- "Is there duplication I can eliminate?" (Rule of Three: wait until I see it 3 times before abstracting)
+- "Are the variable names clear?"
+- I follow the design rules @.cursor/rules/design-naming.mdc, @.cursor/rules/design-functions.mdc, @.cursor/rules/design-classes-modules.mdc
+- I refactor while keeping tests green
+
+## 4. 🔄 RE-EVALUATE
+
+Before continuing with the next case:
+- I review the list of pending cases
+- "Is the next case still the simplest step?"
+- "Is there a simpler case I should do first?"
+- I reorder if necessary
+- I mark the completed case in the TODO list
+- I return to step 1 with the simplest case from the list
+
+---
+
+# Transformation Priority Premise (TPP)
+
+Guide for the GREEN step: choosing the simplest code transformation.
+
+**Transformations ordered from simplest to most complex:**
+
+1. {} –> nil: From no code to returning null.
+2. nil -> constant: From null to returning a literal value.
+3. constant -> constant+: From a simple literal value to a more complex one.
+4. constant -> scalar: From a literal value to a variable.
+5. statement -> statements: Adding more lines of code without conditionals.
+6. unconditional -> if: Introducing a conditional.
+7. scalar -> array: From simple variable to collection.
+8. array -> container: From collection to container.
+9. statement -> recursion: Introducing recursion.
+10. if -> while: Converting conditional to loop.
+11. expression -> function: Replacing expression with function call.
+12. variable -> assignment: Mutating a variable's value.
+
+**Principle**: In each GREEN cycle, I choose the transformation with the lowest number that makes the test pass. This prevents over-engineering and keeps the code simple.
+
+---
+
+# TPP Example in Action
+
+```java
+import org.junit.jupiter.api.Test;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class CalculateTotalTest {
+
+    // Navigator (REASON):
+    /*
+    "List of examples to calculate total prices:
+    1. Empty list
+    2. List with one price
+    3. List with multiple prices"
+    */
+
+    // Test 1: Empty list
+    @Test
+    void calculatesTotalOfEmptyPriceList() {
+        List<Integer> prices = List.of();
+
+        int total = CalculateTotal.calculateTotal(prices);
+
+        assertEquals(0, total);
+    }
+
+    // Driver (RED): → Doesn't compile → Minimum to compile
+    static class CalculateTotal {
+        static int calculateTotal(List<Integer> prices) {
+            return 0; // temporary just to compile
+        }
+    }
+
+    // → Test passes immediately because we returned 0
+    // (In Java we must return something to compile, unlike TS)
+
+    // Navigator (REFACTOR): "All clear for now"
+
+    // Navigator (RE-EVALUATE): "Next simplest case: one price"
+
+    // Test 2: List with one price
+    @Test
+    void calculatesTotalOfSinglePrice() {
+        List<Integer> prices = List.of(100);
+
+        int total = CalculateTotal.calculateTotal(prices);
+
+        assertEquals(100, total);
+    }
+
+    // → ❌ Test fails (0 != 100)
+
+    // Navigator (GREEN): "(constant → scalar) - use the parameter"
+    static class CalculateTotalV2 {
+        static int calculateTotal(List<Integer> prices) {
+            if (prices.isEmpty()) return 0;
+            return prices.get(0);
+        }
+    }
+
+    // Navigator (REFACTOR): "Guard clause is clear"
+
+    // Navigator (RE-EVALUATE): "Next case: multiple prices"
+
+    // Test 3: List with multiple prices
+    @Test
+    void calculatesTotalOfMultiplePrices() {
+        List<Integer> prices = List.of(100, 50, 25);
+
+        int total = CalculateTotalV3.calculateTotal(prices);
+
+        assertEquals(175, total);
+    }
+
+    // → ❌ Test fails (100 != 175)
+
+    // Navigator (GREEN):
+    /*
+    "According to TPP:
+    - (if → loop)
+    - or declarative approach
+
+    In Java, Streams provide a declarative style similar to reduce"
+    */
+    static class CalculateTotalV3 {
+        static int calculateTotal(List<Integer> prices) {
+            return prices.stream()
+                    .mapToInt(Integer::intValue)
+                    .sum();
+        }
+    }
+
+    // ✅ All tests pass
+
+    // Navigator (REFACTOR):
+    /*
+    "Code is simple, expressive, and follows standards.
+    Streams are idiomatic Java for this case"
+    */
+}
+```
+
+---
+
+# Continuous Refactoring
+
+- I actively identify code smells
+- I suggest constant incremental improvements following @.cursor/rules/design-naming.mdc, @.cursor/rules/design-functions.mdc, @.cursor/rules/design-classes-modules.mdc
+- I propose extracting functions when there's complexity
+
+---
+
+# Simple Design
+
+Meets the simple design rules:
+1. Does it pass all tests?
+2. Does it clearly express intention?
+3. Does it have no duplication (of knowledge)?
+   - I wait to see duplication 3 times before abstracting
+   - Code can evolve in different directions
+   - Better to tolerate temporary duplication than premature abstractions
+4. Does it have the minimum number of elements?
+
+---

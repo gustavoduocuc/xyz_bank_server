@@ -1,0 +1,250 @@
+---
+description: HTTP API design rules for REST endpoints
+globs: ["**/infrastructure/http/**/*.ts", "**/*Controller.ts"]
+alwaysApply: false
+---
+
+# HTTP API Design
+
+## REST Simplified
+
+Use resources with HTTP verbs. No HATEOAS.
+
+### URL Structure
+
+```
+GET    /orders          # List orders
+GET    /orders/:id      # Get single order
+POST   /orders          # Create order
+PUT    /orders/:id      # Update order
+DELETE /orders/:id      # Delete order
+```
+
+### Naming Rules
+- **Plural nouns** for resources: `/orders`, `/products`, `/customers`
+- **Lowercase with hyphens**: `/order-items`, not `/orderItems`
+- **No verbs in URLs**: Use HTTP methods instead
+
+```java
+// ❌ BAD
+POST /createOrder
+GET /getOrderById/{id}
+
+// ✅ GOOD
+POST /orders
+GET /orders/{id}
+```
+
+---
+
+## Response Format
+
+### Success: Return the resource directly
+
+```java
+// GET /orders/123
+{
+  "id": "123",
+  "status": "confirmed",
+  "total": 150.00,
+  "items": [...]
+}
+
+// POST /orders (201 Created)
+{
+  "id": "456",
+  "status": "draft"
+}
+
+// DELETE /orders/123 (204 No Content)
+// No body
+```
+
+### Error: Return error message
+
+```java
+// 400, 404, 422, etc.
+{
+  "error": "Product prod-123 not found"
+}
+```
+
+---
+
+## Status Codes
+
+| Code | Use |
+|------|-----|
+| 200 | Success (GET, PUT, PATCH) |
+| 201 | Created (POST) |
+| 204 | No Content (DELETE) |
+| 400 | Bad Request (malformed input, other errors) |
+| 401 | Unauthorized (not authenticated) |
+| 403 | Forbidden (not authorized) |
+| 404 | Not Found |
+| 422 | Unprocessable Entity (validation/business rule) |
+| 500 | Internal Server Error |
+
+---
+
+## Input Validation
+
+Validate **only types** in the Controller. Business rules are validated by Value Objects in the domain.
+
+```java
+// src/main/java/com/example/orders/infrastructure/http/OrderController.java
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/orders")
+public class OrderController {
+
+    private final CreateOrderUseCase createOrderUseCase;
+
+    public OrderController(CreateOrderUseCase createOrderUseCase) {
+        this.createOrderUseCase = createOrderUseCase;
+    }
+
+    @PostMapping
+    public ResponseEntity<?> create(@RequestBody Map<String, Object> body) {
+
+        // 1. Validate types only (not business rules)
+        Object productIdObj = body.get("productId");
+        Object quantityObj = body.get("quantity");
+
+        if (!(productIdObj instanceof String productId)) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(Map.of("error", "productId is required"));
+        }
+
+        if (!(quantityObj instanceof Number quantityNumber)) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(Map.of("error", "quantity must be a number"));
+        }
+
+        int quantity = quantityNumber.intValue();
+
+        // 2. Call UseCase - domain validates business rules
+        try {
+            Order order = createOrderUseCase.execute(productId, quantity);
+            return ResponseEntity
+                    .status(201)
+                    .body(order.toPrimitives());
+        } catch (Exception error) {
+            return handleError(error);
+        }
+    }
+}
+
+// ❌ BAD - Duplicates domain validation
+if (quantity <= 0) {
+    return ResponseEntity.badRequest().body(Map.of("error", "quantity must be positive"));
+}
+
+// ✅ GOOD - Let PositiveNumber.create() validate this
+// The UseCase will throw DomainError.createValidation() if invalid
+```
+
+---
+
+## Error Handling in Controllers
+
+Map DomainError types to HTTP status codes.
+
+```java
+import org.springframework.http.ResponseEntity;
+
+import java.util.Map;
+
+class OrderController {
+
+    private ResponseEntity<?> handleError(Exception error) {
+
+        if (error instanceof DomainError domainError) {
+            int status = switch (domainError.getType()) {
+                case NOT_FOUND -> 404;
+                case VALIDATION -> 422;
+                default -> 400;
+            };
+
+            return ResponseEntity
+                    .status(status)
+                    .body(Map.of("error", domainError.getMessage()));
+        }
+
+        // Technical error - log and return 500
+        error.printStackTrace();
+
+        return ResponseEntity
+                .status(500)
+                .body(Map.of("error", "Internal server error"));
+    }
+}
+```
+
+---
+
+## Controller Structure
+
+```java
+@RestController
+@RequestMapping("/orders")
+public class OrderController {
+
+    private final CreateOrderUseCase createOrderUseCase;
+    private final GetOrderUseCase getOrderUseCase;
+
+    public OrderController(
+            CreateOrderUseCase createOrderUseCase,
+            GetOrderUseCase getOrderUseCase
+    ) {
+        this.createOrderUseCase = createOrderUseCase;
+        this.getOrderUseCase = getOrderUseCase;
+    }
+
+    // Route handlers
+
+    @PostMapping
+    public ResponseEntity<?> create(@RequestBody Map<String, Object> body) {
+        return null;
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getById(@PathVariable String id) {
+        return null;
+    }
+
+    @GetMapping
+    public ResponseEntity<?> list() {
+        return null;
+    }
+
+    // Private helpers
+
+    private ResponseEntity<?> handleError(Exception error) {
+        return null;
+    }
+}
+```
+
+---
+
+## Non-Negotiable Rules
+
+### ❌ I will NEVER:
+1. Put business logic in controllers
+2. Call repositories directly from controllers
+3. Expose internal error details (stack traces, DB errors)
+4. Use verbs in URLs
+
+### ✅ I will ALWAYS:
+1. Validate input before calling UseCase
+2. Map DomainError types to appropriate HTTP status codes
+3. Use plural nouns for resources
+4. Return consistent error format: `{ error: "message" }`

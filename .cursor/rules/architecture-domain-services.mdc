@@ -1,0 +1,152 @@
+---
+description: Rules for domain services
+globs: ["**/domain/services/**/*.ts"]
+alwaysApply: false
+---
+
+# Domain Services
+
+Domain Services contain **business logic** that doesn't naturally belong to a specific entity or value object. They are **stateless** functions that operate on domain objects.
+
+## When to Use
+
+Use a Domain Service when:
+- The logic involves **multiple entities**
+- The logic doesn't naturally belong to any single entity
+- You need to enforce a **business rule** that spans aggregates
+
+## Characteristics
+
+- **Stateless**: Pure functions, same input always produces same output
+- **Domain language**: Named using domain terminology
+- **Pure domain logic**: No infrastructure concerns (no DB, no HTTP)
+- **Operates on domain objects**: Receives and returns entities/value objects
+
+## Structure
+
+Domain services are **functions**, not classes. Group related functions in a module.
+
+```java
+// src/main/java/com/example/orders/domain/services/PricingService.java
+
+import java.util.List;
+
+public class PricingService {
+
+    private PricingService() {
+        // Prevent instantiation
+    }
+
+    public static Money calculateOrderTotal(Order order, List<Discount> discounts) {
+        Money subtotal = order.calculateSubtotal();
+
+        List<Discount> applicableDiscounts = discounts.stream()
+                .filter(d -> d.appliesTo(order))
+                .toList();
+
+        Money total = subtotal;
+        for (Discount discount : applicableDiscounts) {
+            total = discount.apply(total);
+        }
+
+        return total;
+    }
+
+    public static Money applyVolumeDiscount(Order order) {
+        int volumeThreshold = 10;
+        double discountPercentage = 0.1;
+
+        if (order.totalQuantity() >= volumeThreshold) {
+            return order.calculateSubtotal().multiply(discountPercentage);
+        }
+
+        return Money.zero();
+    }
+}
+
+## Examples
+
+```java
+// ✅ GOOD - Domain service as functions in a module
+// src/main/java/com/example/shipping/domain/services/ShippingCalculator.java
+
+public class ShippingCalculator {
+
+    private ShippingCalculator() {}
+
+    public static Money calculateShippingCost(Order order, Address destination) {
+        Weight weight = order.totalWeight();
+        ShippingZone zone = determineZone(destination);
+
+        return calculateCostByZone(weight, zone);
+    }
+
+    private static ShippingZone determineZone(Address destination) {
+        // Business logic to determine shipping zone
+        return null;
+    }
+
+    private static Money calculateCostByZone(Weight weight, ShippingZone zone) {
+        // Business logic to calculate cost
+        return null;
+    }
+}
+```
+
+## Domain Service vs Use Case
+
+| Domain Service | Use Case |
+|----------------|----------|
+| Pure functions | Orchestrates application flow |
+| No external dependencies | Uses ports (repositories, external services) |
+| Lives in `domain/services/` | Lives in `application/` |
+| Called by entities or use cases | Entry point from infrastructure |
+
+```java
+// Domain Service - pure function
+// src/main/java/com/example/orders/domain/services/PricingService.java
+public class PricingService {
+    public static Money calculateDiscount(Order order) {
+        return null;
+    }
+}
+
+// Use Case - orchestrates and uses ports
+// src/main/java/com/example/orders/application/CreateOrderUseCase.java
+
+import static com.example.orders.domain.services.PricingService.calculateDiscount;
+
+class CreateOrderUseCase {
+
+    private final OrderRepository orderRepository;
+
+    public CreateOrderUseCase(OrderRepository orderRepository) {
+        this.orderRepository = orderRepository;
+    }
+
+    public Order execute(String productId, int quantity) {
+        Order order = Order.create(Id.generate());
+
+        Money discount = calculateDiscount(order);
+        order.applyDiscount(discount);
+
+        orderRepository.save(order);
+        return order;
+    }
+}
+```
+
+## Non-Negotiable Rules
+
+### ❌ I will NEVER:
+1. Create stateful domain services (no classes with state)
+2. Inject ports or infrastructure dependencies into domain services
+3. Call external services (HTTP, DB) from domain services
+4. Name domain services with generic suffixes (Helper, Util, Manager)
+
+### ✅ I will ALWAYS:
+1. Write domain services as pure functions
+2. Group related functions in a module file
+3. Use domain language for naming
+4. Operate only on domain objects (entities, value objects)
+5. Consider if the logic belongs in an entity first before creating a service

@@ -1,0 +1,179 @@
+---
+description: DTO rules for application boundaries
+globs: ["**/application/**/*DTO.ts", "**/application/**/*Request.ts", "**/application/**/*Response.ts"]
+alwaysApply: false
+---
+
+# DTOs & Boundaries
+
+## Where DTOs Live
+
+DTOs live in the **Application layer**, next to the UseCases that use them.
+
+```
+src/main/java/com/example/orders/
+├── application/
+│   ├── CreateOrderUseCase.ts
+│   ├── GetOrderUseCase.ts
+│   ├── CreateOrderRequest.ts   # Request DTO (if >3 params)
+│   ├── OrderDTO.ts             # Response DTO
+│   └── ports/
+└── ...
+```
+
+---
+
+## Request DTOs
+
+Use Request DTOs only when the UseCase has **more than 3 parameters**.
+
+### ≤3 Parameters: Use primitives
+
+```java
+// ✅ GOOD - 2 parameters, use primitives
+public class CreateOrderUseCase {
+
+    public OrderDTO execute(String productId, int quantity) {
+        // ...
+        return null;
+    }
+}
+
+### >3 Parameters: Use Request DTO
+
+// ✅ GOOD - 5 parameters, use Request DTO
+public class CreateInvoiceRequest {
+    public String customerId;
+    public String description;
+    public double amount;
+    public String currency;
+    public String dueDate;
+}
+
+public class CreateInvoiceUseCase {
+
+    public InvoiceDTO execute(CreateInvoiceRequest request) {
+        // Create value objects from primitives inside
+        Id customerId = Id.create(request.customerId);
+        Money money = Money.create(request.amount, request.currency);
+        // ...
+        return null;
+    }
+}
+
+---
+
+## Response DTOs
+
+UseCases **return DTOs directly**, not domain entities.
+
+```java
+// src/main/java/com/example/orders/application/OrderDTO.java
+import java.util.List;
+
+public class OrderDTO {
+    public String id;
+    public String status;
+    public double total;
+    public String currency;
+    public List<OrderItemDTO> items;
+    public String createdAt;
+}
+
+class OrderItemDTO {
+    public String productId;
+    public String productName;
+    public int quantity;
+    public double unitPrice;
+}
+```
+
+### Mapping in UseCase
+
+```java
+public class GetOrderUseCase {
+
+    private final OrderRepository orderRepository;
+
+    public GetOrderUseCase(OrderRepository orderRepository) {
+        this.orderRepository = orderRepository;
+    }
+
+    public OrderDTO execute(String orderId) {
+        Order order = orderRepository.findById(Id.create(orderId))
+                .orElseThrow(() ->
+                        DomainError.createNotFound("Order " + orderId + " not found")
+                );
+
+        return toDTO(order);
+    }
+
+    private OrderDTO toDTO(Order order) {
+        return order.toPrimitives();
+    }
+}
+```
+
+If the DTO needs a different structure, transform in `toDTO`:
+
+```java
+private OrderSummaryDTO toDTO(Order order) {
+    OrderPrimitives primitives = order.toPrimitives();
+
+    OrderSummaryDTO dto = new OrderSummaryDTO();
+    dto.id = primitives.id;
+    dto.totalAmount = primitives.total.amount;
+    dto.itemCount = primitives.items.size();
+
+    return dto;
+}
+```
+
+---
+
+## DTO Characteristics
+
+- **Plain objects**: No methods, no behavior
+- **Primitive types only**: string, number, boolean, arrays, nested DTOs
+- **No domain types**: No Money, no Id, no entities
+- **Serializable**: Can be JSON.stringify'd directly
+
+```java
+// ❌ BAD - Contains domain types
+public class OrderDTO {
+    public Id id;         // Domain type!
+    public Money total;   // Domain type!
+}
+
+// ✅ GOOD - Only primitives
+public class OrderDTO {
+    public String id;
+    public double total;
+    public String currency;
+}
+```
+
+---
+
+## Naming Conventions
+
+| Type | Suffix | Example |
+|------|--------|---------|
+| Response | DTO | `OrderDTO`, `ProductDTO` |
+| Request (>3 params) | Request | `CreateOrderRequest` |
+
+---
+
+## Non-Negotiable Rules
+
+### ❌ I will NEVER:
+1. Return domain entities from UseCases
+2. Use domain types (Money, Id) in DTOs
+3. Put DTOs in the Domain layer
+4. Create Request DTOs for ≤3 parameters
+
+### ✅ I will ALWAYS:
+1. Return DTOs from UseCases
+2. Use only primitive types in DTOs
+3. Keep DTOs in the Application layer
+4. Map entities to DTOs inside the UseCase

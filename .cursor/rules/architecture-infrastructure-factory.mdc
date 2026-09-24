@@ -1,0 +1,138 @@
+---
+description: Factory pattern for dependency management without DI containers
+globs: ["**/factory.ts", "**/Factory.ts"]
+alwaysApply: false
+---
+
+# Application Factory
+
+## No DI Container
+
+Use a simple Factory module to wire dependencies. No dependency injection containers (InversifyJS, tsyringe, etc.).
+
+```java
+// src/main/java/com/example/factory/ApplicationFactory.java
+```
+
+---
+
+## Naming Convention
+
+| Prefix | Behavior | Use Case |
+|--------|----------|----------|
+| `get` | Returns cached instance (singleton) | Repositories, shared services |
+| `create` | Creates new instance each time | UseCases, per-request objects |
+
+---
+
+## Factory Structure
+
+```java
+// src/main/java/com/example/factory/ApplicationFactory.java
+
+public class ApplicationFactory {
+
+    // Cached instances
+    private static OrderRepository orderRepository;
+    private static ProductRepository productRepository;
+    private static MongoClient mongoConnection;
+
+    // --- Infrastructure (cached) ---
+
+    public static MongoClient getMongoConnection() {
+        if (mongoConnection == null) {
+            mongoConnection = new MongoClient(System.getenv("MONGO_URI"));
+        }
+        return mongoConnection;
+    }
+
+    public static OrderRepository getOrderRepository() {
+        if (orderRepository == null) {
+            orderRepository = new MongoOrderRepository(getMongoConnection());
+        }
+        return orderRepository;
+    }
+
+    public static ProductRepository getProductRepository() {
+        if (productRepository == null) {
+            productRepository = new MongoProductRepository(getMongoConnection());
+        }
+        return productRepository;
+    }
+
+    // --- Use Cases (new instance each time) ---
+
+    public static CreateOrderUseCase createCreateOrderUseCase() {
+        return new CreateOrderUseCase(
+                getOrderRepository(),
+                getProductRepository()
+        );
+    }
+
+    public static GetOrderUseCase createGetOrderUseCase() {
+        return new GetOrderUseCase(getOrderRepository());
+    }
+
+    // --- Controllers (new instance each time) ---
+
+    public static OrderController createOrderController() {
+        return new OrderController(
+                createCreateOrderUseCase(),
+                createGetOrderUseCase()
+        );
+    }
+}
+```
+
+---
+
+## When to Use `get` vs `create`
+
+### `get` (cached/singleton)
+- Database connections
+- Repository adapters
+- External service adapters
+- Anything expensive to create or stateful
+
+### `create` (new instance)
+- UseCases
+- Controllers
+- Request-scoped objects
+- Anything stateless or per-request
+
+---
+
+## File Location
+
+```
+src/main/java/com/example/
+├── factory/
+│   └── ApplicationFactory.java   # Main factory
+├── orders/
+│   ├── domain/
+│   ├── application/
+│   └── infrastructure/
+└── products/
+    └── ...
+```
+
+---
+
+## Non-Negotiable Rules
+
+### ❌ I will NEVER:
+1. Use DI containers (InversifyJS, tsyringe, etc.)
+2. Mix `get` and `create` semantics (cached vs new)
+3. Create circular dependencies in factory
+4. Import factory inside domain layer
+
+### ✅ I will ALWAYS:
+1. Use `get` prefix for cached instances
+2. Use `create` prefix for new instances each call
+3. Keep factory at the application root
+
+---
+
+## Testing
+
+For tests, you can create separate factory files that use InMemoryRepositories instead of real adapters. See @.cursor/rules/practices-inside-out.mdc for testing strategy.

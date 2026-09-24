@@ -1,0 +1,35 @@
+---
+description: Naming standards for code
+alwaysApply: true
+---
+
+# Naming Standards
+
+- Pronounceable in English, without technical abbreviations (abbreviations only allowed in lambda expressions with reduced scope)
+- Avoid redundant prefixes/suffixes (`I`, `Impl`, `Abstract`)
+- Concrete; avoid catch-all words (helper, util, manager) unless the domain requires it
+- No type information; the IDE already shows it
+- No aliases or synonyms for the same concept: one concept, one name
+- Combine well with language grammar: `isPaidInvoice`, `sumOfNumbersIn(expression)`
+- Prefer using "not" in the name over using the negation operator
+- Distinguish nouns (classes, modules) from verbs (methods, functions), adjectives only for interfaces
+- Allowed generic suffixes: DTO, Repository, Factory, Mapper, UseCase, Service
+- Avoid comments if you can use a self-explanatory name. Comments only in extreme cases that code cannot explain
+- Constants use camelCase, not SCREAMING_SNAKE_CASE
+- Never use underscore prefix for private members
+- Avoid magic strings, prefer enums to represent fixed sets of values
+- Prefer enums over literal types for better refactoring support
+
+
+```java
+// ⚠️ WORSE
+int d = 42; // days
+UsrCtrl usrCtrl = new UsrCtrl();
+UserRepository IUserRepository = ...;
+Function<String, User> fetchUserInfo = ...;
+
+// ✅ BETTER
+int daysUntilExpiration = 42;
+UserAuthenticator userAuthenticator = new UserAuthenticator();
+UserRepository userRepository = ...;
+Function<String, User> findUser = ...;
