@@ -47,8 +47,6 @@ interests:
     enabled: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:false}
     calculated-topic: interests.calculated
     credit-results-topic: interests.credit-results
-  outbox:
-    relay-delay-ms: ${OUTBOX_RELAY_DELAY_MS:1000}
 
 eureka:
   client:

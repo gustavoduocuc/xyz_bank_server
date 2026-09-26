@@ -47,20 +47,24 @@ public class JpaInterestCreditRepository implements InterestCreditRepository {
     @Override
     @Transactional
     public void persistInterestCredit(Account account, Transaction transaction, AnnualInterestSummary summary) {
+        persistCredit(account, transaction, summary);
+        if (kafkaEnabled) {
+            recordInterestCreditApplied(account, transaction, summary);
+        }
+        transactionConfirmedPublisher.publish(new TransactionConfirmed(
+                transaction.getId().getValue(),
+                account.getId().getValue(),
+                ConfirmedMovementType.INTEREST_CREDIT,
+                transaction.getAmount().getAmount(),
+                transaction.getAmount().getCurrency(),
+                transaction.getOccurredOn()));
+    }
+
+    private void persistCredit(Account account, Transaction transaction, AnnualInterestSummary summary) {
         try {
             accountRepository.save(account);
             transactionRepository.save(transaction);
             interestSummaryRepository.save(summary);
-            if (kafkaEnabled) {
-                recordInterestCreditApplied(account, transaction, summary);
-            }
-            transactionConfirmedPublisher.publish(new TransactionConfirmed(
-                    transaction.getId().getValue(),
-                    account.getId().getValue(),
-                    ConfirmedMovementType.INTEREST_CREDIT,
-                    transaction.getAmount().getAmount(),
-                    transaction.getAmount().getCurrency(),
-                    transaction.getOccurredOn()));
         } catch (DataIntegrityViolationException exception) {
             throw DomainException.conflict("Interest already credited for this account and year");
         }

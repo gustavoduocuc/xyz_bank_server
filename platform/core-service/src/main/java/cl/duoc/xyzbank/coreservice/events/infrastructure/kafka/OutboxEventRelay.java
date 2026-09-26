@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -24,6 +26,9 @@ public class OutboxEventRelay {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxEventRelay.class);
     private static final String TRANSACTION_CONFIRMED = "TransactionConfirmed";
+    private static final Set<String> INTEREST_CREDIT_RESULTS = Set.of(
+            "InterestCreditApplied",
+            "InterestCreditRejected");
 
     private final JdbcTemplate jdbcTemplate;
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -78,46 +83,57 @@ public class OutboxEventRelay {
                 WHERE published = FALSE
                 ORDER BY occurred_on NULLS LAST, id
                 """,
-                (row, rowNumber) -> {
-                    String eventType = row.getString("event_type");
-                    String accountId = row.getString("account_id");
-                    Object message = TRANSACTION_CONFIRMED.equals(eventType)
-                            ? new TransactionConfirmedMessage(
-                                    row.getString("event_id"),
-                                    eventType,
-                                    row.getInt("schema_version"),
-                                    accountId,
-                                    row.getString("movement_type"),
-                                    row.getBigDecimal("amount"),
-                                    row.getString("currency"),
-                                    row.getObject("occurred_on", LocalDate.class))
-                            : new InterestCreditResultMessage(
-                                    row.getString("event_id"),
-                                    eventType,
-                                    row.getInt("schema_version"),
-                                    accountId,
-                                    row.getObject("period", Integer.class),
-                                    row.getBigDecimal("amount"),
-                                    row.getString("currency"),
-                                    row.getBigDecimal("interest_rate"),
-                                    row.getBigDecimal("opening_balance"),
-                                    row.getBigDecimal("closing_balance"),
-                                    row.getObject("occurred_on", LocalDate.class),
-                                    row.getString("reason"));
-                    return new PendingOutboxEvent(
-                            row.getObject("id", UUID.class),
-                            row.getString("event_id"),
-                            accountId,
-                            topicFor(eventType),
-                            message);
-                });
+                (row, rowNumber) -> mapPending(row)).stream()
+                .filter(Objects::nonNull)
+                .toList();
     }
 
-    private String topicFor(String eventType) {
+    private PendingOutboxEvent mapPending(java.sql.ResultSet row) throws java.sql.SQLException {
+        String eventType = row.getString("event_type");
+        String eventId = row.getString("event_id");
+        String accountId = row.getString("account_id");
+        UUID id = row.getObject("id", UUID.class);
         if (TRANSACTION_CONFIRMED.equals(eventType)) {
-            return transactionsConfirmedTopic;
+            return new PendingOutboxEvent(
+                    id,
+                    eventId,
+                    accountId,
+                    transactionsConfirmedTopic,
+                    new TransactionConfirmedMessage(
+                            eventId,
+                            eventType,
+                            row.getInt("schema_version"),
+                            accountId,
+                            row.getString("movement_type"),
+                            row.getBigDecimal("amount"),
+                            row.getString("currency"),
+                            row.getObject("occurred_on", LocalDate.class)));
         }
-        return creditResultsTopic;
+        if (INTEREST_CREDIT_RESULTS.contains(Objects.requireNonNullElse(eventType, ""))) {
+            return new PendingOutboxEvent(
+                    id,
+                    eventId,
+                    accountId,
+                    creditResultsTopic,
+                    new InterestCreditResultMessage(
+                            eventId,
+                            eventType,
+                            row.getInt("schema_version"),
+                            accountId,
+                            row.getObject("period", Integer.class),
+                            row.getBigDecimal("amount"),
+                            row.getString("currency"),
+                            row.getBigDecimal("interest_rate"),
+                            row.getBigDecimal("opening_balance"),
+                            row.getBigDecimal("closing_balance"),
+                            row.getObject("occurred_on", LocalDate.class),
+                            row.getString("reason")));
+        }
+        log.warn(
+                "Skipping unknown outbox event_type={} eventId={} until it is recognized",
+                eventType,
+                eventId);
+        return null;
     }
 
     private record PendingOutboxEvent(
