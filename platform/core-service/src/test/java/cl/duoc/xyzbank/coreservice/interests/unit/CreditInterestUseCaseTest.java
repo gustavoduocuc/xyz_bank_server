@@ -8,7 +8,9 @@ import cl.duoc.xyzbank.coredomain.interests.unit.InMemoryInterestSummaryReposito
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coredomain.transactions.unit.InMemoryTransactionRepository;
+import cl.duoc.xyzbank.coredomain.interests.domain.repositories.InterestCreditRepository;
 import cl.duoc.xyzbank.coreservice.interests.application.dto.CreditInterestRequest;
+import cl.duoc.xyzbank.coreservice.interests.application.dto.InterestCreditRejected;
 import cl.duoc.xyzbank.coreservice.interests.application.dto.InterestCreditResponse;
 import cl.duoc.xyzbank.coreservice.interests.application.usecases.CreditInterestUseCase;
 import org.junit.jupiter.api.DisplayName;
@@ -18,9 +20,11 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("The CreditInterest use case")
 class CreditInterestUseCaseTest {
@@ -44,6 +48,10 @@ class CreditInterestUseCaseTest {
      * 6. Repeated idempotency key with the same account and amount replays the original result
      * 7. Repeated idempotency key with a different amount throws a conflict, leaving the balance unchanged
      * 8. Throws a conflict when the year already has an interest summary credited under a different key
+     * 9. A duplicate InterestCalculated event (same eventId) credits the balance only once
+     * 10. An invalid amount publishes InterestCreditRejected and leaves the balance unchanged
+     * 11. An unknown account publishes InterestCreditRejected and does not credit
+     * 12. A technical failure publishes nothing and propagates
      */
 
     @Test
@@ -158,6 +166,103 @@ class CreditInterestUseCaseTest {
         assertEquals(
                 new BigDecimal("1035.00"),
                 accountRepository.findById(accountId).orElseThrow().getBalance().getAmount());
+    }
+
+    @Test
+    @DisplayName("credits the balance only once when the same interest calculated event arrives twice")
+    void creditsTheBalanceOnlyOnceWhenTheSameInterestCalculatedEventArrivesTwice() {
+        Id accountId = anExistingAccount("1000.00");
+        String eventId = "interest:" + accountId.getValue() + ":2025";
+        InMemoryProcessedInterestEventRepository processedInterestEvents =
+                new InMemoryProcessedInterestEventRepository();
+        CreditInterestUseCase useCase = new CreditInterestUseCase(
+                accountRepository,
+                transactionRepository,
+                interestSummaryRepository,
+                interestCreditRepository,
+                processedInterestEvents,
+                CLOCK);
+
+        useCase.execute(aRequest(accountId, "35.00", "delivery-1"), eventId);
+        useCase.execute(aRequest(accountId, "35.00", "delivery-2"), eventId);
+
+        assertEquals(
+                new BigDecimal("1035.00"),
+                accountRepository.findById(accountId).orElseThrow().getBalance().getAmount());
+        assertTrue(processedInterestEvents.findIdempotencyKey(eventId).isPresent());
+    }
+
+    @Test
+    @DisplayName("publishes InterestCreditRejected and leaves the balance unchanged for an invalid amount")
+    void publishesInterestCreditRejectedAndLeavesTheBalanceUnchangedForAnInvalidAmount() {
+        Id accountId = anExistingAccount("1000.00");
+        String eventId = "interest:" + accountId.getValue() + ":2025";
+        InMemoryInterestCreditResultPublisher results = new InMemoryInterestCreditResultPublisher();
+        CreditInterestUseCase useCase = useCasePublishing(results);
+
+        useCase.executeFromEvent(aRequest(accountId, "0.00", "delivery-invalid"), eventId);
+
+        assertEquals(
+                new BigDecimal("1000.00"),
+                accountRepository.findById(accountId).orElseThrow().getBalance().getAmount());
+        assertEquals(
+                List.of(new InterestCreditRejected(eventId, accountId.getValue(), "Amount must be positive")),
+                results.rejections());
+    }
+
+    @Test
+    @DisplayName("publishes InterestCreditRejected when the account does not exist")
+    void publishesInterestCreditRejectedWhenTheAccountDoesNotExist() {
+        Id accountId = Id.generate();
+        String eventId = "interest:" + accountId.getValue() + ":2025";
+        InMemoryInterestCreditResultPublisher results = new InMemoryInterestCreditResultPublisher();
+        CreditInterestUseCase useCase = useCasePublishing(results);
+
+        useCase.executeFromEvent(aRequest(accountId, "10.00", "delivery-missing"), eventId);
+
+        assertEquals(
+                List.of(new InterestCreditRejected(
+                        eventId, accountId.getValue(), "Account " + accountId.getValue() + " not found")),
+                results.rejections());
+    }
+
+    @Test
+    @DisplayName("publishes nothing and propagates when the credit fails for a technical reason")
+    void publishesNothingAndPropagatesWhenTheCreditFailsForATechnicalReason() {
+        Id accountId = anExistingAccount("1000.00");
+        String eventId = "interest:" + accountId.getValue() + ":2025";
+        InMemoryInterestCreditResultPublisher results = new InMemoryInterestCreditResultPublisher();
+        CreditInterestUseCase useCase = new CreditInterestUseCase(
+                accountRepository,
+                transactionRepository,
+                interestSummaryRepository,
+                failingInterestCreditRepository(),
+                new InMemoryProcessedInterestEventRepository(),
+                CLOCK,
+                results);
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () ->
+                useCase.executeFromEvent(aRequest(accountId, "35.00", "delivery-technical"), eventId));
+
+        assertEquals("database unavailable", exception.getMessage());
+        assertTrue(results.rejections().isEmpty());
+    }
+
+    private CreditInterestUseCase useCasePublishing(InMemoryInterestCreditResultPublisher results) {
+        return new CreditInterestUseCase(
+                accountRepository,
+                transactionRepository,
+                interestSummaryRepository,
+                interestCreditRepository,
+                new InMemoryProcessedInterestEventRepository(),
+                CLOCK,
+                results);
+    }
+
+    private InterestCreditRepository failingInterestCreditRepository() {
+        return (account, transaction, summary) -> {
+            throw new IllegalStateException("database unavailable");
+        };
     }
 
     private Id anExistingAccount(String balance) {

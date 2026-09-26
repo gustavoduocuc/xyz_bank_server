@@ -14,7 +14,7 @@ El login de `bff-web`/`bff-mobile` pasa por ese proveedor OIDC simulado, que sol
 
 ## Topología del proyecto
 
-Cada canal prueba la identidad del llamante con una credencial real en vez de una cabecera de confianza: cookie de sesión OAuth2/OIDC para web, JWT de dispositivo para mobile, y mTLS más una sesión verificada por PIN para ATM. Todo borde de cara al cliente es TLS; el borde BFF→plataforma sigue siendo HTTP plano salvo la única llamada que transporta un PIN, que es TLS-only por diseño. `bff-web` enruta el resumen de intereses a `interests-service` (flag `FEATURE_USE_INTERESTS_SERVICE`, default `true`). `interests-service` calcula y acredita intereses vía `core-service` con credencial propia y scope `interests:write`; el summary GET reenvía el Bearer del usuario.
+Cada canal prueba la identidad del llamante con una credencial real en vez de una cabecera de confianza: cookie de sesión OAuth2/OIDC para web, JWT de dispositivo para mobile, y mTLS más una sesión verificada por PIN para ATM. Todo borde de cara al cliente es TLS; el borde BFF→plataforma sigue siendo HTTP plano salvo la única llamada que transporta un PIN, que es TLS-only por diseño. `bff-web` enruta el resumen de intereses a `interests-service` (flag `FEATURE_USE_INTERESTS_SERVICE`, default `true`). El GET de resumen sigue siendo síncrono: `interests-service` reenvía el Bearer del usuario a `core-service`. La acreditación anual, con `FEATURE_INTEREST_CREDIT_VIA_KAFKA` en `false` (default), sigue siendo el POST HTTP con scope `interests:write`. Con la flag en `true`, `interests-service` publica `InterestCalculated` y `core-service` responde por `interests.credit-results` (saga coreografiada; ver [`docs/adr/002-event-architecture.md`](docs/adr/002-event-architecture.md)).
 
 ```mermaid
 flowchart LR
@@ -38,6 +38,7 @@ flowchart LR
 
   CoreService[core-service :8080]
   CoreServicePin[core-service :8453 PIN-verification connector]
+  Kafka[(Kafka KRaft :9092)]
   Postgres[(PostgreSQL 16)]
   MySQL[(MySQL 8.4)]
   Migration[data-migration one-shot]
@@ -51,6 +52,10 @@ flowchart LR
   BffAtm -- HTTP --> CoreService
   BffAtm -- HTTPS --> CoreServicePin
   InterestsService -- HTTP --> CoreService
+  InterestsService -- "InterestCalculated" --> Kafka
+  Kafka -- "InterestCalculated" --> CoreService
+  CoreService -- "credit result" --> Kafka
+  Kafka -- "credit result" --> InterestsService
   InterestsService --> ConfigServer
   InterestsService --> EurekaServer
   CoreService --> EurekaServer
@@ -59,7 +64,7 @@ flowchart LR
   Migration --> MySQL
 ```
 
-`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
+`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core en las llamadas HTTP (resumen, saldo y, con la flag de Kafka apagada, el crédito). Kafka es un broker único en KRaft, sin ZooKeeper. Los tópicos `interests.calculated` e `interests.credit-results` los crea `kafka-init` al arrancar. La flecha HTTP de intereses a core sigue siendo el camino del GET y del crédito síncrono. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
 
 ## Arranque local
 
@@ -78,13 +83,14 @@ Eso levanta:
 | data-migration | (one-shot) | Procesa los CSV y sale con código 0 |
 | config-server | 8888 | Configuración nativa (`config-repo/`) |
 | eureka-server | 8761 | Service discovery |
+| Kafka (KRaft) | 9092 | Broker de la saga de intereses |
 | core-service | 8080 | API interna de dominio |
 | interests-service | 8084 | Cálculo/acreditación de intereses anuales |
 | bff-web | 8081 | Dashboard, historial e intereses |
 | bff-mobile | 8082 | Resumen aplanado de cuenta |
 | bff-atm | 8083 | Saldo y retiro |
 
-El job espera a que MySQL esté sano. `core-service` espera a PostgreSQL **y** a que la migración termine con éxito. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server` y `core-service`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`.
+El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los dos tópicos. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`.
 
 Enrutamiento de intereses en `bff-web`:
 
@@ -92,8 +98,11 @@ Enrutamiento de intereses en `bff-web`:
 |---|---|---|
 | `FEATURE_USE_INTERESTS_SERVICE` | `true` | `true`: `bff-web` llama a `interests-service`. `false`: llama a `core-service` en `/internal/accounts/{id}/interest-summary`. |
 | `INTERESTS_SERVICE_BASE_URL` | `http://interests-service:8084` | Base URL de `interests-service`. |
+| `FEATURE_INTEREST_CREDIT_VIA_KAFKA` | `false` | `false`: `interests-service` acredita por HTTP. `true`: publica `InterestCalculated` en `interests.calculated` y no llama a `creditInterest`. El GET de resumen no cambia. |
 
-Para forzar el path legacy: `FEATURE_USE_INTERESTS_SERVICE=false docker compose up -d bff-web`.
+Para forzar el path legacy del resumen: `FEATURE_USE_INTERESTS_SERVICE=false docker compose up -d bff-web`.
+
+Para acreditar por la saga: `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true docker compose up -d interests-service`. En Compose el listener de `core-service` ya arranca (`INTERESTS_KAFKA_ENABLED=true`). Fuera de Compose ese listener queda apagado.
 
 Para apagar: `docker compose down`. Para resetear volúmenes (incluido el seed de demo): `docker compose down -v`.
 
@@ -209,7 +218,7 @@ curl -sS http://localhost:8761/actuator/health
 curl -sS --cacert dev/certs/ca.crt https://localhost:8081/v3/api-docs
 ```
 
-Contratos en el repo: [`docs/contracts/`](docs/contracts/). Arquitectura: [`docs/architecture.md`](docs/architecture.md). ADR de BFFs: [`docs/adr/001-bff-strategy.md`](docs/adr/001-bff-strategy.md).
+Contratos en el repo: [`docs/contracts/`](docs/contracts/). Arquitectura: [`docs/architecture.md`](docs/architecture.md). ADR de BFFs: [`docs/adr/001-bff-strategy.md`](docs/adr/001-bff-strategy.md). ADR de la saga de intereses: [`docs/adr/002-event-architecture.md`](docs/adr/002-event-architecture.md).
 
 ## Tests
 
@@ -226,7 +235,7 @@ Los ITs de PostgreSQL/MySQL usan Testcontainers. Sin Docker se omiten (`disabled
 ## Troubleshooting
 
 - **Puertos 3306 o 5432 ocupados.** Otro MySQL/Postgres local está usando el puerto. Para este stack esos puertos deben estar libres, o para el stack con `docker compose down` (eso no apaga bases de otros proyectos).
-- **Puertos 8084, 8888 o 8761 ocupados.** Otro proceso está usando el puerto de `interests-service`, `config-server` o `eureka-server`. Libéralos o baja el stack con `docker compose down`.
+- **Puertos 8084, 8888, 8761 o 9092 ocupados.** Otro proceso está usando el puerto de `interests-service`, `config-server`, `eureka-server` o Kafka. Libéralos o baja el stack con `docker compose down`.
 - **El seed de demo desapareció o el dashboard da 404.** Flyway no reinserta filas de una versión ya aplicada. Reset: `docker compose down -v` y vuelve a `up --build`.
 - **La migración falló y core-service no arranca.** Compose espera `service_completed_successfully`. Revisa `docker compose logs data-migration`.
 - **PostgreSQL cae con el stack ya arriba.** `GET http://localhost:8080/actuator/health` deja de reportar UP (Actuator incluye el datasource). Los BFFs no tienen base propia: su health sigue UP aunque Postgres esté caído.
