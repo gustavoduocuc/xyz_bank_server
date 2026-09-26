@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -52,7 +53,8 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
      * 2. An idempotent retry does not publish a second event
      * 3. A rejected withdrawal (insufficient funds) publishes no event
      * 4. Events for the same account use accountId as the Kafka key
-     * 5. A successful interest credit writes TransactionConfirmed and InterestCreditApplied together
+     * 5. A successful interest credit writes InterestCreditApplied and TransactionConfirmed together
+     * 6. A failed surrounding transaction rolls back both outbox rows
      */
 
     @Autowired
@@ -72,6 +74,9 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
 
     @Autowired
     private JpaInterestCreditRepository interestCreditRepository;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     @Test
     @DisplayName("publishes exactly one TransactionConfirmed when a withdrawal succeeds")
@@ -153,9 +158,9 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
     }
 
     @Test
-    @DisplayName("writes TransactionConfirmed and InterestCreditApplied in the same transaction for an interest credit")
-    void writesTransactionConfirmedAndInterestCreditAppliedInTheSameTransactionForAnInterestCredit() {
-        Account account = aSavedAccount("9180706014");
+    @DisplayName("writes TransactionConfirmed and InterestCreditApplied together for an interest credit")
+    void writesTransactionConfirmedAndInterestCreditAppliedTogetherForAnInterestCredit() {
+        Account account = aSavedAccount("9180706015");
         account.credit(Money.create(new BigDecimal("35.00"), "USD"));
         String interestEventId = "interest:" + account.getId().getValue() + ":2025";
         Transaction transaction = Transaction.create(
@@ -191,6 +196,44 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
                         "SELECT event_type FROM outbox_events WHERE event_id = ?",
                         String.class,
                         transaction.getId().getValue()));
+        assertEquals(
+                "INTEREST_CREDIT",
+                jdbcTemplate.queryForObject(
+                        "SELECT movement_type FROM outbox_events WHERE event_id = ?",
+                        String.class,
+                        transaction.getId().getValue()));
+    }
+
+    @Test
+    @DisplayName("rolls back TransactionConfirmed with InterestCreditApplied when the surrounding transaction fails")
+    void rollsBackTransactionConfirmedWithInterestCreditAppliedWhenTheSurroundingTransactionFails() {
+        Account account = aSavedAccount("9180706014");
+        account.credit(Money.create(new BigDecimal("35.00"), "USD"));
+        String interestEventId = "interest:" + account.getId().getValue() + ":2025";
+        Transaction transaction = Transaction.create(
+                Id.generate(),
+                account.getId(),
+                TransactionType.CREDIT,
+                Money.create(new BigDecimal("35.00"), "USD"),
+                LocalDate.of(2026, 1, 15),
+                null,
+                Optional.of(interestEventId));
+        AnnualInterestSummary summary = AnnualInterestSummary.create(
+                Id.generate(),
+                account.getId(),
+                2025,
+                Money.create(new BigDecimal("1000.00"), "USD"),
+                Money.create(new BigDecimal("1035.00"), "USD"),
+                new BigDecimal("0.0350"),
+                Money.create(new BigDecimal("35.00"), "USD"));
+
+        assertThrows(IllegalStateException.class, () -> transactionTemplate.executeWithoutResult(status -> {
+            interestCreditRepository.persistInterestCredit(account, transaction, summary);
+            throw new IllegalStateException("simulated failure after dual outbox write");
+        }));
+
+        assertEquals(0, countOutboxByEventId(interestEventId));
+        assertEquals(0, countOutboxByEventId(transaction.getId().getValue()));
     }
 
     private JsonNode awaitTransactionConfirmed(String accountId, String eventId) throws Exception {

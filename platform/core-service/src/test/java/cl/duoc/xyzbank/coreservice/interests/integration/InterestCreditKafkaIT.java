@@ -89,6 +89,15 @@ class InterestCreditKafkaIT extends AbstractKafkaPostgresIT {
         assertEquals(
                 new BigDecimal("1035.00"),
                 accountRepository.findById(account.getId()).orElseThrow().getBalance().getAmount());
+
+        JsonNode confirmed = awaitTransactionConfirmed(accountId);
+        assertEquals("TransactionConfirmed", confirmed.get("eventType").asText());
+        assertEquals(1, confirmed.get("schemaVersion").asInt());
+        assertEquals(accountId, confirmed.get("accountId").asText());
+        assertEquals("INTEREST_CREDIT", confirmed.get("type").asText());
+        assertEquals(0, new BigDecimal("35.00").compareTo(new BigDecimal(confirmed.get("amount").asText())));
+        assertEquals("USD", confirmed.get("currency").asText());
+        assertEquals(true, publishedFlag(confirmed.get("eventId").asText()));
     }
 
     @Test
@@ -148,6 +157,7 @@ class InterestCreditKafkaIT extends AbstractKafkaPostgresIT {
         assertEquals(
                 new BigDecimal("1000.00"),
                 accountRepository.findById(account.getId()).orElseThrow().getBalance().getAmount());
+        assertEquals(0, countTransactionConfirmedForAccount(accountId));
     }
 
     @Test
@@ -206,6 +216,23 @@ class InterestCreditKafkaIT extends AbstractKafkaPostgresIT {
         return objectMapper.readTree(published.value());
     }
 
+    private JsonNode awaitTransactionConfirmed(String accountId) throws Exception {
+        List<ConsumerRecord<String, String>> received = new ArrayList<>();
+        try (KafkaConsumer<String, String> confirmed = confirmedConsumer(accountId)) {
+            confirmed.subscribe(List.of("transactions.confirmed"));
+            await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(200)).until(() -> {
+                confirmed.poll(Duration.ofMillis(500)).forEach(received::add);
+                return received.stream().anyMatch(record -> accountId.equals(record.key()));
+            });
+        }
+        ConsumerRecord<String, String> published = received.stream()
+                .filter(record -> accountId.equals(record.key()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(accountId, published.key());
+        return objectMapper.readTree(published.value());
+    }
+
     private void publishCalculated(String accountId, String payload) throws Exception {
         try (KafkaProducer<String, String> calculated = calculatedProducer()) {
             calculated.send(new ProducerRecord<>("interests.calculated", accountId, payload)).get();
@@ -242,6 +269,16 @@ class InterestCreditKafkaIT extends AbstractKafkaPostgresIT {
         Properties properties = new Properties();
         properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers());
         properties.put(ConsumerConfig.GROUP_ID_CONFIG, "interest-credit-results-it-" + accountId);
+        properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        return new KafkaConsumer<>(properties);
+    }
+
+    private KafkaConsumer<String, String> confirmedConsumer(String accountId) {
+        Properties properties = new Properties();
+        properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers());
+        properties.put(ConsumerConfig.GROUP_ID_CONFIG, "interest-transaction-confirmed-it-" + accountId);
         properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
