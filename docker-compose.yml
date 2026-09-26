@@ -123,6 +123,7 @@ services:
       EUREKA_SERVER_URL: http://eureka-server:8761
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       FEATURE_INTEREST_CREDIT_VIA_KAFKA: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:-false}
+      FEATURE_TRANSACTION_CONFIRMED_EVENTS: ${FEATURE_TRANSACTION_CONFIRMED_EVENTS:-true}
     healthcheck:
       test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
       interval: 10s
@@ -166,6 +167,7 @@ services:
       - |
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic interests.calculated --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic interests.credit-results --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic transactions.confirmed --partitions 1 --replication-factor 1
 
   interests-service:
     build:

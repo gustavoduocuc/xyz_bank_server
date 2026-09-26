@@ -129,10 +129,36 @@ sequenceDiagram
   Interests->>Calculated: InterestCalculated key accountId
   Interests-->>Caller: InterestSummaryResponse
   Core->>Calculated: consume
-  Core->>Db: credit plus outbox in one transaction
+  Core->>Db: credit plus InterestCreditApplied and TransactionConfirmed in one transaction
   Core->>Results: relay publishes InterestCreditApplied or InterestCreditRejected
   Interests->>Results: consume
   Note over Interests: close calculation APPLIED or REJECTED, idempotent by eventId
 ```
 
-The partition key is `accountId`. Delivery is at-least-once. `eventId` is `interest:{accountId}:{year}`. The HTTP idempotency key on the synchronous path stays `interest-{accountId}-{year}`. A duplicate `eventId` does not credit the balance twice. A failed credit transaction leaves no outbox row. A business rejection (`VALIDATION`, `NOT_FOUND`, or `CONFLICT`) publishes `InterestCreditRejected` with `reason`, does not change the balance, and commits the consumer offset so the single partition is not blocked. With the Kafka flag off, an HTTP credit does not write outbox rows. `core-service` is the only service with an outbox, because it is the only service with a local database transaction around the credit. See [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
+The partition key is `accountId`. Delivery is at-least-once. `eventId` is `interest:{accountId}:{year}`. The HTTP idempotency key on the synchronous path stays `interest-{accountId}-{year}`. A duplicate `eventId` does not credit the balance twice. A failed credit transaction leaves no outbox row. A business rejection (`VALIDATION`, `NOT_FOUND`, or `CONFLICT`) publishes `InterestCreditRejected` with `reason`, does not change the balance, and commits the consumer offset so the single partition is not blocked. With the Kafka flag off, an HTTP credit does not write interest-result outbox rows. `core-service` is the only service with an outbox, because it is the only service with a local database transaction around the credit. See [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
+
+### Event — TransactionConfirmed (every confirmed money movement)
+
+When `FEATURE_TRANSACTION_CONFIRMED_EVENTS` is on, every confirmed withdrawal and every confirmed interest credit writes a `TransactionConfirmed` row into the same transactional outbox used by the interest saga. The outbox relay publishes it to `transactions.confirmed` with partition key `accountId`. The ATM withdrawal HTTP contract is unchanged: the event is a side effect of `persistWithdrawal`. An idempotent withdrawal retry does not insert a second event. A rejected withdrawal or a rejected interest credit does not insert `TransactionConfirmed`.
+
+```mermaid
+sequenceDiagram
+  participant Atm as bff-atm
+  participant Core as core-service
+  participant Db as PostgreSQL
+  participant Confirmed as transactions.confirmed
+  participant Interests as interests-service
+  participant Calculated as interests.calculated
+
+  Atm->>Core: POST /internal/accounts/{id}/withdrawals (sync)
+  Core->>Db: debit + TransactionConfirmed outbox
+  Core-->>Atm: 201 WithdrawalResponse
+  Core->>Confirmed: relay TransactionConfirmed type WITHDRAWAL
+
+  Interests->>Calculated: InterestCalculated
+  Core->>Calculated: consume
+  Core->>Db: credit + InterestCreditApplied + TransactionConfirmed
+  Core->>Confirmed: relay TransactionConfirmed type INTEREST_CREDIT
+```
+
+`TransactionConfirmed` payload: `eventId` (transaction id), `eventType`, `schemaVersion`, `accountId`, `type` (`WITHDRAWAL` | `INTEREST_CREDIT`), `amount`, `currency`, `occurredAt`. No card number, PIN, personal customer data, or ATM terminal id.

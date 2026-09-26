@@ -47,5 +47,30 @@ Si el proceso muere entre publicar y consumir el resultado, ese estado se pierde
 
 - El GET de resumen y la lectura de saldo siguen en HTTP. Con la flag encendida, el circuit breaker de `creditInterest` no interviene. El de `fetchInterestSummary` y `fetchAccountBalance` sí.
 - El listener de `core-service` no pasa por `EnforcementFilter`. El POST HTTP sigue exigiendo `interests:write`.
-- En desarrollo no hay ACLs de Kafka. Quien alcance el broker puede producir en `interests.calculated`. Pendiente de producción: solo `interests-service` produce en `interests.calculated` y solo `core-service` produce en `interests.credit-results`.
+- En desarrollo no hay ACLs de Kafka. Quien alcance el broker puede producir en `interests.calculated`. Pendiente de producción: solo `interests-service` produce en `interests.calculated` y solo `core-service` produce en `interests.credit-results` y `transactions.confirmed`.
 - La durabilidad del cierre del cálculo en `interests-service` queda pendiente junto con esas ACLs. No se agrega base ni outbox en ese servicio en este cambio.
+
+## Extensión: TransactionConfirmed (Fase 2)
+
+Además de la saga de intereses, `core-service` publica un evento por cada movimiento de dinero confirmado en el tópico `transactions.confirmed` (clave de partición `accountId`).
+
+Contrato del evento `TransactionConfirmed` (`schemaVersion` 1):
+
+| Campo | Descripción |
+|---|---|
+| `eventId` | Id de la fila en `transactions` |
+| `eventType` | `TransactionConfirmed` |
+| `schemaVersion` | `1` |
+| `accountId` | Cuenta afectada |
+| `type` | `WITHDRAWAL` o `INTEREST_CREDIT` |
+| `amount` | Monto del movimiento |
+| `currency` | Moneda |
+| `occurredAt` | Fecha del movimiento |
+
+No incluye número de tarjeta, PIN, datos personales del cliente ni identificadores del terminal ATM.
+
+El retiro ATM sigue siendo síncrono: `bff-atm` → `POST /internal/accounts/{id}/withdrawals` no cambia de contrato. El evento se escribe en el outbox dentro de la misma transacción del débito. Un reintento con el mismo `Idempotency-Key` no genera un segundo `TransactionConfirmed`. Un retiro o crédito rechazado no escribe el evento.
+
+En un crédito de interés exitoso (camino Kafka), `InterestCreditApplied` y `TransactionConfirmed` se escriben en la misma transacción de PostgreSQL. El relay enruta por `event_type`: resultados de interés a `interests.credit-results`, confirmaciones a `transactions.confirmed`.
+
+La publicación de `TransactionConfirmed` se controla con `FEATURE_TRANSACTION_CONFIRMED_EVENTS` / `app.events.transaction-confirmed.enabled`, independiente de `FEATURE_INTEREST_CREDIT_VIA_KAFKA`. No se implementan consumidores de negocio (reportes, anomalías) en esta fase.

@@ -35,6 +35,12 @@ spring:
 app:
   withdrawals:
     daily-limit: 5000.00
+  events:
+    transaction-confirmed:
+      enabled: ${FEATURE_TRANSACTION_CONFIRMED_EVENTS:false}
+      topic: transactions.confirmed
+  outbox:
+    relay-delay-ms: ${OUTBOX_RELAY_DELAY_MS:1000}
 
 interests:
   kafka:
@@ -42,7 +48,7 @@ interests:
     calculated-topic: interests.calculated
     credit-results-topic: interests.credit-results
   outbox:
-    relay-delay-ms: 1000
+    relay-delay-ms: ${OUTBOX_RELAY_DELAY_MS:1000}
 
 eureka:
   client:

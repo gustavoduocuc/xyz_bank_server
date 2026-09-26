@@ -54,8 +54,10 @@ flowchart LR
   InterestsService -- HTTP --> CoreService
   InterestsService -- "InterestCalculated" --> Kafka
   Kafka -- "InterestCalculated" --> CoreService
-  CoreService -- "credit result" --> Kafka
+  CoreService -- "InterestCreditApplied / Rejected" --> Kafka
   Kafka -- "credit result" --> InterestsService
+  CoreService -- "TransactionConfirmed" --> Kafka
+  BffAtm -- "retiro síncrono HTTP" --> CoreService
   InterestsService --> ConfigServer
   InterestsService --> EurekaServer
   CoreService --> EurekaServer
@@ -64,7 +66,7 @@ flowchart LR
   Migration --> MySQL
 ```
 
-`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core en las llamadas HTTP (resumen, saldo y, con la flag de Kafka apagada, el crédito). Kafka es un broker único en KRaft, sin ZooKeeper. Los tópicos `interests.calculated` e `interests.credit-results` los crea `kafka-init` al arrancar. La flecha HTTP de intereses a core sigue siendo el camino del GET y del crédito síncrono. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
+`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core en las llamadas HTTP (resumen, saldo y, con la flag de Kafka apagada, el crédito). Kafka es un broker único en KRaft, sin ZooKeeper. Los tópicos `interests.calculated`, `interests.credit-results` y `transactions.confirmed` los crea `kafka-init` al arrancar. Cada movimiento de dinero confirmado en `core-service` (retiro ATM síncrono o crédito de interés) publica `TransactionConfirmed` vía outbox a `transactions.confirmed` (clave `accountId`). La flecha HTTP de intereses a core sigue siendo el camino del GET y del crédito síncrono. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
 
 ## Arranque local
 
@@ -90,7 +92,7 @@ Eso levanta:
 | bff-mobile | 8082 | Resumen aplanado de cuenta |
 | bff-atm | 8083 | Saldo y retiro |
 
-El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los dos tópicos. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`.
+El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`.
 
 Enrutamiento de intereses en `bff-web`:
 
@@ -99,10 +101,11 @@ Enrutamiento de intereses en `bff-web`:
 | `FEATURE_USE_INTERESTS_SERVICE` | `true` | `true`: `bff-web` llama a `interests-service`. `false`: llama a `core-service` en `/internal/accounts/{id}/interest-summary`. |
 | `INTERESTS_SERVICE_BASE_URL` | `http://interests-service:8084` | Base URL de `interests-service`. |
 | `FEATURE_INTEREST_CREDIT_VIA_KAFKA` | `false` | `false`: `interests-service` acredita por HTTP. `true`: publica `InterestCalculated` en `interests.calculated` y no llama a `creditInterest`. El GET de resumen no cambia. |
+| `FEATURE_TRANSACTION_CONFIRMED_EVENTS` | `true` (Compose) / `false` (app default) | `true`: `core-service` escribe `TransactionConfirmed` en el outbox y el relay lo publica en `transactions.confirmed`. Independiente de la saga de intereses. |
 
 Para forzar el path legacy del resumen: `FEATURE_USE_INTERESTS_SERVICE=false docker compose up -d bff-web`.
 
-Para acreditar por la saga: `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true docker compose up -d core-service interests-service`. Eso enciende el listener, el outbox y el relay de `core-service` y el productor/consumidor de `interests-service`. Con la flag en `false` el crédito HTTP no escribe outbox.
+Para acreditar por la saga: `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true docker compose up -d core-service interests-service`. Eso enciende el listener, el outbox y el relay de `core-service` y el productor/consumidor de `interests-service`. Con la flag en `false` el crédito HTTP no escribe outbox de intereses; `FEATURE_TRANSACTION_CONFIRMED_EVENTS` sigue pudiendo publicar movimientos confirmados.
 
 Para apagar: `docker compose down`. Para resetear volúmenes (incluido el seed de demo): `docker compose down -v`.
 

@@ -20,5 +20,7 @@ public abstract class AbstractKafkaPostgresIT extends AbstractPostgresIT {
         registry.add("spring.kafka.listener.auto-startup", () -> "true");
         registry.add("interests.kafka.enabled", () -> "true");
         registry.add("interests.outbox.relay-delay-ms", () -> "200");
+        registry.add("app.events.transaction-confirmed.enabled", () -> "true");
+        registry.add("app.outbox.relay-delay-ms", () -> "200");
     }
 }

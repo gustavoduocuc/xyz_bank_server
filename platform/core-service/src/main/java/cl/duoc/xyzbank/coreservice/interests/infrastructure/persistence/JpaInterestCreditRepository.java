@@ -8,6 +8,9 @@ import cl.duoc.xyzbank.coredomain.interests.domain.repositories.InterestSummaryR
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.transactions.domain.entities.Transaction;
 import cl.duoc.xyzbank.coredomain.transactions.domain.repositories.TransactionRepository;
+import cl.duoc.xyzbank.coreservice.events.application.dto.ConfirmedMovementType;
+import cl.duoc.xyzbank.coreservice.events.application.dto.TransactionConfirmed;
+import cl.duoc.xyzbank.coreservice.events.application.ports.TransactionConfirmedPublisher;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,6 +26,7 @@ public class JpaInterestCreditRepository implements InterestCreditRepository {
     private final TransactionRepository transactionRepository;
     private final InterestSummaryRepository interestSummaryRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final TransactionConfirmedPublisher transactionConfirmedPublisher;
     private final boolean kafkaEnabled;
 
     public JpaInterestCreditRepository(
@@ -30,11 +34,13 @@ public class JpaInterestCreditRepository implements InterestCreditRepository {
             TransactionRepository transactionRepository,
             InterestSummaryRepository interestSummaryRepository,
             JdbcTemplate jdbcTemplate,
+            TransactionConfirmedPublisher transactionConfirmedPublisher,
             @Value("${interests.kafka.enabled:false}") boolean kafkaEnabled) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.interestSummaryRepository = interestSummaryRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.transactionConfirmedPublisher = transactionConfirmedPublisher;
         this.kafkaEnabled = kafkaEnabled;
     }
 
@@ -46,14 +52,21 @@ public class JpaInterestCreditRepository implements InterestCreditRepository {
             transactionRepository.save(transaction);
             interestSummaryRepository.save(summary);
             if (kafkaEnabled) {
-                recordInterestCredit(account, transaction, summary);
+                recordInterestCreditApplied(account, transaction, summary);
             }
+            transactionConfirmedPublisher.publish(new TransactionConfirmed(
+                    transaction.getId().getValue(),
+                    account.getId().getValue(),
+                    ConfirmedMovementType.INTEREST_CREDIT,
+                    transaction.getAmount().getAmount(),
+                    transaction.getAmount().getCurrency(),
+                    transaction.getOccurredOn()));
         } catch (DataIntegrityViolationException exception) {
             throw DomainException.conflict("Interest already credited for this account and year");
         }
     }
 
-    private void recordInterestCredit(Account account, Transaction transaction, AnnualInterestSummary summary) {
+    private void recordInterestCreditApplied(Account account, Transaction transaction, AnnualInterestSummary summary) {
         String eventId = transaction.getIdempotencyKey()
                 .orElseThrow(() -> DomainException.validation("Idempotency key is required"));
         jdbcTemplate.update(

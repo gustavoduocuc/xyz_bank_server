@@ -104,6 +104,7 @@ class InterestCreditKafkaIT extends AbstractKafkaPostgresIT {
         assertEquals("Account " + accountId + " not found", result.get("reason").asText());
         assertEquals(true, publishedFlag(eventId));
         assertEquals(0, countAccounts(accountId));
+        assertEquals(0, countTransactionConfirmedForAccount(accountId));
     }
 
     @Test
@@ -266,6 +267,17 @@ class InterestCreditKafkaIT extends AbstractKafkaPostgresIT {
     private int countAccounts(String accountId) {
         Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM accounts WHERE id = ?",
+                Integer.class,
+                UUID.fromString(accountId));
+        return count == null ? 0 : count;
+    }
+
+    private int countTransactionConfirmedForAccount(String accountId) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*) FROM outbox_events
+                WHERE event_type = 'TransactionConfirmed' AND account_id = ?
+                """,
                 Integer.class,
                 UUID.fromString(accountId));
         return count == null ? 0 : count;
