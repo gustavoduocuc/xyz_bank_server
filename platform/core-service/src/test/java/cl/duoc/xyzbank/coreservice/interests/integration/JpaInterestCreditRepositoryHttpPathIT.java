@@ -18,24 +18,21 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest
-@TestPropertySource(properties = "interests.kafka.enabled=true")
-@DisplayName("The JPA interest credit repository with Kafka enabled")
-class JpaInterestCreditRepositoryIT extends AbstractPostgresIT {
+@TestPropertySource(properties = "interests.kafka.enabled=false")
+@DisplayName("The JPA interest credit repository with Kafka disabled")
+class JpaInterestCreditRepositoryHttpPathIT extends AbstractPostgresIT {
 
     /*
      * Cases:
-     * 1. A successful credit writes the outbox event and the processed interest event
-     * 2. A failure after the balance is saved rolls the credit back and leaves no outbox row
+     * 1. An HTTP credit persists the balance without writing outbox or processed-event rows
      */
 
     @Autowired
@@ -50,43 +47,20 @@ class JpaInterestCreditRepositoryIT extends AbstractPostgresIT {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private TransactionTemplate transactionTemplate;
-
     @Test
-    @DisplayName("writes an outbox event and a processed interest event when the credit succeeds")
-    void writesAnOutboxEventAndAProcessedInterestEventWhenTheCreditSucceeds() {
-        Account account = aSavedAccount("9080706011");
-        String eventId = "interest:" + account.getId().getValue() + ":2025";
+    @DisplayName("persists the credit without writing outbox or processed-event rows when Kafka is disabled")
+    void persistsTheCreditWithoutWritingOutboxOrProcessedEventRowsWhenKafkaIsDisabled() {
+        Account account = aSavedAccount("9080706014");
+        String eventId = "interest-" + account.getId().getValue() + "-2025";
         account.credit(Money.create(new BigDecimal("35.00"), "USD"));
 
         interestCreditRepository.persistInterestCredit(
                 account, aCredit(account, eventId), aSummary(account));
 
-        assertEquals(1, count("outbox_events", eventId));
-        assertEquals(1, count("processed_interest_events", eventId));
-        assertEquals(
-                new BigDecimal("1035.00"),
-                accountRepository.findById(account.getId()).orElseThrow().getBalance().getAmount());
-    }
-
-    @Test
-    @DisplayName("rolls the credit back and leaves no outbox row when the transaction fails after the balance is saved")
-    void rollsTheCreditBackAndLeavesNoOutboxRowWhenTheTransactionFailsAfterTheBalanceIsSaved() {
-        Account account = aSavedAccount("9080706012");
-        String eventId = "interest:" + account.getId().getValue() + ":2025";
-        account.credit(Money.create(new BigDecimal("35.00"), "USD"));
-
-        assertThrows(IllegalStateException.class, () -> transactionTemplate.executeWithoutResult(status -> {
-            interestCreditRepository.persistInterestCredit(
-                    account, aCredit(account, eventId), aSummary(account));
-            throw new IllegalStateException("simulated failure after saving the balance");
-        }));
-
         assertEquals(0, count("outbox_events", eventId));
         assertEquals(0, count("processed_interest_events", eventId));
         assertEquals(
-                new BigDecimal("1000.00"),
+                new BigDecimal("1035.00"),
                 accountRepository.findById(account.getId()).orElseThrow().getBalance().getAmount());
     }
 

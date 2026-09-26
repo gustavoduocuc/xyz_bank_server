@@ -164,7 +164,8 @@ public class CreditInterestUseCase {
 
     private boolean isBusinessRejection(DomainException exception) {
         return exception.getType() == DomainException.Type.VALIDATION
-                || exception.getType() == DomainException.Type.NOT_FOUND;
+                || exception.getType() == DomainException.Type.NOT_FOUND
+                || exception.getType() == DomainException.Type.CONFLICT;
     }
 
     private CreditInterestRequest withIdempotencyKey(CreditInterestRequest request, String idempotencyKey) {

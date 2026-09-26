@@ -102,7 +102,7 @@ Enrutamiento de intereses en `bff-web`:
 
 Para forzar el path legacy del resumen: `FEATURE_USE_INTERESTS_SERVICE=false docker compose up -d bff-web`.
 
-Para acreditar por la saga: `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true docker compose up -d interests-service`. En Compose el listener de `core-service` ya arranca (`INTERESTS_KAFKA_ENABLED=true`). Fuera de Compose ese listener queda apagado.
+Para acreditar por la saga: `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true docker compose up -d core-service interests-service`. Eso enciende el listener, el outbox y el relay de `core-service` y el productor/consumidor de `interests-service`. Con la flag en `false` el crédito HTTP no escribe outbox.
 
 Para apagar: `docker compose down`. Para resetear volúmenes (incluido el seed de demo): `docker compose down -v`.
 

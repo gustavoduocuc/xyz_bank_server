@@ -25,13 +25,13 @@ No hay orquestador. Cada servicio reacciona al evento que le corresponde:
 
 La entrega es at-least-once. El `eventId` determinista `interest:{accountId}:{year}` hace idempotente al consumidor. La clave HTTP del camino síncrono sigue siendo `interest-{accountId}-{year}`.
 
-Con la flag en `false` (default, también en Compose) el POST HTTP actual no cambia. El endpoint `POST /internal/accounts/{accountId}/interest-credits` se mantiene. En Compose el listener de `core-service` arranca encendido para que la saga esté lista cuando alguien active la flag.
+Con la flag en `false` (default, también en Compose) el POST HTTP actual no cambia: no escribe outbox ni arranca el listener ni el relay. El endpoint `POST /internal/accounts/{accountId}/interest-credits` se mantiene. Listener, outbox y relay de `core-service` solo se activan con `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`.
 
 ## Por qué outbox y no publicar dentro del caso de uso
 
 El crédito y el evento de resultado tienen que confirmarse juntos. Si la transacción del crédito falla, no queda fila en `outbox_events` y el relay no anuncia un crédito que no ocurrió. Si el relay no puede hablar con Kafka, la fila sigue sin publicar y el siguiente ciclo reintenta. El crédito no se deshace.
 
-Un rechazo de negocio (`VALIDATION` o `NOT_FOUND`) no acredita y escribe solo `InterestCreditRejected` con `reason`. Un fallo técnico no confirma el offset: Kafka reentrega.
+Un rechazo de negocio (`VALIDATION`, `NOT_FOUND` o `CONFLICT`) no acredita y escribe solo `InterestCreditRejected` con `reason`. El offset se confirma para no bloquear la partición. Un fallo técnico no confirma el offset: Kafka reentrega.
 
 ## Por qué no Event Sourcing
 

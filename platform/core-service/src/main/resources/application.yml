@@ -20,7 +20,7 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     listener:
-      auto-startup: false
+      auto-startup: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:false}
       ack-mode: record
     consumer:
       group-id: core-service-interests
@@ -38,7 +38,7 @@ app:
 
 interests:
   kafka:
-    enabled: false
+    enabled: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:false}
     calculated-topic: interests.calculated
     credit-results-topic: interests.credit-results
   outbox:

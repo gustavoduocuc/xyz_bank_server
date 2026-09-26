@@ -122,8 +122,7 @@ services:
       EUREKA_CLIENT_ENABLED: "true"
       EUREKA_SERVER_URL: http://eureka-server:8761
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      INTERESTS_KAFKA_ENABLED: "true"
-      SPRING_KAFKA_LISTENER_AUTO_STARTUP: "true"
+      FEATURE_INTEREST_CREDIT_VIA_KAFKA: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:-false}
     healthcheck:
       test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
       interval: 10s

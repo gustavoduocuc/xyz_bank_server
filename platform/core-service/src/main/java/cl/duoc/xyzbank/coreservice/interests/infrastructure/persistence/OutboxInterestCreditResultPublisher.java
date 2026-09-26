@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.coreservice.interests.infrastructure.persistence;
 
 import cl.duoc.xyzbank.coreservice.interests.application.dto.InterestCreditRejected;
 import cl.duoc.xyzbank.coreservice.interests.application.ports.InterestCreditResultPublisher;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
 @Repository
+@ConditionalOnProperty(name = "interests.kafka.enabled", havingValue = "true")
 public class OutboxInterestCreditResultPublisher implements InterestCreditResultPublisher {
 
     private final JdbcTemplate jdbcTemplate;

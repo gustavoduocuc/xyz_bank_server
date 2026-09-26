@@ -8,6 +8,7 @@ import cl.duoc.xyzbank.coredomain.interests.domain.repositories.InterestSummaryR
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.transactions.domain.entities.Transaction;
 import cl.duoc.xyzbank.coredomain.transactions.domain.repositories.TransactionRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -22,16 +23,19 @@ public class JpaInterestCreditRepository implements InterestCreditRepository {
     private final TransactionRepository transactionRepository;
     private final InterestSummaryRepository interestSummaryRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final boolean kafkaEnabled;
 
     public JpaInterestCreditRepository(
             AccountRepository accountRepository,
             TransactionRepository transactionRepository,
             InterestSummaryRepository interestSummaryRepository,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            @Value("${interests.kafka.enabled:false}") boolean kafkaEnabled) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.interestSummaryRepository = interestSummaryRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.kafkaEnabled = kafkaEnabled;
     }
 
     @Override
@@ -41,7 +45,9 @@ public class JpaInterestCreditRepository implements InterestCreditRepository {
             accountRepository.save(account);
             transactionRepository.save(transaction);
             interestSummaryRepository.save(summary);
-            recordInterestCredit(account, transaction, summary);
+            if (kafkaEnabled) {
+                recordInterestCredit(account, transaction, summary);
+            }
         } catch (DataIntegrityViolationException exception) {
             throw DomainException.conflict("Interest already credited for this account and year");
         }
@@ -51,7 +57,11 @@ public class JpaInterestCreditRepository implements InterestCreditRepository {
         String eventId = transaction.getIdempotencyKey()
                 .orElseThrow(() -> DomainException.validation("Idempotency key is required"));
         jdbcTemplate.update(
-                "INSERT INTO processed_interest_events (event_id, idempotency_key) VALUES (?, ?)",
+                """
+                INSERT INTO processed_interest_events (event_id, idempotency_key)
+                VALUES (?, ?)
+                ON CONFLICT (event_id) DO NOTHING
+                """,
                 eventId,
                 eventId);
         jdbcTemplate.update(

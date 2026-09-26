@@ -51,7 +51,8 @@ class CreditInterestUseCaseTest {
      * 9. A duplicate InterestCalculated event (same eventId) credits the balance only once
      * 10. An invalid amount publishes InterestCreditRejected and leaves the balance unchanged
      * 11. An unknown account publishes InterestCreditRejected and does not credit
-     * 12. A technical failure publishes nothing and propagates
+     * 12. A year already credited publishes InterestCreditRejected and leaves the balance unchanged
+     * 13. A technical failure publishes nothing and propagates
      */
 
     @Test
@@ -183,8 +184,8 @@ class CreditInterestUseCaseTest {
                 processedInterestEvents,
                 CLOCK);
 
-        useCase.execute(aRequest(accountId, "35.00", "delivery-1"), eventId);
-        useCase.execute(aRequest(accountId, "35.00", "delivery-2"), eventId);
+        useCase.execute(aRequest(accountId, "35.00", eventId), eventId);
+        useCase.execute(aRequest(accountId, "35.00", eventId), eventId);
 
         assertEquals(
                 new BigDecimal("1035.00"),
@@ -224,6 +225,25 @@ class CreditInterestUseCaseTest {
                 List.of(new InterestCreditRejected(
                         eventId, accountId.getValue(), "Account " + accountId.getValue() + " not found")),
                 results.rejections());
+    }
+
+    @Test
+    @DisplayName("publishes InterestCreditRejected when the year is already credited")
+    void publishesInterestCreditRejectedWhenTheYearIsAlreadyCredited() {
+        Id accountId = anExistingAccount("1000.00");
+        String eventId = "interest:" + accountId.getValue() + ":2025";
+        InMemoryInterestCreditResultPublisher results = new InMemoryInterestCreditResultPublisher();
+        CreditInterestUseCase useCase = useCasePublishing(results);
+        useCase.execute(aRequest(accountId, "35.00", "interest-" + accountId.getValue() + "-2025"));
+
+        useCase.executeFromEvent(aRequest(accountId, "35.00", eventId), eventId);
+
+        assertEquals(
+                new BigDecimal("1035.00"),
+                accountRepository.findById(accountId).orElseThrow().getBalance().getAmount());
+        assertEquals(1, results.rejections().size());
+        assertEquals(eventId, results.rejections().get(0).eventId());
+        assertTrue(results.rejections().get(0).reason().contains("Interest already credited"));
     }
 
     @Test
