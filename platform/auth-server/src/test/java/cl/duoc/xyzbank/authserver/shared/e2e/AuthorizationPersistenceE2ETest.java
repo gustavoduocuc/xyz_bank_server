@@ -41,6 +41,7 @@ class AuthorizationPersistenceE2ETest extends AbstractAuthServerIT {
 
         assertEquals(200, exchange.statusCode(), exchange.asString());
         assertNotNull(exchange.jsonPath().getString("id_token"));
+        assertNotNull(exchange.jsonPath().getString("access_token"));
     }
 
     @Test
@@ -48,10 +49,11 @@ class AuthorizationPersistenceE2ETest extends AbstractAuthServerIT {
     void keepsRejectingAfterARestartACodeAlreadyExchangedBeforeIt() {
         String verifier = AuthorizationCodeFlow.newCodeVerifier();
         String code;
+        int firstExchangeStatus;
         try (ConfigurableApplicationContext firstRun = startAuthServer()) {
             AuthorizationCodeFlow flow = new AuthorizationCodeFlow(portOf(firstRun));
             code = flow.authorizationCodeFor(WEB_CLIENT_ID, WEB_REDIRECT_URI, WEB_SCOPES, verifier);
-            assertEquals(200, flow.exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET).statusCode());
+            firstExchangeStatus = flow.exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET).statusCode();
         }
 
         Response retry;
@@ -59,6 +61,7 @@ class AuthorizationPersistenceE2ETest extends AbstractAuthServerIT {
             retry = new AuthorizationCodeFlow(portOf(secondRun)).exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET);
         }
 
+        assertEquals(200, firstExchangeStatus);
         assertEquals(400, retry.statusCode(), retry.asString());
         assertEquals("invalid_grant", retry.jsonPath().getString("error"));
         assertNull(retry.jsonPath().getString("access_token"));

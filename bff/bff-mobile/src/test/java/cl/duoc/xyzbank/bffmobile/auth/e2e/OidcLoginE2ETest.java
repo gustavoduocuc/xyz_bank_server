@@ -225,8 +225,8 @@ class OidcLoginE2ETest {
     }
 
     @Test
-    @DisplayName("returns no second session when an already-processed callback is replayed")
-    void returnsNoSecondSessionWhenAnAlreadyProcessedCallbackIsReplayed() {
+    @DisplayName("issues no second session when an already-processed callback is replayed")
+    void issuesNoSecondSessionWhenAnAlreadyProcessedCallbackIsReplayed() {
         String code = "auth-code-6";
         CORE_SERVICE.stubFor(post(urlPathEqualTo("/internal/auth/mobile/devices/device-6/refresh-tokens"))
                 .willReturn(aResponse()

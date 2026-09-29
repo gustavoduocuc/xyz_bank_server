@@ -31,6 +31,7 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
      * 1. Seeding stores exactly one registration per channel client, findable by client id and by id
      * 2. Seeding again keeps one registration per client
      * 3. Seeding with a changed redirect URI updates the stored client instead of adding one
+     * 4. Seeding with a changed secret updates the stored client's secret
      */
 
     private static final String SCHEMA = "seeder_it";
@@ -95,10 +96,25 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
         assertEquals(Set.of("bff-web"), storedClientIds());
     }
 
+    @Test
+    @DisplayName("updates a stored client whose secret changed")
+    void updatesAStoredClientWhoseSecretChanged() {
+        seederFor(WEB_CLIENT).seed();
+
+        seederFor("{noop}rotated-web-secret", WEB_CLIENT).seed();
+
+        assertEquals("{noop}rotated-web-secret", registeredClients.findByClientId("bff-web").getClientSecret());
+        assertEquals(Set.of("bff-web"), storedClientIds());
+    }
+
     private ChannelClientSeeder seederFor(ChannelClient... clients) {
+        return seederFor("{noop}web-secret", clients);
+    }
+
+    private ChannelClientSeeder seederFor(String encodedWebSecret, ChannelClient... clients) {
         return new ChannelClientSeeder(
                 new InMemoryChannelClientRepository(clients),
-                new ChannelRegisteredClientMapper(Map.of("bff-web", "{noop}web-secret")),
+                new ChannelRegisteredClientMapper(Map.of("bff-web", encodedWebSecret)),
                 registeredClients);
     }
 
