@@ -94,6 +94,7 @@ Eso levanta:
 |---|---|---|
 | MySQL 8.4 | 3306 | Reportes de la migración CSV |
 | PostgreSQL 16 | 5432 | Datos de `core-service` |
+| PostgreSQL 16 (`auth-postgres`) | (interno) | Estado de `auth-server`: autorizaciones y clientes registrados. Sin puerto publicado |
 | data-migration | (one-shot) | Procesa los CSV y sale con código 0 |
 | config-server | 8888 | Configuración nativa (`config-repo/`) |
 | eureka-server | 8761 | Service discovery |
@@ -111,12 +112,19 @@ El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté 
 
 `auth-server` emite los tokens del login web y mobile. Dos clientes, uno por canal, ambos `authorization_code` + PKCE obligatorio: `bff-web` (confidencial, con secreto) y `bff-mobile` (público, sin secreto). Cada cliente solo puede pedir `openid`, `profile` y los scopes de su canal (`Channel.java`); si pide un scope de otro canal, la solicitud entera se rechaza con `invalid_scope`. Los tokens (ID y access) llevan `sub` = id del cliente del banco y el claim `channel` (`WEB` | `MOBILE`), firmados RS256 con la clave de `dev/certs/auth-server/signing.p12`; la clave pública se publica en `https://localhost:9000/oauth2/jwks`. Si falta el keystore de firma, `auth-server` no arranca: nunca genera una clave en memoria, así que reiniciarlo no invalida los tokens emitidos.
 
+El estado de `auth-server` (autorizaciones, consentimientos y clientes registrados) vive en su propia base PostgreSQL, `auth-postgres`: contenedor, base (`auth_server`), usuario y volumen propios, separados de `core_service`. Sobrevive a reinicios de `auth-server` (un código emitido antes de reiniciar sigue canjeable, y uno ya usado sigue rechazado). Flyway crea el esquema al arrancar y los dos clientes (`bff-web`, `bff-mobile`) se registran en cada arranque a partir de `Channel.java`, con el secreto guardado solo como hash bcrypt. Para inspeccionarla:
+
+```bash
+docker compose exec auth-postgres psql -U auth_server -d auth_server -c 'select client_id from oauth2_registered_client'
+```
+
 El issuer es siempre `https://localhost:9000`. El navegador llega a `auth-server` por `localhost`, pero los contenedores de los BFFs lo alcanzan por la red de Docker como `auth-server`: por eso cada BFF recibe una `authorization-uri` pública (`https://localhost:9000/oauth2/authorize`) y `token-uri`/`jwk-set-uri` internas (`https://auth-server:9000/...`), y valida el `iss` del ID token contra `OIDC_ISSUER`. Si cambias el puerto publicado, cambia `AUTH_ISSUER` y las variables `OIDC_*` juntas. Detalle en [`docs/architecture.md`](docs/architecture.md).
 
 | Variable | Default en Compose | Uso |
 |---|---|---|
 | `AUTH_DEMO_PASSWORD` | `demo-password` | Contraseña del usuario demo `demo` |
 | `BFF_WEB_CLIENT_SECRET` | `bff-web-dev-secret` | Secreto del cliente `bff-web` (lo comparten `auth-server` y `bff-web`) |
+| `AUTH_DB_USERNAME` / `AUTH_DB_PASSWORD` | `auth_server` / `auth_server` | Credenciales de `auth-postgres`, que solo usa `auth-server` |
 
 `auth-server` y los certificados/llaves de desarrollo: `./scripts/generate-dev-auth-server-keys.sh` reemite el certificado TLS de `auth-server` (válido para `localhost` y `auth-server`) y su keystore de firma usando la CA existente, sin regenerarla.
 
@@ -340,4 +348,6 @@ Baja el stack (`docker compose down`) antes de correr `mvn verify`: los tests de
 - **`./scripts/generate-dev-auth-server-keys.sh` falla con `Dev CA not found`.** Ese script reutiliza una CA existente. En una máquina nueva ejecuta `./scripts/generate-dev-tls-certs.sh`, que genera la CA y también el material de `auth-server`.
 - **El navegador muestra un error de certificado en `localhost:9000` o `localhost:8081`.** El navegador no confía en la CA de desarrollo. Instálala como se indica en [Certificados TLS de desarrollo](#certificados-tls-de-desarrollo) y reinicia el navegador (en macOS, Chrome usa el llavero del sistema).
 - **El callback de login responde `401` (`authorization_request_not_found`).** La sesión de `bff-web`/`bff-mobile` que guardaba la solicitud de autorización se perdió: se reinició el BFF a mitad del login, o se reutilizó un callback ya procesado. Vuelve a empezar desde `/oauth2/authorization/oidc`. (Las cookies no distinguen puertos: por eso `auth-server` usa su propia cookie `XYZ_AUTH_SESSION` y no pisa el `JSESSIONID` de los BFFs en `localhost`.)
+- **`auth-server` no arranca con `Connection to auth-postgres:5432 refused` (o no pasa a healthy).** `auth-server` no sirve nada sin su base: revisa `docker compose ps auth-postgres` y `docker compose logs auth-postgres`. Para empezar de cero su estado (clientes y autorizaciones se recrean solos): `docker compose rm -sf auth-server auth-postgres && docker volume rm xyz_bank_server_xyz_bank_auth_postgres_data && docker compose up -d`.
+- **Después de cambiar de rama o de un `git pull`, faltan archivos en `dev/certs/` y los servicios con TLS no arrancan.** Si el cambio cruza el commit que dejó de versionar `dev/certs/`, git borra esos archivos de tu copia de trabajo. Regenera con `./scripts/generate-dev-tls-certs.sh` y recrea los contenedores (`docker compose up -d --force-recreate`).
 - **`auth-server` no arranca con `Token signing keystore ...`.** Falta o no se puede leer `dev/certs/auth-server/signing.p12` (o su contraseña/alias). Regenéralo con `./scripts/generate-dev-auth-server-keys.sh` (o `./scripts/generate-dev-tls-certs.sh` si tampoco tienes la CA); no hay clave de respaldo en memoria a propósito.
