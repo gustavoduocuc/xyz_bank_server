@@ -1,6 +1,8 @@
 package cl.duoc.xyzbank.bffatm.shared.config;
 
+import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.ClientCredentialsTokenInterceptor;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.CorrelationIdClientInterceptor;
+import cl.duoc.xyzbank.bffatm.testsupport.AuthServerStub;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.stubbing.ServeEvent;
 import org.junit.jupiter.api.AfterEach;
@@ -10,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.web.client.RestClient;
 
+import java.time.Clock;
 import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
@@ -30,6 +33,7 @@ class CorePinVerificationClientIT {
      */
 
     private WireMockServer coreService;
+    private AuthServerStub authServer;
 
     @BeforeEach
     void startWireMock() {
@@ -42,11 +46,14 @@ class CorePinVerificationClientIT {
         coreService.start();
         coreService.stubFor(post(urlEqualTo("/internal/auth/atm/pin-verifications"))
                 .willReturn(aResponse().withStatus(200)));
+        authServer = new AuthServerStub();
+        authServer.start();
     }
 
     @AfterEach
     void stopWireMock() {
         coreService.stop();
+        authServer.stop();
     }
 
     @Test
@@ -57,11 +64,16 @@ class CorePinVerificationClientIT {
                         "https://localhost:" + coreService.httpsPort(),
                         3000,
                         3000,
-                        "dev-service-credential-atm",
                         "tls/truststore.p12",
                         "xyzbank-dev",
                         new DefaultResourceLoader(),
-                        new CorrelationIdClientInterceptor());
+                        new CorrelationIdClientInterceptor(),
+                        new ClientCredentialsTokenInterceptor(
+                                RestClient.create(),
+                                authServer.tokenUri(),
+                                AuthServerStub.CLIENT_ID,
+                                AuthServerStub.CLIENT_SECRET,
+                                Clock.systemUTC()));
 
         client.post().uri("/internal/auth/atm/pin-verifications").retrieve().toBodilessEntity();
 

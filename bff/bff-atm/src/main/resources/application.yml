@@ -21,7 +21,11 @@ core-service:
   pin-verification-base-url: ${CORE_SERVICE_PIN_VERIFICATION_BASE_URL:https://localhost:8453}
   connect-timeout-ms: 3000
   read-timeout-ms: 3000
-  service-credential: ${CORE_SERVICE_CREDENTIAL:dev-service-credential-atm}
+
+auth-server:
+  token-uri: ${AUTH_TOKEN_URI:http://localhost:9000/oauth2/token}
+  client-id: ${BFF_ATM_CLIENT_ID:bff-atm}
+  client-secret: ${BFF_ATM_CLIENT_SECRET:bff-atm-dev-secret}
 
 channel-auth:
   jwt:

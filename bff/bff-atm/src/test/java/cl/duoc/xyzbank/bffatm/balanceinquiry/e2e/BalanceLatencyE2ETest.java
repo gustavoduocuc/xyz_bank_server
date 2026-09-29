@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.bffatm.balanceinquiry.e2e;
 
+import cl.duoc.xyzbank.bffatm.testsupport.AuthServerStub;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -38,14 +39,17 @@ class BalanceLatencyE2ETest {
      */
 
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
+    private static final AuthServerStub AUTH_SERVER = new AuthServerStub();
 
     static {
         CORE_SERVICE.start();
+        AUTH_SERVER.start();
     }
 
     @DynamicPropertySource
     static void coreServiceBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("core-service.base-url", CORE_SERVICE::baseUrl);
+        AUTH_SERVER.register(registry);
     }
 
     @LocalServerPort
@@ -69,6 +73,7 @@ class BalanceLatencyE2ETest {
     @AfterAll
     static void stopCoreServiceStub() {
         CORE_SERVICE.stop();
+        AUTH_SERVER.stop();
     }
 
     @Test
