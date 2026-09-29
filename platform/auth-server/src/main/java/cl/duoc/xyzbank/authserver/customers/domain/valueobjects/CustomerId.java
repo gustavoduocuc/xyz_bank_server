@@ -3,6 +3,7 @@ package cl.duoc.xyzbank.authserver.customers.domain.valueobjects;
 import cl.duoc.xyzbank.authserver.shared.domain.DomainException;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -21,19 +22,11 @@ public final class CustomerId {
         if (value == null || value.isBlank()) {
             throw DomainException.validation("Customer id cannot be blank");
         }
-        String canonical = canonicalUuid(value.trim());
-        if (!canonical.equalsIgnoreCase(value.trim())) {
-            throw DomainException.validation("Customer id must be a UUID: " + value);
-        }
-        return new CustomerId(canonical);
-    }
-
-    private static String canonicalUuid(String value) {
-        try {
-            return UUID.fromString(value).toString();
-        } catch (IllegalArgumentException exception) {
-            return "";
-        }
+        String trimmed = value.trim();
+        return canonicalUuidOf(trimmed)
+                .filter(canonical -> canonical.equalsIgnoreCase(trimmed))
+                .map(CustomerId::new)
+                .orElseThrow(() -> DomainException.validation("Customer id must be a UUID: " + value));
     }
 
     public String toPrimitives() {
@@ -48,5 +41,13 @@ public final class CustomerId {
     @Override
     public int hashCode() {
         return Objects.hash(value);
+    }
+
+    private static Optional<String> canonicalUuidOf(String value) {
+        try {
+            return Optional.of(UUID.fromString(value).toString());
+        } catch (IllegalArgumentException exception) {
+            return Optional.empty();
+        }
     }
 }

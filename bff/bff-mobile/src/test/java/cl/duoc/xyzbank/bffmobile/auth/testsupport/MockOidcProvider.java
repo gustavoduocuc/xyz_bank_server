@@ -61,25 +61,15 @@ public final class MockOidcProvider {
      * token verbatim; it never sees or computes bff-web's raw, pre-hash nonce).
      */
     public void stubSuccessfulTokenExchange(String code, String subject, String nonce) {
-        stubSuccessfulTokenExchange(code, subject, nonce, ISSUER);
+        stubTokenExchange(code, signIdToken(subject, nonce, ISSUER));
     }
 
     /**
      * Same as {@link #stubSuccessfulTokenExchange(String, String, String)}, but the correctly
-     * signed ID token claims the given issuer -- to prove bff-mobile rejects a foreign one.
+     * signed ID token claims a foreign issuer -- to prove bff-mobile rejects it.
      */
-    public void stubSuccessfulTokenExchange(String code, String subject, String nonce, String issuer) {
-        String idToken = signIdToken(subject, nonce, issuer);
-        server.stubFor(post(urlPathEqualTo("/mock-oidc/token"))
-                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("code=" + code))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("{"
-                                + "\"access_token\":\"mock-access-token\","
-                                + "\"token_type\":\"Bearer\","
-                                + "\"expires_in\":3600,"
-                                + "\"id_token\":\"" + idToken + "\"}")));
+    public void stubTokenExchangeFromForeignIssuer(String code, String subject, String nonce) {
+        stubTokenExchange(code, signIdToken(subject, nonce, "https://impostor.example"));
     }
 
     /**
@@ -101,6 +91,19 @@ public final class MockOidcProvider {
                         .withStatus(400)
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"error\":\"invalid_grant\"}")));
+    }
+
+    private void stubTokenExchange(String code, String idToken) {
+        server.stubFor(post(urlPathEqualTo("/mock-oidc/token"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("code=" + code))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{"
+                                + "\"access_token\":\"mock-access-token\","
+                                + "\"token_type\":\"Bearer\","
+                                + "\"expires_in\":3600,"
+                                + "\"id_token\":\"" + idToken + "\"}")));
     }
 
     private String signIdToken(String subject, String nonce, String issuer) {

@@ -20,6 +20,6 @@ public class ConfiguredCustomerLoginRepository implements CustomerLoginRepositor
 
     @Override
     public Optional<CustomerLogin> findByUsername(String username) {
-        return logins.stream().filter(login -> login.username().equals(username)).findFirst();
+        return logins.stream().filter(login -> login.hasUsername(username)).findFirst();
     }
 }

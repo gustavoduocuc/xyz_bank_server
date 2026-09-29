@@ -19,7 +19,7 @@ public class ConfiguredChannelClientRepository implements ChannelClientRepositor
 
     @Override
     public Optional<ChannelClient> findByClientId(String clientId) {
-        return clients.stream().filter(client -> client.clientId().equals(clientId)).findFirst();
+        return clients.stream().filter(client -> client.hasClientId(clientId)).findFirst();
     }
 
     @Override

@@ -208,7 +208,7 @@ class OidcLoginE2ETest {
         String state = URLDecoder.decode(extractQueryParam(location, "state"), StandardCharsets.UTF_8);
         String nonce = extractQueryParam(location, "nonce");
         String jsessionId = authorizationResponse.getCookie("JSESSIONID");
-        OIDC_PROVIDER.stubSuccessfulTokenExchange(code, "customer-42", nonce, "https://impostor.example");
+        OIDC_PROVIDER.stubTokenExchangeFromForeignIssuer(code, "customer-42", nonce);
 
         Response callbackResponse = given()
                 .cookie("JSESSIONID", jsessionId)

@@ -3,8 +3,9 @@ package cl.duoc.xyzbank.authserver.clients.domain.valueobjects;
 import cl.duoc.xyzbank.authserver.shared.domain.DomainException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 
-import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * An OAuth client bound to exactly one channel. Its allowed scopes are derived from the
@@ -48,8 +49,12 @@ public final class ChannelClient {
         return channel;
     }
 
-    public ClientType type() {
-        return type;
+    public boolean hasClientId(String candidateClientId) {
+        return clientId.equals(candidateClientId);
+    }
+
+    public boolean isConfidential() {
+        return type == ClientType.CONFIDENTIAL;
     }
 
     public String redirectUri() {
@@ -57,8 +62,7 @@ public final class ChannelClient {
     }
 
     public Set<String> allowedScopes() {
-        Set<String> scopes = new HashSet<>(OIDC_SCOPES);
-        scopes.addAll(channel.scopes());
-        return Set.copyOf(scopes);
+        return Stream.concat(OIDC_SCOPES.stream(), channel.scopes().stream())
+                .collect(Collectors.toUnmodifiableSet());
     }
 }
