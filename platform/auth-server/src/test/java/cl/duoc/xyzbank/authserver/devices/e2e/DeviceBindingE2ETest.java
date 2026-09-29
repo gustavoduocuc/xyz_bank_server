@@ -41,6 +41,9 @@ class DeviceBindingE2ETest extends AbstractAuthServerIT {
      * 1. A mobile login without a device gets no authorization code
      * 2. The first login from a device registers it for the customer
      * 3. A login for a revoked device gets no authorization code
+     * 4. A refresh naming another device is rejected without rotating: the token still works
+     *    afterwards for its own device
+     * 5. A refresh for a revoked device is rejected
      */
 
     private static final String SEED_CUSTOMER = "11111111-1111-1111-1111-111111111111";
@@ -98,6 +101,32 @@ class DeviceBindingE2ETest extends AbstractAuthServerIT {
         String location = response.getHeader("Location");
         assertNotNull(location);
         assertNull(queryParam(location, "code"), location);
+    }
+
+    @Test
+    @DisplayName("rejects a refresh from another device without rotating the token")
+    void rejectsARefreshFromAnotherDeviceWithoutRotatingTheToken() {
+        String device = uniqueDevice();
+        String refreshToken = flow.loggedInMobileClient(device).jsonPath().getString("refresh_token");
+
+        Response fromAnotherDevice = flow.refreshAsMobileClient(refreshToken, uniqueDevice());
+
+        assertEquals(400, fromAnotherDevice.statusCode(), fromAnotherDevice.asString());
+        assertEquals("invalid_grant", fromAnotherDevice.jsonPath().getString("error"));
+        assertEquals(200, flow.refreshAsMobileClient(refreshToken, device).statusCode());
+    }
+
+    @Test
+    @DisplayName("rejects a refresh for a revoked device")
+    void rejectsARefreshForARevokedDevice() {
+        String device = uniqueDevice();
+        String refreshToken = flow.loggedInMobileClient(device).jsonPath().getString("refresh_token");
+        jdbcTemplate.update("UPDATE device_registrations SET revoked = true WHERE device_id = ?", device);
+
+        Response refresh = flow.refreshAsMobileClient(refreshToken, device);
+
+        assertEquals(400, refresh.statusCode(), refresh.asString());
+        assertEquals("invalid_grant", refresh.jsonPath().getString("error"));
     }
 
     private static String uniqueDevice() {
