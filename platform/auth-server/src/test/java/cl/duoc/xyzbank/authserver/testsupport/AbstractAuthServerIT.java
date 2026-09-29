@@ -1,9 +1,16 @@
 package cl.duoc.xyzbank.authserver.testsupport;
 
+import cl.duoc.xyzbank.authserver.AuthServerApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.web.context.WebServerApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
+
+import java.util.Arrays;
+import java.util.stream.Stream;
 
 /**
  * Base for every test that starts the auth-server application: one PostgreSQL container,
@@ -34,14 +41,20 @@ public abstract class AbstractAuthServerIT {
      * {@code @SpringBootTest}) at the shared container.
      */
     protected static String[] datasourceArguments(String... extraArguments) {
-        String[] datasource = {
-            "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
-            "--spring.datasource.username=" + POSTGRES.getUsername(),
-            "--spring.datasource.password=" + POSTGRES.getPassword()
-        };
-        String[] arguments = new String[datasource.length + extraArguments.length];
-        System.arraycopy(datasource, 0, arguments, 0, datasource.length);
-        System.arraycopy(extraArguments, 0, arguments, datasource.length, extraArguments.length);
-        return arguments;
+        Stream<String> datasource = Stream.of(
+                "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
+                "--spring.datasource.username=" + POSTGRES.getUsername(),
+                "--spring.datasource.password=" + POSTGRES.getPassword());
+        return Stream.concat(datasource, Arrays.stream(extraArguments)).toArray(String[]::new);
+    }
+
+    protected static ConfigurableApplicationContext startAuthServer() {
+        return new SpringApplicationBuilder(AuthServerApplication.class)
+                .profiles("test")
+                .run(datasourceArguments("--server.port=0"));
+    }
+
+    protected static int portOf(ConfigurableApplicationContext context) {
+        return ((WebServerApplicationContext) context).getWebServer().getPort();
     }
 }

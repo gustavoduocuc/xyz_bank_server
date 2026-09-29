@@ -1,6 +1,5 @@
 package cl.duoc.xyzbank.authserver.signing.e2e;
 
-import cl.duoc.xyzbank.authserver.AuthServerApplication;
 import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
@@ -9,8 +8,6 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.web.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.WEB_CLIENT_ID;
@@ -34,7 +31,7 @@ class SigningKeyRestartE2ETest extends AbstractAuthServerIT {
     @DisplayName("keeps tokens issued before a restart verifiable under the same key id")
     void keepsTokensIssuedBeforeARestartVerifiableUnderTheSameKeyId() throws Exception {
         SignedJWT tokenIssuedBeforeRestart;
-        try (ConfigurableApplicationContext firstRun = start()) {
+        try (ConfigurableApplicationContext firstRun = startAuthServer()) {
             AuthorizationCodeFlow flow = new AuthorizationCodeFlow(portOf(firstRun));
             String verifier = AuthorizationCodeFlow.newCodeVerifier();
             String code = flow.authorizationCodeFor(WEB_CLIENT_ID, WEB_REDIRECT_URI, WEB_SCOPES, verifier);
@@ -42,7 +39,7 @@ class SigningKeyRestartE2ETest extends AbstractAuthServerIT {
                     flow.exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET).jsonPath().getString("access_token"));
         }
 
-        try (ConfigurableApplicationContext secondRun = start()) {
+        try (ConfigurableApplicationContext secondRun = startAuthServer()) {
             JWKSet jwks = JWKSet.parse(
                     new AuthorizationCodeFlow(portOf(secondRun)).request().get("/oauth2/jwks").asString());
             JWK key = jwks.getKeyByKeyId(tokenIssuedBeforeRestart.getHeader().getKeyID());
@@ -51,15 +48,5 @@ class SigningKeyRestartE2ETest extends AbstractAuthServerIT {
             assertEquals(1, jwks.getKeys().size());
             assertTrue(tokenIssuedBeforeRestart.verify(new RSASSAVerifier(key.toRSAKey())));
         }
-    }
-
-    private static ConfigurableApplicationContext start() {
-        return new SpringApplicationBuilder(AuthServerApplication.class)
-                .profiles("test")
-                .run(datasourceArguments("--server.port=0"));
-    }
-
-    private static int portOf(ConfigurableApplicationContext context) {
-        return ((WebServerApplicationContext) context).getWebServer().getPort();
     }
 }

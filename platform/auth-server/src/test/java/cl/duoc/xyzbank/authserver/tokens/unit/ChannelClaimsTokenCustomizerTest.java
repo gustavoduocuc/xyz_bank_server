@@ -46,7 +46,7 @@ class ChannelClaimsTokenCustomizerTest {
     private static final String SEED_CUSTOMER = "11111111-1111-1111-1111-111111111111";
 
     private final InMemoryChannelClientRepository channelClients;
-    private final ChannelRegisteredClientMapper registeredClients;
+    private final ChannelRegisteredClientMapper registeredClientMapper;
     private final ChannelClaimsTokenCustomizer customizer;
 
     ChannelClaimsTokenCustomizerTest() {
@@ -58,7 +58,7 @@ class ChannelClaimsTokenCustomizerTest {
         InMemoryCustomerLoginRepository customerLogins = new InMemoryCustomerLoginRepository(
                 CustomerLogin.create("demo", "{noop}demo-password", CustomerId.create(SEED_CUSTOMER)));
         this.channelClients = channelClients;
-        registeredClients = new ChannelRegisteredClientMapper(Map.of("bff-web", "{noop}secret"));
+        registeredClientMapper = new ChannelRegisteredClientMapper(Map.of("bff-web", "{noop}secret"));
         customizer = new ChannelClaimsTokenCustomizer(new IssueTokenClaimsUseCase(
                 new ChannelClientLookupAdapter(channelClients), new CustomerLoginLookupAdapter(customerLogins)));
     }
@@ -107,7 +107,7 @@ class ChannelClaimsTokenCustomizerTest {
 
     private JwtClaimsSet customize(String clientId, String tokenType, JwtClaimsSet.Builder claims) {
         RegisteredClient registeredClient =
-                registeredClients.toRegisteredClient(channelClients.findByClientId(clientId).orElseThrow());
+                registeredClientMapper.toRegisteredClient(channelClients.findByClientId(clientId).orElseThrow());
         JwtEncodingContext context = JwtEncodingContext.with(JwsHeader.with(SignatureAlgorithm.RS256), claims)
                 .registeredClient(registeredClient)
                 .principal(UsernamePasswordAuthenticationToken.authenticated("demo", null, List.of()))
