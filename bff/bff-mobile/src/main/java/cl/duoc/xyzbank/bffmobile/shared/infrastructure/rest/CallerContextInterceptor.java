@@ -1,9 +1,9 @@
 package cl.duoc.xyzbank.bffmobile.shared.infrastructure.rest;
 
+import cl.duoc.xyzbank.bffmobile.shared.application.CallerContextResolver;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerContext;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerIdentityException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.MDC;
@@ -15,9 +15,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * Resolves the caller's identity from the device-bound JWT presented as a bearer token
  * (caller-context spec: "A validated channel credential is the sole source of caller
  * identity"), rejecting a missing, expired, or otherwise invalid token before any handler
- * runs. Also verifies the caller's declared X-Device-Id header matches the device the token
- * was bound to at login (JwtCallerContextAdapter.issue's terminalId claim) -- a token stolen
- * from one device must not authenticate requests claiming to come from another.
+ * runs. Also verifies the caller's declared X-Device-Id header matches the token's
+ * {@code device_id} claim -- a token stolen from one device must not authenticate requests
+ * claiming to come from another.
  */
 @Component
 public class CallerContextInterceptor implements HandlerInterceptor {
@@ -27,10 +27,10 @@ public class CallerContextInterceptor implements HandlerInterceptor {
     private static final String BEARER_PREFIX = "Bearer ";
     public static final String USER_TOKEN_MDC_KEY = "userToken";
 
-    private final JwtCallerContextAdapter tokenAdapter;
+    private final CallerContextResolver callerContextResolver;
 
-    public CallerContextInterceptor(JwtCallerContextAdapter tokenAdapter) {
-        this.tokenAdapter = tokenAdapter;
+    public CallerContextInterceptor(CallerContextResolver callerContextResolver) {
+        this.callerContextResolver = callerContextResolver;
     }
 
     @Override
@@ -42,7 +42,7 @@ public class CallerContextInterceptor implements HandlerInterceptor {
         if (bearerToken == null) {
             throw CallerIdentityException.invalid("Missing bearer token");
         }
-        CallerContext callerContext = tokenAdapter.resolve(bearerToken);
+        CallerContext callerContext = callerContextResolver.resolve(bearerToken);
         if (callerContext.channel() != Channel.MOBILE) {
             throw CallerIdentityException.forbidden("This endpoint requires the mobile channel");
         }
