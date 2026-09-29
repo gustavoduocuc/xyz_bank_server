@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.bffweb.auth.config;
 
+import cl.duoc.xyzbank.bffweb.auth.infrastructure.adapters.AccessTokenCallerContextAdapter;
 import cl.duoc.xyzbank.bffweb.auth.infrastructure.adapters.AuthServerTokenClient;
 import cl.duoc.xyzbank.bffweb.auth.infrastructure.rest.RequestScopedAuthorizedClientRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +17,15 @@ import org.springframework.web.client.RestClient;
  */
 @Configuration
 public class SessionTokensConfig {
+
+    @Bean
+    public AccessTokenCallerContextAdapter accessTokenCallerContextAdapter(
+            @Value("${spring.security.oauth2.client.provider.oidc.jwk-set-uri}") String jwkSetUri,
+            @Value("${oidc.expected-issuer}") String issuer,
+            @Value("${spring.security.oauth2.client.registration.oidc.client-id}") String clientId) {
+        return new AccessTokenCallerContextAdapter(
+                AccessTokenCallerContextAdapter.decoderFor(jwkSetUri, issuer), clientId);
+    }
 
     @Bean
     public OAuth2AuthorizedClientRepository authorizedClientRepository() {
