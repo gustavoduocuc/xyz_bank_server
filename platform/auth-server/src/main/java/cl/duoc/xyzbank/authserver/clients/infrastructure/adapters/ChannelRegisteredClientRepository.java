@@ -2,7 +2,6 @@ package cl.duoc.xyzbank.authserver.clients.infrastructure.adapters;
 
 import cl.duoc.xyzbank.authserver.clients.domain.repositories.ChannelClientRepository;
 import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ChannelClient;
-import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ClientType;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
@@ -53,13 +52,15 @@ public class ChannelRegisteredClientRepository implements RegisteredClientReposi
                         .requireProofKey(true)
                         .requireAuthorizationConsent(false)
                         .build());
-        if (client.type() == ClientType.CONFIDENTIAL) {
-            builder.clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-                    .clientSecret(secretOf(client));
-        } else {
-            builder.clientAuthenticationMethod(ClientAuthenticationMethod.NONE);
+        return authenticationOf(client, builder).build();
+    }
+
+    private RegisteredClient.Builder authenticationOf(ChannelClient client, RegisteredClient.Builder builder) {
+        if (!client.isConfidential()) {
+            return builder.clientAuthenticationMethod(ClientAuthenticationMethod.NONE);
         }
-        return builder.build();
+        return builder.clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .clientSecret(secretOf(client));
     }
 
     private String secretOf(ChannelClient client) {

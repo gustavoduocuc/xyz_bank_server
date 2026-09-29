@@ -208,8 +208,7 @@ class OidcLoginE2ETest {
                 .get("/oauth2/authorization/oidc?deviceId=device-3");
         String location = authorizationResponse.getHeader("Location");
         String state = URLDecoder.decode(extractQueryParam(location, "state"), StandardCharsets.UTF_8);
-        OIDC_PROVIDER.stubSuccessfulTokenExchange(
-                code, "customer-42", extractQueryParam(location, "nonce"), "https://impostor.example");
+        OIDC_PROVIDER.stubTokenExchangeFromForeignIssuer(code, "customer-42", extractQueryParam(location, "nonce"));
 
         Response callbackResponse = given()
                 .cookie("JSESSIONID", authorizationResponse.getCookie("JSESSIONID"))

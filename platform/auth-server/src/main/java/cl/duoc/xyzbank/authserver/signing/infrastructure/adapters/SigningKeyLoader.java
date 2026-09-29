@@ -37,9 +37,8 @@ public class SigningKeyLoader {
             throw new SigningKeyUnavailableException(
                     "No token signing keystore configured: set AUTH_SIGNING_KEYSTORE_PATH (auth.signing.keystore-path)");
         }
-        char[] password = passwordOf(properties);
-        KeyStore keyStore = readKeystore(keystorePath, password);
-        return rsaKeyOf(keyStore, keystorePath, properties.keyAlias(), password);
+        KeyStore keyStore = readKeystore(keystorePath, passwordOf(properties));
+        return rsaKeyOf(keyStore, properties);
     }
 
     private static char[] passwordOf(SigningKeyProperties properties) {
@@ -62,9 +61,11 @@ public class SigningKeyLoader {
         }
     }
 
-    private static RSAKey rsaKeyOf(KeyStore keyStore, String keystorePath, String alias, char[] password) {
+    private static RSAKey rsaKeyOf(KeyStore keyStore, SigningKeyProperties properties) {
+        String keystorePath = properties.keystorePath();
+        String alias = properties.keyAlias();
         try {
-            Key key = keyStore.getKey(alias, password);
+            Key key = keyStore.getKey(alias, passwordOf(properties));
             Certificate certificate = keyStore.getCertificate(alias);
             if (key == null || certificate == null) {
                 throw new SigningKeyUnavailableException(

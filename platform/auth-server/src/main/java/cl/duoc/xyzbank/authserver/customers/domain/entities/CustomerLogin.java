@@ -37,6 +37,10 @@ public final class CustomerLogin {
         return username;
     }
 
+    public boolean hasUsername(String candidateUsername) {
+        return username.equals(candidateUsername);
+    }
+
     public String passwordHash() {
         return passwordHash;
     }
