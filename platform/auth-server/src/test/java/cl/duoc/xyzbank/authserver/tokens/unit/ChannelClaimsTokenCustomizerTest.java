@@ -164,6 +164,7 @@ class ChannelClaimsTokenCustomizerTest {
         assertEquals("interests-service", built.getClaimAsString("azp"));
         assertEquals("INTERESTS", built.getClaimAsString("channel"));
         assertEquals(Set.of("core-service", "interests-service"), Set.copyOf(built.getAudience()));
+        assertEquals(Set.of("interests:write"), Set.copyOf(built.getClaimAsStringList("scope")));
         assertNull(built.getClaim("device_id"));
     }
 
