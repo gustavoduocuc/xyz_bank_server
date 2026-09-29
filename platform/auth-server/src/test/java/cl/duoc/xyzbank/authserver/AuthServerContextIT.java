@@ -11,6 +11,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.net.ConnectException;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -24,10 +28,15 @@ class AuthServerContextIT extends AbstractAuthServerIT {
      * Cases:
      * 1. Starts with the provisioned signing keystore and exposes exactly that one key
      * 2. Refuses to start when no signing keystore is configured
+     * 3. Creates its schema through Flyway on startup
+     * 4. Refuses to start when its database is unreachable
      */
 
     @Autowired
     private JWKSource<SecurityContext> jwkSource;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     @DisplayName("starts with the provisioned signing key as its only key")
@@ -47,6 +56,29 @@ class AuthServerContextIT extends AbstractAuthServerIT {
                 Exception.class, () -> application.run(datasourceArguments("--server.port=0", "--auth.signing.keystore-path=")));
 
         assertTrue(hasCause(exception, SigningKeyUnavailableException.class), "unexpected failure: " + exception);
+    }
+
+    @Test
+    @DisplayName("creates its schema through Flyway on startup")
+    void createsItsSchemaThroughFlywayOnStartup() {
+        List<String> appliedVersions = jdbcTemplate.queryForList(
+                "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank", String.class);
+
+        assertTrue(appliedVersions.contains("1"), appliedVersions.toString());
+    }
+
+    @Test
+    @DisplayName("refuses to start when its database is unreachable")
+    void refusesToStartWhenItsDatabaseIsUnreachable() {
+        SpringApplicationBuilder application = new SpringApplicationBuilder(AuthServerApplication.class)
+                .profiles("test");
+
+        Exception exception = assertThrows(Exception.class, () -> application.run(
+                "--server.port=0",
+                "--spring.datasource.url=jdbc:postgresql://127.0.0.1:1/auth_server",
+                "--spring.datasource.hikari.connection-timeout=2000"));
+
+        assertTrue(hasCause(exception, ConnectException.class), "unexpected failure: " + exception);
     }
 
     private static boolean hasCause(Throwable throwable, Class<? extends Throwable> type) {
