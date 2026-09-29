@@ -23,7 +23,7 @@ public class PinVerificationController {
     public ResponseEntity<PinVerificationResponse> verify(@RequestBody PinVerificationRequest request) {
         PinVerificationOutcome outcome = verifyPinUseCase.execute(request.cardNumber(), request.pin());
         return switch (outcome.result()) {
-            case SUCCESS -> ResponseEntity.status(HttpStatus.OK).body(new PinVerificationResponse(outcome.customerId()));
+            case SUCCESS -> ResponseEntity.status(HttpStatus.OK).body(new PinVerificationResponse(outcome.customerId(), outcome.atmSessionId()));
             case INCORRECT -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             case LOCKED -> ResponseEntity.status(HttpStatus.LOCKED).build();
         };
