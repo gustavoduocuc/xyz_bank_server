@@ -10,7 +10,7 @@ import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 
-import java.util.List;
+import java.util.ArrayList;
 import java.util.Optional;
 
 /**
@@ -46,7 +46,9 @@ public class ChannelClaimsTokenCustomizer implements OAuth2TokenCustomizer<JwtEn
         if (accessToken) {
             context.getClaims()
                     .claim(AUTHORIZED_PARTY_CLAIM, tokenClaims.authorizedParty())
-                    .audience(List.copyOf(tokenClaims.audiences()));
+                    // A mutable ArrayList on purpose: the claims are persisted as JSON by the JDBC
+                    // authorization store, whose Jackson allowlist rejects immutable collections
+                    .audience(new ArrayList<>(tokenClaims.audiences()));
             tokenClaims.deviceId().ifPresent(deviceId -> context.getClaims().claim(DEVICE_ID_CLAIM, deviceId));
         }
     }

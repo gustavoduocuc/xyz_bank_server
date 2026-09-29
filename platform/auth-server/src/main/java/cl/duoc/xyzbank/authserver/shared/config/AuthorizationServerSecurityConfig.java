@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.authserver.shared.config;
 
+import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.LoginClientsOnlyAuthorizationRequestProvider;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,6 +11,8 @@ import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
@@ -28,10 +31,16 @@ public class AuthorizationServerSecurityConfig {
 
     @Bean
     @Order(1)
-    public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain authorizationServerSecurityFilterChain(
+            HttpSecurity http, RegisteredClientRepository registeredClientRepository) throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServer = OAuth2AuthorizationServerConfigurer.authorizationServer();
         http.securityMatcher(authorizationServer.getEndpointsMatcher())
-                .with(authorizationServer, server -> server.oidc(Customizer.withDefaults()))
+                .with(authorizationServer, server -> server
+                        .oidc(Customizer.withDefaults())
+                        .authorizationEndpoint(endpoint -> endpoint.authenticationProviders(providers ->
+                                providers.replaceAll(provider -> provider instanceof OAuth2AuthorizationCodeRequestAuthenticationProvider
+                                        ? new LoginClientsOnlyAuthorizationRequestProvider(provider, registeredClientRepository)
+                                        : provider))))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
                         new LoginUrlAuthenticationEntryPoint("/login"),
