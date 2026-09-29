@@ -47,6 +47,8 @@ class OidcLoginE2ETest {
      *    refresh-token endpoint
      * 4. The authorization redirect asks for PKCE (S256) and exactly openid, profile and the web
      *    channel's scope set -- nothing the authorization server would refuse to a web client
+     * 5. A correctly signed ID token from an unexpected issuer fails the login: no cookie, and
+     *    core-service is never called
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -192,6 +194,32 @@ class OidcLoginE2ETest {
         String scope = URLDecoder.decode(extractQueryParam(location, "scope"), StandardCharsets.UTF_8);
         assertEquals(expectedScopes, Set.of(scope.split(" ")));
         assertEquals("S256", extractQueryParam(location, "code_challenge_method"));
+    }
+
+    @Test
+    @DisplayName("fails the login when a correctly signed ID token comes from an unexpected issuer")
+    void failsTheLoginWhenACorrectlySignedIdTokenComesFromAnUnexpectedIssuer() {
+        String code = "auth-code-3";
+        Response authorizationResponse =
+                given().redirects().follow(false).when().get("/oauth2/authorization/oidc");
+        String location = authorizationResponse.getHeader("Location");
+        String state = URLDecoder.decode(extractQueryParam(location, "state"), StandardCharsets.UTF_8);
+        String nonce = extractQueryParam(location, "nonce");
+        String jsessionId = authorizationResponse.getCookie("JSESSIONID");
+        OIDC_PROVIDER.stubSuccessfulTokenExchange(code, "customer-42", nonce, "https://impostor.example");
+
+        Response callbackResponse = given()
+                .cookie("JSESSIONID", jsessionId)
+                .queryParam("code", code)
+                .queryParam("state", state)
+                .redirects().follow(false)
+                .when()
+                .get("/login/oauth2/code/oidc");
+
+        assertEquals(401, callbackResponse.statusCode());
+        assertNoSessionOrRefreshCookieSet(callbackResponse);
+        CORE_SERVICE.verify(0, com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
+                urlPathEqualTo("/internal/auth/web/refresh-tokens")));
     }
 
     private static void assertNoSessionOrRefreshCookieSet(Response response) {

@@ -61,7 +61,15 @@ public final class MockOidcProvider {
      * token verbatim; it never sees or computes bff-web's raw, pre-hash nonce).
      */
     public void stubSuccessfulTokenExchange(String code, String subject, String nonce) {
-        String idToken = signIdToken(subject, nonce);
+        stubSuccessfulTokenExchange(code, subject, nonce, ISSUER);
+    }
+
+    /**
+     * Same as {@link #stubSuccessfulTokenExchange(String, String, String)}, but the correctly
+     * signed ID token claims the given issuer -- to prove bff-web rejects a foreign one.
+     */
+    public void stubSuccessfulTokenExchange(String code, String subject, String nonce, String issuer) {
+        String idToken = signIdToken(subject, nonce, issuer);
         server.stubFor(post(urlPathEqualTo("/mock-oidc/token"))
                 .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("code=" + code))
                 .willReturn(aResponse()
@@ -83,11 +91,11 @@ public final class MockOidcProvider {
                         .withBody("{\"error\":\"invalid_grant\"}")));
     }
 
-    private String signIdToken(String subject, String nonce) {
+    private String signIdToken(String subject, String nonce, String issuer) {
         try {
             JWTClaimsSet claims = new JWTClaimsSet.Builder()
                     .subject(subject)
-                    .issuer(ISSUER)
+                    .issuer(issuer)
                     .audience(CLIENT_ID)
                     .expirationTime(new Date(System.currentTimeMillis() + 60_000))
                     .issueTime(new Date())

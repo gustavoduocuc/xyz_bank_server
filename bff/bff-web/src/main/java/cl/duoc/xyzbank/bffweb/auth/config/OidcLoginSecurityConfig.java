@@ -1,13 +1,21 @@
 package cl.duoc.xyzbank.bffweb.auth.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.oidc.authentication.OidcIdTokenDecoderFactory;
+import org.springframework.security.oauth2.client.oidc.authentication.OidcIdTokenValidator;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.JwtDecoderFactory;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -43,6 +51,23 @@ public class OidcLoginSecurityConfig {
                         .successHandler(oidcLoginSuccessHandler)
                         .failureHandler(oidcLoginFailureHandler));
         return http.build();
+    }
+
+    /**
+     * The provider is configured with explicit endpoints rather than an issuer-uri (the
+     * browser and this container reach it under different host names), and in that mode
+     * Spring does not check the ID token's "iss". This adds that check back against the
+     * configured public issuer; oauth2Login picks the bean up by type.
+     */
+    @Bean
+    public JwtDecoderFactory<ClientRegistration> idTokenDecoderFactory(
+            @Value("${oidc.expected-issuer}") String expectedIssuer) {
+        OidcIdTokenDecoderFactory decoderFactory = new OidcIdTokenDecoderFactory();
+        decoderFactory.setJwtValidatorFactory(clientRegistration -> new DelegatingOAuth2TokenValidator<>(
+                new JwtTimestampValidator(),
+                new OidcIdTokenValidator(clientRegistration),
+                new JwtIssuerValidator(expectedIssuer)));
+        return decoderFactory;
     }
 
     private OAuth2AuthorizationRequestResolver pkceAuthorizationRequestResolver(
