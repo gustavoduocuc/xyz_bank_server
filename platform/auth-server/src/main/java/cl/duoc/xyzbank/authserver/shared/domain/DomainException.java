@@ -1,0 +1,38 @@
+package cl.duoc.xyzbank.authserver.shared.domain;
+
+public class DomainException extends RuntimeException {
+
+    public enum Type {
+        NOT_FOUND,
+        VALIDATION,
+        CONFLICT,
+        OTHER
+    }
+
+    private final Type type;
+
+    private DomainException(Type type, String message) {
+        super(message);
+        this.type = type;
+    }
+
+    public static DomainException notFound(String message) {
+        return new DomainException(Type.NOT_FOUND, message);
+    }
+
+    public static DomainException validation(String message) {
+        return new DomainException(Type.VALIDATION, message);
+    }
+
+    public static DomainException conflict(String message) {
+        return new DomainException(Type.CONFLICT, message);
+    }
+
+    public static DomainException create(String message) {
+        return new DomainException(Type.OTHER, message);
+    }
+
+    public Type getType() {
+        return type;
+    }
+}
