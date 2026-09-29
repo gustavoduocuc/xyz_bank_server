@@ -1,8 +1,6 @@
 package cl.duoc.xyzbank.bffmobile.auth.e2e;
 
 import cl.duoc.xyzbank.bffmobile.auth.testsupport.MockOidcProvider;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import io.restassured.RestAssured;
 import io.restassured.specification.RequestSpecification;
@@ -11,7 +9,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
@@ -48,9 +45,6 @@ class DeviceRevocationE2ETest {
     @LocalServerPort
     private int port;
 
-    @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
-
     @BeforeEach
     void configureRestAssured() {
         RestAssured.port = port;
@@ -60,7 +54,7 @@ class DeviceRevocationE2ETest {
     }
 
     private String sessionFor(String deviceId) {
-        return tokenAdapter.issue("customer-1", Channel.MOBILE, deviceId);
+        return MockOidcProvider.mobileAccessTokenFor("customer-1", deviceId);
     }
 
     private RequestSpecification asDevice(String deviceId) {
