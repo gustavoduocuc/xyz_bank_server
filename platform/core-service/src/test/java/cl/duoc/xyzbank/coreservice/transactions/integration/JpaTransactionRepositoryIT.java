@@ -1,5 +1,10 @@
 package cl.duoc.xyzbank.coreservice.transactions.integration;
 
+import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
+import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
+import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
+import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
+import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
@@ -19,6 +24,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -42,12 +48,18 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
     @Autowired
     private JpaTransactionRepository transactionRepository;
 
+    @Autowired
+    private CustomerRepository customerRepository;
+
+    @Autowired
+    private AccountRepository accountRepository;
+
     @Test
     @DisplayName("saves a transaction and finds it by id")
     void savesATransactionAndFindsItById() {
         Id id = Id.generate();
         Transaction transaction = Transaction.create(
-                id, Id.generate(), TransactionType.DEBIT,
+                id, aSavedAccountId(), TransactionType.DEBIT,
                 Money.create(new BigDecimal("42.00"), "USD"), LocalDate.of(2026, 1, 5), "Groceries");
 
         transactionRepository.save(transaction);
@@ -60,8 +72,8 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
     @Test
     @DisplayName("finds only the transactions owned by a given account, most-recent-first")
     void findsOnlyTheTransactionsOwnedByAGivenAccountMostRecentFirst() {
-        Id accountId = Id.generate();
-        Id otherAccountId = Id.generate();
+        Id accountId = aSavedAccountId();
+        Id otherAccountId = aSavedAccountId();
         save(accountId, TransactionType.DEBIT, "10.00", LocalDate.of(2026, 1, 1));
         save(accountId, TransactionType.CREDIT, "20.00", LocalDate.of(2026, 1, 3));
         save(otherAccountId, TransactionType.DEBIT, "30.00", LocalDate.of(2026, 1, 2));
@@ -77,7 +89,7 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
     @Test
     @DisplayName("filters by date range and type")
     void filtersByDateRangeAndType() {
-        Id accountId = Id.generate();
+        Id accountId = aSavedAccountId();
         save(accountId, TransactionType.DEBIT, "10.00", LocalDate.of(2026, 1, 1));
         save(accountId, TransactionType.CREDIT, "20.00", LocalDate.of(2026, 1, 15));
         save(accountId, TransactionType.DEBIT, "30.00", LocalDate.of(2026, 1, 31));
@@ -96,7 +108,7 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
     @Test
     @DisplayName("continues across a page boundary with no gap or repeat")
     void continuesAcrossAPageBoundaryWithNoGapOrRepeat() {
-        Id accountId = Id.generate();
+        Id accountId = aSavedAccountId();
         for (int day = 1; day <= 5; day++) {
             save(accountId, TransactionType.DEBIT, "10.00", LocalDate.of(2026, 1, day));
         }
@@ -124,7 +136,7 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
     @Test
     @DisplayName("rejects a malformed cursor")
     void rejectsAMalformedCursor() {
-        Id accountId = Id.generate();
+        Id accountId = aSavedAccountId();
 
         DomainException exception = assertThrows(DomainException.class, () -> transactionRepository.findByAccountId(
                 accountId, DateRange.create(Optional.empty(), Optional.empty()), Optional.empty(),
@@ -137,7 +149,7 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
     @DisplayName("finds a transaction by its idempotency key")
     void findsATransactionByItsIdempotencyKey() {
         Transaction transaction = Transaction.create(
-                Id.generate(), Id.generate(), TransactionType.DEBIT,
+                Id.generate(), aSavedAccountId(), TransactionType.DEBIT,
                 Money.create(new BigDecimal("25.00"), "USD"), LocalDate.of(2026, 1, 1), null,
                 Optional.of("idem-key-1"));
         transactionRepository.save(transaction);
@@ -153,7 +165,7 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
     @Test
     @DisplayName("rejects two transactions with the same idempotency key")
     void rejectsTwoTransactionsWithTheSameIdempotencyKey() {
-        Id accountId = Id.generate();
+        Id accountId = aSavedAccountId();
         Transaction first = Transaction.create(
                 Id.generate(), accountId, TransactionType.DEBIT,
                 Money.create(new BigDecimal("10.00"), "USD"), LocalDate.of(2026, 1, 1), null,
@@ -172,5 +184,19 @@ class JpaTransactionRepositoryIT extends AbstractPostgresIT {
     private void save(Id accountId, TransactionType type, String amount, LocalDate occurredOn) {
         transactionRepository.save(Transaction.create(
                 Id.generate(), accountId, type, Money.create(new BigDecimal(amount), "USD"), occurredOn, null));
+    }
+
+    private Id aSavedAccountId() {
+        Id customerId = Id.generate();
+        customerRepository.save(Customer.create(customerId, "Account Owner", customerId.getValue() + "@xyzbank.cl"));
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create(aUniqueAccountNumber()), customerId,
+                Money.create(new BigDecimal("1000.00"), "USD"));
+        accountRepository.save(account);
+        return account.getId();
+    }
+
+    private static String aUniqueAccountNumber() {
+        return String.format("%010d", ThreadLocalRandom.current().nextLong(10_000_000_000L));
     }
 }
