@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.coreservice.auth.config;
 
 import cl.duoc.xyzbank.coredomain.auth.domain.repositories.DeviceRegistrationRepository;
 import cl.duoc.xyzbank.coredomain.auth.domain.repositories.RefreshTokenRepository;
+import cl.duoc.xyzbank.coredomain.cards.domain.repositories.AtmSessionRepository;
 import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
 import cl.duoc.xyzbank.coredomain.cards.domain.services.PinHasher;
 import cl.duoc.xyzbank.coreservice.auth.application.ports.AtmSessionLookup;
@@ -13,6 +14,7 @@ import cl.duoc.xyzbank.sharedsecurity.callercontext.OpaqueTokenGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Clock;
 import java.util.Optional;
 
 @Configuration
@@ -39,8 +41,9 @@ public class AuthConfig {
     }
 
     @Bean
-    public VerifyPinUseCase verifyPinUseCase(CardRepository cardRepository, PinHasher pinHasher) {
-        return new VerifyPinUseCase(cardRepository, pinHasher);
+    public VerifyPinUseCase verifyPinUseCase(
+            CardRepository cardRepository, PinHasher pinHasher, AtmSessionRepository atmSessionRepository) {
+        return new VerifyPinUseCase(cardRepository, pinHasher, atmSessionRepository, Clock.systemUTC());
     }
 
     @Bean
