@@ -1,14 +1,14 @@
 package cl.duoc.xyzbank.bffweb.interestview.e2e;
 
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
+import cl.duoc.xyzbank.bffweb.auth.testsupport.MockOidcProvider;
+import cl.duoc.xyzbank.bffweb.auth.testsupport.TestSessions;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -31,10 +31,16 @@ class InterestViewControllerE2ETest {
      * 2. Missing year is a validation error
      */
 
+    private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
 
     static {
         CORE_SERVICE.start();
+    }
+
+    @BeforeAll
+    static void startAuthorizationServer() {
+        OIDC_PROVIDER.start();
     }
 
     @DynamicPropertySource
@@ -46,9 +52,6 @@ class InterestViewControllerE2ETest {
     @LocalServerPort
     private int port;
 
-    @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
-
     @BeforeEach
     void configureRestAssured() {
         RestAssured.port = port;
@@ -58,11 +61,12 @@ class InterestViewControllerE2ETest {
     }
 
     private String sessionCookie() {
-        return tokenAdapter.issue("customer-1", Channel.WEB, null);
+        return TestSessions.webSessionFor("customer-1");
     }
 
     @AfterAll
-    static void stopCoreServiceStub() {
+    static void stopServers() {
+        OIDC_PROVIDER.stop();
         CORE_SERVICE.stop();
     }
 

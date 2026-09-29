@@ -1,15 +1,15 @@
 package cl.duoc.xyzbank.bffweb.dashboard.e2e;
 
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
+import cl.duoc.xyzbank.bffweb.auth.testsupport.MockOidcProvider;
+import cl.duoc.xyzbank.bffweb.auth.testsupport.TestSessions;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -42,10 +42,16 @@ class DashboardLatencyE2ETest {
     private static final int ACCOUNT_COUNT = 5;
     private static final Duration PER_CALL_DELAY = Duration.ofMillis(300);
 
+    private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
 
     static {
         CORE_SERVICE.start();
+    }
+
+    @BeforeAll
+    static void startAuthorizationServer() {
+        OIDC_PROVIDER.start();
     }
 
     @DynamicPropertySource
@@ -55,9 +61,6 @@ class DashboardLatencyE2ETest {
 
     @LocalServerPort
     private int port;
-
-    @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
 
     @BeforeEach
     void configureRestAssuredAndStubs() {
@@ -69,7 +72,8 @@ class DashboardLatencyE2ETest {
     }
 
     @AfterAll
-    static void stopCoreServiceStub() {
+    static void stopServers() {
+        OIDC_PROVIDER.stop();
         CORE_SERVICE.stop();
     }
 
@@ -106,7 +110,7 @@ class DashboardLatencyE2ETest {
     @Test
     @DisplayName("responds in well under the sum of every account's transaction-fetch delay")
     void respondsInWellUnderTheSumOfEveryAccountsTransactionFetchDelay() {
-        String sessionToken = tokenAdapter.issue("customer-1", Channel.WEB, null);
+        String sessionToken = TestSessions.webSessionFor("customer-1");
 
         Instant start = Instant.now();
         Response response = given()
@@ -127,7 +131,7 @@ class DashboardLatencyE2ETest {
     @Test
     @DisplayName("returns the same response shape whether calls run concurrently or not")
     void returnsTheSameResponseShapeWhetherCallsRunConcurrentlyOrNot() {
-        String sessionToken = tokenAdapter.issue("customer-1", Channel.WEB, null);
+        String sessionToken = TestSessions.webSessionFor("customer-1");
 
         given()
                 .cookie("session", sessionToken)
