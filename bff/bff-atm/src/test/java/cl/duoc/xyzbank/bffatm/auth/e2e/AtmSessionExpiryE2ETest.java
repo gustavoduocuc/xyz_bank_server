@@ -130,7 +130,7 @@ class AtmSessionExpiryE2ETest {
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("{\"customerId\":\"customer-1\"}")));
+                        .withBody("{\"customerId\":\"customer-1\",\"atmSessionId\":\"atm-session-1\"}")));
 
         return given()
                 .contentType("application/json")
