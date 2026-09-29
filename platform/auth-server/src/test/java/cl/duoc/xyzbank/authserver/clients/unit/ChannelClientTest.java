@@ -17,9 +17,12 @@ class ChannelClientTest {
     /*
      * Cases:
      * 1. A web client allows exactly openid, profile and the web channel's scope set
+     * 2. A mobile client allows exactly openid, profile and the mobile channel's scope set
+     * 3. A web client and a mobile client share no channel scope
      */
 
     private static final String WEB_REDIRECT_URI = "https://localhost:8081/login/oauth2/code/oidc";
+    private static final String MOBILE_REDIRECT_URI = "https://localhost:8082/login/oauth2/code/oidc";
 
     @Test
     @DisplayName("allows a web client exactly openid, profile and the web channel's scopes")
@@ -30,5 +33,30 @@ class ChannelClientTest {
         expected.add("openid");
         expected.add("profile");
         assertEquals(expected, client.allowedScopes());
+    }
+
+    @Test
+    @DisplayName("allows a mobile client exactly openid, profile and the mobile channel's scopes")
+    void allowsAMobileClientExactlyOpenidProfileAndTheMobileChannelScopes() {
+        ChannelClient client =
+                ChannelClient.create("bff-mobile", Channel.MOBILE, ClientType.PUBLIC, MOBILE_REDIRECT_URI);
+
+        Set<String> expected = new HashSet<>(Channel.MOBILE.scopes());
+        expected.add("openid");
+        expected.add("profile");
+        assertEquals(expected, client.allowedScopes());
+    }
+
+    @Test
+    @DisplayName("keeps web and mobile clients from sharing any channel scope")
+    void keepsWebAndMobileClientsFromSharingAnyChannelScope() {
+        ChannelClient web = ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, WEB_REDIRECT_URI);
+        ChannelClient mobile =
+                ChannelClient.create("bff-mobile", Channel.MOBILE, ClientType.PUBLIC, MOBILE_REDIRECT_URI);
+
+        Set<String> shared = new HashSet<>(web.allowedScopes());
+        shared.retainAll(mobile.allowedScopes());
+
+        assertEquals(Set.of("openid", "profile"), shared);
     }
 }
