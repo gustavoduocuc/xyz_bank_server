@@ -2,7 +2,7 @@ package cl.duoc.xyzbank.authserver.tokens.unit;
 
 import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ChannelClient;
 import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ClientType;
-import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.ChannelRegisteredClientRepository;
+import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.ChannelRegisteredClientMapper;
 import cl.duoc.xyzbank.authserver.clients.unit.InMemoryChannelClientRepository;
 import cl.duoc.xyzbank.authserver.customers.domain.entities.CustomerLogin;
 import cl.duoc.xyzbank.authserver.customers.domain.valueobjects.CustomerId;
@@ -45,7 +45,8 @@ class ChannelClaimsTokenCustomizerTest {
 
     private static final String SEED_CUSTOMER = "11111111-1111-1111-1111-111111111111";
 
-    private final ChannelRegisteredClientRepository registeredClients;
+    private final InMemoryChannelClientRepository channelClients;
+    private final ChannelRegisteredClientMapper registeredClients;
     private final ChannelClaimsTokenCustomizer customizer;
 
     ChannelClaimsTokenCustomizerTest() {
@@ -56,7 +57,8 @@ class ChannelClaimsTokenCustomizerTest {
                         "https://localhost:8082/login/oauth2/code/oidc"));
         InMemoryCustomerLoginRepository customerLogins = new InMemoryCustomerLoginRepository(
                 CustomerLogin.create("demo", "{noop}demo-password", CustomerId.create(SEED_CUSTOMER)));
-        registeredClients = new ChannelRegisteredClientRepository(channelClients, Map.of("bff-web", "{noop}secret"));
+        this.channelClients = channelClients;
+        registeredClients = new ChannelRegisteredClientMapper(Map.of("bff-web", "{noop}secret"));
         customizer = new ChannelClaimsTokenCustomizer(new IssueTokenClaimsUseCase(
                 new ChannelClientLookupAdapter(channelClients), new CustomerLoginLookupAdapter(customerLogins)));
     }
@@ -104,7 +106,8 @@ class ChannelClaimsTokenCustomizerTest {
     }
 
     private JwtClaimsSet customize(String clientId, String tokenType, JwtClaimsSet.Builder claims) {
-        RegisteredClient registeredClient = registeredClients.findByClientId(clientId);
+        RegisteredClient registeredClient =
+                registeredClients.toRegisteredClient(channelClients.findByClientId(clientId).orElseThrow());
         JwtEncodingContext context = JwtEncodingContext.with(JwsHeader.with(SignatureAlgorithm.RS256), claims)
                 .registeredClient(registeredClient)
                 .principal(UsernamePasswordAuthenticationToken.authenticated("demo", null, List.of()))
