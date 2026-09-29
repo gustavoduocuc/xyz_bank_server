@@ -24,6 +24,7 @@ class AuthorizationPersistenceE2ETest extends AbstractAuthServerIT {
     /*
      * Cases:
      * 1. A code issued before a restart is exchanged successfully after it
+     * 2. A code exchanged before a restart is still rejected as used after it
      */
 
     @Test
@@ -43,6 +44,27 @@ class AuthorizationPersistenceE2ETest extends AbstractAuthServerIT {
 
         assertEquals(200, exchange.statusCode(), exchange.asString());
         assertNotNull(exchange.jsonPath().getString("id_token"));
+    }
+
+    @Test
+    @DisplayName("keeps rejecting after a restart a code already exchanged before it")
+    void keepsRejectingAfterARestartACodeAlreadyExchangedBeforeIt() {
+        String verifier = AuthorizationCodeFlow.newCodeVerifier();
+        String code;
+        try (ConfigurableApplicationContext firstRun = start()) {
+            AuthorizationCodeFlow flow = new AuthorizationCodeFlow(portOf(firstRun));
+            code = flow.authorizationCodeFor(WEB_CLIENT_ID, WEB_REDIRECT_URI, WEB_SCOPES, verifier);
+            assertEquals(200, flow.exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET).statusCode());
+        }
+
+        Response retry;
+        try (ConfigurableApplicationContext secondRun = start()) {
+            retry = new AuthorizationCodeFlow(portOf(secondRun)).exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET);
+        }
+
+        assertEquals(400, retry.statusCode(), retry.asString());
+        assertEquals("invalid_grant", retry.jsonPath().getString("error"));
+        assertNull(retry.jsonPath().getString("access_token"));
     }
 
     private static ConfigurableApplicationContext start() {
