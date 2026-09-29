@@ -26,9 +26,12 @@
             <artifactId>core-domain</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- NimbusJwtDecoder and the JWT validators only: core-service keeps EnforcementFilter as
+             its single enforcement point, so Spring Security's web filter chain (which the
+             resource-server starter would auto-configure) is deliberately not on the classpath -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
         </dependency>
         <dependency>
             <groupId>com.xyzbank</groupId>
