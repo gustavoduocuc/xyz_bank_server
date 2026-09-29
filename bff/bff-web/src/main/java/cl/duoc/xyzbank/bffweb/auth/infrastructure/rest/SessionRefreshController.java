@@ -1,40 +1,32 @@
 package cl.duoc.xyzbank.bffweb.auth.infrastructure.rest;
 
-import cl.duoc.xyzbank.bffweb.auth.infrastructure.rest.dto.RefreshTokenRequest;
-import cl.duoc.xyzbank.bffweb.auth.infrastructure.rest.dto.RefreshTokenResponse;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
+import cl.duoc.xyzbank.bffweb.auth.infrastructure.adapters.AuthServerTokenClient;
+import cl.duoc.xyzbank.bffweb.auth.infrastructure.adapters.IssuedTokens;
+import cl.duoc.xyzbank.bffweb.auth.infrastructure.adapters.RefreshTokenRejectedException;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
-import java.time.Instant;
 
 /**
- * Rotates the customer's session: exchanges the refresh_token cookie for a new one via
- * core-service and mints a fresh session JWT (bff-web-auth spec, "the refresh token rotates
- * on every use and detects reuse"). Reachable without a valid session JWT -- that is the
- * point of a refresh endpoint -- but does require the refresh_token cookie.
+ * Rotates the customer's session by exchanging the refresh_token cookie at the authorization
+ * server (bff-web-auth spec: the refresh token rotates on every use and detects reuse). A
+ * refused grant — including reuse of a rotated-out token — clears the cookies, because the
+ * authorization server has revoked the whole login. Reachable without a valid session cookie.
  */
 @RestController
 public class SessionRefreshController {
 
-    private static final Duration SESSION_COOKIE_TTL = Duration.ofMinutes(15);
+    private static final Duration REFRESH_TOKEN_COOKIE_TTL = Duration.ofDays(30);
 
-    private final JwtCallerContextAdapter tokenAdapter;
-    private final RestClient coreServiceClient;
+    private final AuthServerTokenClient tokenClient;
     private final SessionCookieWriter cookieWriter;
 
-    public SessionRefreshController(
-            JwtCallerContextAdapter tokenAdapter, RestClient coreServiceClient, SessionCookieWriter cookieWriter) {
-        this.tokenAdapter = tokenAdapter;
-        this.coreServiceClient = coreServiceClient;
+    public SessionRefreshController(AuthServerTokenClient tokenClient, SessionCookieWriter cookieWriter) {
+        this.tokenClient = tokenClient;
         this.cookieWriter = cookieWriter;
     }
 
@@ -46,28 +38,19 @@ public class SessionRefreshController {
             cookieWriter.clearSessionCookies(response);
             return ResponseEntity.status(401).build();
         }
-
-        RefreshTokenResponse refreshTokenResponse;
+        IssuedTokens tokens;
         try {
-            refreshTokenResponse = coreServiceClient
-                    .post()
-                    .uri("/internal/auth/web/refresh-tokens")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(new RefreshTokenRequest(null, refreshToken))
-                    .retrieve()
-                    .body(RefreshTokenResponse.class);
-        } catch (RestClientResponseException exception) {
+            tokens = tokenClient.refresh(refreshToken);
+        } catch (RefreshTokenRejectedException exception) {
             cookieWriter.clearSessionCookies(response);
             return ResponseEntity.status(401).build();
         }
-
-        String sessionJwt = tokenAdapter.issue(refreshTokenResponse.customerId(), Channel.WEB, null);
         cookieWriter.writeSessionCookies(
                 response,
-                sessionJwt,
-                SESSION_COOKIE_TTL,
-                refreshTokenResponse.refreshToken(),
-                Duration.between(Instant.now(), refreshTokenResponse.expiry()));
+                tokens.accessToken(),
+                tokens.accessTokenLifetime(),
+                tokens.refreshToken(),
+                REFRESH_TOKEN_COOKIE_TTL);
         return ResponseEntity.noContent().build();
     }
 }
