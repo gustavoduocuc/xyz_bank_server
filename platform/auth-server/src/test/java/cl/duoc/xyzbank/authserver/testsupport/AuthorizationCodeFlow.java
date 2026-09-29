@@ -184,6 +184,40 @@ public final class AuthorizationCodeFlow {
                 .post("/oauth2/token");
     }
 
+    public Response refreshAsWebClient(String refreshToken) {
+        return request().accept(ContentType.JSON).contentType(ContentType.URLENC)
+                .auth().preemptive().basic(WEB_CLIENT_ID, WEB_CLIENT_SECRET)
+                .formParam("grant_type", "refresh_token")
+                .formParam("refresh_token", refreshToken)
+                .post("/oauth2/token");
+    }
+
+    public Response refreshAsMobileClient(String refreshToken, String deviceId) {
+        return request().accept(ContentType.JSON).contentType(ContentType.URLENC)
+                .auth().preemptive().basic(MOBILE_CLIENT_ID, MOBILE_CLIENT_SECRET)
+                .formParam("grant_type", "refresh_token")
+                .formParam("refresh_token", refreshToken)
+                .formParam("device_id", deviceId)
+                .post("/oauth2/token");
+    }
+
+    /**
+     * A complete web login for the demo customer, returning the token response.
+     */
+    public Response loggedInWebClient() {
+        String verifier = newCodeVerifier();
+        return exchangeAsWebClient(authorizationCodeFor(WEB_CLIENT_ID, WEB_REDIRECT_URI, WEB_SCOPES, verifier),
+                verifier, WEB_CLIENT_SECRET);
+    }
+
+    /**
+     * A complete mobile login for the demo customer on the given device, returning the token response.
+     */
+    public Response loggedInMobileClient(String deviceId) {
+        String verifier = newCodeVerifier();
+        return exchangeAsMobileClient(mobileAuthorizationCodeFor(deviceId, verifier), verifier);
+    }
+
     public static String queryParam(String url, String name) {
         if (url == null) {
             return null;
