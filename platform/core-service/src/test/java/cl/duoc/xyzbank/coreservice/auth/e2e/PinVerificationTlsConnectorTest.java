@@ -1,6 +1,6 @@
 package cl.duoc.xyzbank.coreservice.auth.e2e;
 
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,7 +19,7 @@ import static org.hamcrest.Matchers.equalTo;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("core-service's dual HTTP/TLS connectors")
-class PinVerificationTlsConnectorTest extends AbstractPostgresIT {
+class PinVerificationTlsConnectorTest extends AbstractCoreServiceIT {
 
     /*
      * Cases:

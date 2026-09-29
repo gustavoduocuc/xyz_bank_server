@@ -6,10 +6,13 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
+import cl.duoc.xyzbank.coredomain.cards.domain.entities.AtmSession;
+import cl.duoc.xyzbank.coredomain.cards.domain.entities.Card;
+import cl.duoc.xyzbank.coredomain.cards.domain.repositories.AtmSessionRepository;
+import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
+import cl.duoc.xyzbank.testsupport.TestAccessTokens;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
@@ -21,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -33,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The Withdrawal controller")
-class WithdrawalControllerE2ETest extends AbstractPostgresIT {
+class WithdrawalControllerE2ETest extends AbstractCoreServiceIT {
 
     /*
      * Cases:
@@ -60,21 +64,31 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
     private CustomerRepository customerRepository;
 
     @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
+    private CardRepository cardRepository;
+
+    @Autowired
+    private AtmSessionRepository atmSessionRepository;
 
     private Id ownerId;
+    private String ownersAtmSession;
 
     @BeforeEach
     void configureRestAssured() {
         RestAssured.port = port;
         ownerId = Id.generate();
         customerRepository.save(Customer.create(ownerId, "Jane Doe", "jane.doe+" + ownerId.getValue() + "@xyzbank.cl"));
+        // What a verified PIN leaves behind: a card of the owner and an active ATM session for it
+        Id cardId = Id.generate();
+        cardRepository.save(Card.create(cardId, ownerId, "{noop}pin", 0, false, 0L));
+        AtmSession session = AtmSession.open(ownerId, cardId, Instant.now());
+        atmSessionRepository.save(session);
+        ownersAtmSession = session.getId().getValue();
     }
 
     private RequestSpecification asOwner() {
         return given()
-                .header("X-Service-Credential", "dev-service-credential-atm")
-                .header("Authorization", "Bearer " + tokenAdapter.issue(ownerId.getValue(), Channel.ATM, "terminal-1"));
+                .header("Authorization", "Bearer " + TestAccessTokens.atm())
+                .header("X-Atm-Session", ownersAtmSession);
     }
 
     @Test
