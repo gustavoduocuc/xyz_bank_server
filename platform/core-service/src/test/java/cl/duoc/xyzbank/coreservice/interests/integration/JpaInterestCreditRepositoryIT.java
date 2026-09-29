@@ -11,7 +11,7 @@ import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coredomain.transactions.domain.entities.Transaction;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionType;
 import cl.duoc.xyzbank.coreservice.interests.infrastructure.persistence.JpaInterestCreditRepository;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SpringBootTest
 @TestPropertySource(properties = "interests.kafka.enabled=true")
 @DisplayName("The JPA interest credit repository with Kafka enabled")
-class JpaInterestCreditRepositoryIT extends AbstractPostgresIT {
+class JpaInterestCreditRepositoryIT extends AbstractCoreServiceIT {
 
     /*
      * Cases:
