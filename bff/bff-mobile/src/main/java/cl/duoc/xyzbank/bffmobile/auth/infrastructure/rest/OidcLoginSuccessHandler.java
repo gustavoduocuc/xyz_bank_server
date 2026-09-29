@@ -2,49 +2,38 @@ package cl.duoc.xyzbank.bffmobile.auth.infrastructure.rest;
 
 import cl.duoc.xyzbank.bffmobile.auth.config.DeviceCapturingAuthorizationRequestResolver;
 import cl.duoc.xyzbank.bffmobile.auth.infrastructure.rest.dto.MobileSessionResponse;
-import cl.duoc.xyzbank.bffmobile.auth.infrastructure.rest.dto.RefreshTokenRequest;
-import cl.duoc.xyzbank.bffmobile.auth.infrastructure.rest.dto.RefreshTokenResponse;
-import cl.duoc.xyzbank.bffmobile.shared.infrastructure.adapters.CoreServiceCallException;
-import cl.duoc.xyzbank.bffmobile.shared.infrastructure.adapters.CoreServiceCalls;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 
 /**
- * On a successful OIDC login, mints bff-mobile's own device-bound JWT for the mobile channel
- * and registers the device with core-service, obtaining the first refresh token -- both
- * handed directly to the native client in the response body, never a cookie (design.md
- * Decision 4). The device identifier travels via DeviceCapturingAuthorizationRequestResolver,
- * captured from the login-initiation request before the OIDC round trip began.
- *
- * <p>This handler runs inside the Spring Security filter chain rather than under
- * DispatcherServlet, so a failed core-service call must be turned into a response here --
- * BffExceptionHandler's {@code @RestControllerAdvice} never sees exceptions thrown from this
- * class.
+ * On a successful OIDC login, returns the tokens the authorization server just issued for this
+ * device: the access token is the session token and its refresh token travels with it. bff-mobile
+ * mints nothing and calls no other service (bff-mobile-auth spec). The device identifier was
+ * sent as {@code device_id} on the authorization request and is echoed in the access token.
  */
 @Component
 public class OidcLoginSuccessHandler implements AuthenticationSuccessHandler {
 
-    private final JwtCallerContextAdapter tokenAdapter;
-    private final RestClient coreServiceClient;
+    private static final Duration REFRESH_TOKEN_LIFETIME = Duration.ofDays(180);
+
+    private final OAuth2AuthorizedClientRepository authorizedClients;
     private final ObjectMapper objectMapper;
 
     public OidcLoginSuccessHandler(
-            JwtCallerContextAdapter tokenAdapter, RestClient coreServiceClient, ObjectMapper objectMapper) {
-        this.tokenAdapter = tokenAdapter;
-        this.coreServiceClient = coreServiceClient;
+            OAuth2AuthorizedClientRepository authorizedClients, ObjectMapper objectMapper) {
+        this.authorizedClients = authorizedClients;
         this.objectMapper = objectMapper;
     }
 
@@ -52,46 +41,31 @@ public class OidcLoginSuccessHandler implements AuthenticationSuccessHandler {
     public void onAuthenticationSuccess(
             HttpServletRequest request, HttpServletResponse response, Authentication authentication)
             throws IOException {
-        Object deviceIdAttribute =
-                request.getSession().getAttribute(DeviceCapturingAuthorizationRequestResolver.DEVICE_ID_SESSION_ATTRIBUTE);
-        if (deviceIdAttribute == null) {
+        if (request.getSession().getAttribute(DeviceCapturingAuthorizationRequestResolver.DEVICE_ID_SESSION_ATTRIBUTE)
+                == null) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             return;
         }
-        String deviceId = deviceIdAttribute.toString();
-
-        OidcUser oidcUser = (OidcUser) authentication.getPrincipal();
-        String customerId = oidcUser.getSubject();
-
-        RefreshTokenResponse refreshTokenResponse;
-        try {
-            refreshTokenResponse = CoreServiceCalls.fetch(() -> coreServiceClient
-                    .post()
-                    .uri("/internal/auth/mobile/devices/{deviceId}/refresh-tokens", deviceId)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(new RefreshTokenRequest(customerId, null))
-                    .retrieve()
-                    .body(RefreshTokenResponse.class));
-        } catch (CoreServiceCallException exception) {
-            writeError(response, exception);
+        OAuth2AuthorizedClient client = authorizedClient(authentication, request);
+        if (client == null || client.getRefreshToken() == null) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return;
         }
-
-        String sessionJwt = tokenAdapter.issue(customerId, Channel.MOBILE, deviceId);
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         objectMapper.writeValue(
                 response.getWriter(),
                 new MobileSessionResponse(
-                        sessionJwt, refreshTokenResponse.refreshToken(), refreshTokenResponse.expiry()));
+                        client.getAccessToken().getTokenValue(),
+                        client.getRefreshToken().getTokenValue(),
+                        Instant.now().plus(REFRESH_TOKEN_LIFETIME)));
     }
 
-    private void writeError(HttpServletResponse response, CoreServiceCallException exception) throws IOException {
-        response.setStatus(exception.getStatus());
-        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        objectMapper.writeValue(
-                response.getWriter(),
-                ProblemDetail.forStatusAndDetail(
-                        HttpStatusCode.valueOf(exception.getStatus()), exception.getMessage()));
+    private OAuth2AuthorizedClient authorizedClient(Authentication authentication, HttpServletRequest request) {
+        if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
+            return null;
+        }
+        return authorizedClients.loadAuthorizedClient(
+                oauthToken.getAuthorizedClientRegistrationId(), authentication, request);
     }
 }

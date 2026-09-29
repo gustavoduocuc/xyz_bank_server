@@ -30,13 +30,26 @@ public class DeviceCapturingAuthorizationRequestResolver implements OAuth2Author
     @Override
     public OAuth2AuthorizationRequest resolve(HttpServletRequest request) {
         captureDeviceId(request);
-        return delegate.resolve(request);
+        return withDeviceId(delegate.resolve(request), request);
     }
 
     @Override
     public OAuth2AuthorizationRequest resolve(HttpServletRequest request, String clientRegistrationId) {
         captureDeviceId(request);
-        return delegate.resolve(request, clientRegistrationId);
+        return withDeviceId(delegate.resolve(request, clientRegistrationId), request);
+    }
+
+    private OAuth2AuthorizationRequest withDeviceId(OAuth2AuthorizationRequest authorization, HttpServletRequest request) {
+        if (authorization == null) {
+            return null;
+        }
+        String deviceId = request.getParameter(DEVICE_ID_PARAMETER);
+        if (deviceId == null || deviceId.isBlank()) {
+            return authorization;
+        }
+        return OAuth2AuthorizationRequest.from(authorization)
+                .additionalParameters(parameters -> parameters.put("device_id", deviceId))
+                .build();
     }
 
     private void captureDeviceId(HttpServletRequest request) {
