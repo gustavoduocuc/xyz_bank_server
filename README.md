@@ -2,9 +2,9 @@
 
 Plataforma BFF de XYZ Bank: tres backends por canal (`bff-web`, `bff-mobile`, `bff-atm`) frente a un `core-service` interno y un `interests-service` extraído (con `config-server` y `eureka-server`), más un job de migración CSV hacia MySQL.
 
-**Autenticación y HTTPS están implementadas con configuración de desarrollo.** Cada canal se autentica con una credencial real — cookie de sesión (web), JWT de dispositivo (mobile), o certificado mTLS del terminal más un PIN de tarjeta (ATM) — pero todo el material de confianza es de dev/test: un proveedor OIDC simulado (mock, ver `platform/*/src/test/.../MockOidcProvider`), un secreto de firma de sesión fijo, credenciales de servicio por BFF fijas, y una CA de desarrollo autofirmada (`scripts/generate-dev-tls-certs.sh`). Antes de un despliegue real hace falta: un IdP externo real, una CA gestionada que emita certificados reales, y credenciales de servicio rotadas por BFF.
+**Autenticación y HTTPS están implementadas con configuración de desarrollo.** Cada canal se autentica con una credencial real — cookie de sesión (web), JWT de dispositivo (mobile), o certificado mTLS del terminal más un PIN de tarjeta (ATM) — pero todo el material de confianza es de dev/test: un usuario demo con contraseña fija, un secreto de cliente fijo para `bff-web`, una clave de firma de tokens commiteada (`dev/certs/auth-server/signing.p12`), un secreto de firma de sesión fijo, credenciales de servicio por BFF fijas, y una CA de desarrollo autofirmada (`scripts/generate-dev-tls-certs.sh`). Antes de un despliegue real hace falta: usuarios reales en el servidor de autorización, secretos y claves de firma provistos fuera del repo, una CA gestionada que emita certificados reales, y credenciales de servicio rotadas por BFF.
 
-El login de `bff-web`/`bff-mobile` pasa por ese proveedor OIDC simulado, que solo existe como fixture de test (WireMock, arrancado por los propios tests) — no corre como servicio dentro de `docker compose up`. Por eso los ejemplos de `curl` de este README no incluyen el login completo de web/mobile: se pueden ejercitar levantando ese fixture vía los tests (`mvn test` en `bff-web`/`bff-mobile`), o conectando un proveedor OIDC real. El flujo de ATM (verificación de PIN) no depende de ningún proveedor externo y sí es 100% ejecutable contra el stack de `docker compose`, como se muestra más abajo.
+El login de `bff-web`/`bff-mobile` pasa por `auth-server` (Spring Authorization Server, `platform/auth-server`), que corre dentro de `docker compose up` en `https://localhost:9000`. Los tres flujos (web, mobile y ATM) son ejecutables de punta a punta contra el stack, como se muestra más abajo. Los tests de `bff-web`/`bff-mobile` siguen usando su proveedor OIDC simulado (`MockOidcProvider`, WireMock), sin depender de `auth-server`.
 
 ## Prerrequisitos
 
@@ -31,6 +31,7 @@ flowchart LR
   end
 
   subgraph platform [Platform]
+    AuthServer[auth-server :9000 OAuth2/OIDC]
     ConfigServer[config-server :8888]
     EurekaServer[eureka-server :8761]
     InterestsService[interests-service :8084]
@@ -45,6 +46,10 @@ flowchart LR
 
   WebClient -- HTTPS --> BffWeb
   MobileClient -- HTTPS --> BffMobile
+  WebClient -- "HTTPS login (localhost:9000)" --> AuthServer
+  MobileClient -- "HTTPS login (localhost:9000)" --> AuthServer
+  BffWeb -- "HTTPS token + JWKS (auth-server:9000)" --> AuthServer
+  BffMobile -- "HTTPS token + JWKS (auth-server:9000)" --> AuthServer
   AtmClient -- HTTPS + mTLS --> BffAtm
   BffWeb -- HTTP --> InterestsService
   BffWeb -- HTTP --> CoreService
@@ -91,8 +96,22 @@ Eso levanta:
 | bff-web | 8081 | Dashboard, historial e intereses |
 | bff-mobile | 8082 | Resumen aplanado de cuenta |
 | bff-atm | 8083 | Saldo y retiro |
+| auth-server | 9000 | Servidor OAuth 2.0 / OIDC (login web y mobile), solo HTTPS |
 
-El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`.
+El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`/`bff-mobile` esperan a que `auth-server` esté sano (`bff-atm` no depende de él).
+
+### Servidor de autorización (`auth-server`)
+
+`auth-server` emite los tokens del login web y mobile. Dos clientes, uno por canal, ambos `authorization_code` + PKCE obligatorio: `bff-web` (confidencial, con secreto) y `bff-mobile` (público, sin secreto). Cada cliente solo puede pedir `openid`, `profile` y los scopes de su canal (`Channel.java`); si pide un scope de otro canal, la solicitud entera se rechaza con `invalid_scope`. Los tokens (ID y access) llevan `sub` = id del cliente del banco y el claim `channel` (`WEB` | `MOBILE`), firmados RS256 con la clave de `dev/certs/auth-server/signing.p12`; la clave pública se publica en `https://localhost:9000/oauth2/jwks`. Si falta el keystore de firma, `auth-server` no arranca: nunca genera una clave en memoria, así que reiniciarlo no invalida los tokens emitidos.
+
+El issuer es siempre `https://localhost:9000`. El navegador llega a `auth-server` por `localhost`, pero los contenedores de los BFFs lo alcanzan por la red de Docker como `auth-server`: por eso cada BFF recibe una `authorization-uri` pública (`https://localhost:9000/oauth2/authorize`) y `token-uri`/`jwk-set-uri` internas (`https://auth-server:9000/...`), y valida el `iss` del ID token contra `OIDC_ISSUER`. Si cambias el puerto publicado, cambia `AUTH_ISSUER` y las variables `OIDC_*` juntas. Detalle en [`docs/architecture.md`](docs/architecture.md).
+
+| Variable | Default en Compose | Uso |
+|---|---|---|
+| `AUTH_DEMO_PASSWORD` | `demo-password` | Contraseña del usuario demo `demo` |
+| `BFF_WEB_CLIENT_SECRET` | `bff-web-dev-secret` | Secreto del cliente `bff-web` (lo comparten `auth-server` y `bff-web`) |
+
+`auth-server` y los certificados/llaves de desarrollo: `./scripts/generate-dev-auth-server-keys.sh` reemite el certificado TLS de `auth-server` (válido para `localhost` y `auth-server`) y su keystore de firma usando la CA existente, sin regenerarla.
 
 Enrutamiento de intereses en `bff-web`:
 
@@ -119,6 +138,7 @@ Tras un arranque limpio, PostgreSQL contiene un cliente y una cuenta fijos (Flyw
 | Cuenta | `22222222-2222-2222-2222-222222222222` |
 | Número de cuenta | `1000000001` |
 | Resumen de intereses | año `2025` |
+| Login (`auth-server`) | usuario `demo`, contraseña `demo-password` (`AUTH_DEMO_PASSWORD`) → cliente `11111111-…` |
 
 ## Verificar la migración (MySQL)
 
@@ -155,7 +175,7 @@ sudo cp dev/certs/ca.crt /usr/local/share/ca-certificates/xyz-bank-dev-ca.crt &&
 
 ## Ejemplos de curl
 
-Sustituye nada: estos IDs coinciden con el seed. El login OIDC de `bff-web`/`bff-mobile` no es ejercitable contra este stack (ver nota arriba); el flujo completo de ATM sí lo es.
+Sustituye nada: estos IDs coinciden con el seed. Los tres flujos (web, mobile y ATM) son ejecutables contra este stack.
 
 **bff-atm — verificar PIN, consultar saldo y retirar**
 
@@ -190,12 +210,16 @@ curl -sS --cacert dev/certs/ca.crt \
 
 La sesión expira a los 120 segundos: repite el paso 1 si el paso 2 o 3 devuelven 422. Tres PINs incorrectos seguidos bloquean la tarjeta demo (423 en adelante, incluso con el PIN correcto); desbloquéala con `./scripts/reset-dev-card-lock.sh` (requiere el stack de `docker compose` arriba).
 
-**bff-web / bff-mobile — una vez autenticado**
+**bff-web — login en el navegador**
 
-El login real requiere un proveedor OIDC (ver la nota al inicio de este README). Una vez completado, `bff-web` guarda la sesión en una cookie httpOnly (`session`) que el navegador reenvía solo; `bff-mobile` devuelve `sessionToken`/`refreshToken` en el cuerpo de la respuesta de login, que el cliente nativo debe reenviar como `Authorization: Bearer` junto con `X-Device-Id`. Con esos ya obtenidos, las llamadas de dominio lucen así:
+1. Confía en la CA de desarrollo en el sistema/navegador (ver [Certificados TLS de desarrollo](#certificados-tls-de-desarrollo)); si no, el navegador bloqueará `https://localhost:9000` y `https://localhost:8081`.
+2. Abre `https://localhost:8081/oauth2/authorization/oidc`. `bff-web` te redirige a `https://localhost:9000/login`.
+3. Inicia sesión con `demo` / `demo-password`. `auth-server` vuelve a `https://localhost:8081/login/oauth2/code/oidc`, que responde `204` (página en blanco) y deja las cookies `session` y `refresh_token` (HttpOnly) y `XSRF-TOKEN`.
+4. Abre `https://localhost:8081/customers/11111111-1111-1111-1111-111111111111/dashboard`: el navegador reenvía la cookie `session` y obtienes el dashboard del cliente demo.
+
+Con la cookie ya obtenida (cópiala desde las DevTools del navegador), las mismas llamadas con `curl`:
 
 ```bash
-# bff-web (cookie de sesión ya presente)
 curl -sS --cacert dev/certs/ca.crt \
   -b "session=$SESSION_COOKIE" \
   https://localhost:8081/customers/11111111-1111-1111-1111-111111111111/dashboard
@@ -203,12 +227,42 @@ curl -sS --cacert dev/certs/ca.crt \
 curl -sS --cacert dev/certs/ca.crt \
   -b "session=$SESSION_COOKIE" \
   "https://localhost:8081/accounts/22222222-2222-2222-2222-222222222222/interest-summary?year=2025"
+```
 
-# bff-mobile (JWT de dispositivo)
+**bff-mobile — login paso a paso**
+
+El cliente nativo abre el login en un navegador embebido y recibe la sesión en el cuerpo JSON del callback (no en una cookie). Se puede hacer de dos formas:
+
+*Con el navegador (confiando en la CA de desarrollo):*
+
+1. Abre `https://localhost:8082/oauth2/authorization/oidc?deviceId=demo-phone-1`. `bff-mobile` recuerda el `deviceId` y te redirige a `https://localhost:9000/login`.
+2. Inicia sesión con `demo` / `demo-password`.
+3. `auth-server` vuelve a `https://localhost:8082/login/oauth2/code/oidc?code=...`; `bff-mobile` canjea el código (PKCE, sin secreto) y el navegador muestra `{"sessionToken": "...", "refreshToken": "...", "refreshTokenExpiry": "..."}`.
+
+*Con `curl`, sin navegador* — [`scripts/dev-mobile-login.sh`](scripts/dev-mobile-login.sh) recorre las mismas redirecciones con un cookie jar (incluido el token CSRF del formulario de login) e imprime ese JSON:
+
+```bash
+./scripts/dev-mobile-login.sh demo-phone-1
+```
+
+4. Usa el `sessionToken` junto con el mismo `deviceId` (el JWT queda ligado a ese dispositivo):
+
+```bash
+DEVICE_ID=demo-phone-1
+DEVICE_TOKEN=$(./scripts/dev-mobile-login.sh "$DEVICE_ID" | jq -r .sessionToken)
+
 curl -sS --cacert dev/certs/ca.crt \
   -H "Authorization: Bearer $DEVICE_TOKEN" \
   -H "X-Device-Id: $DEVICE_ID" \
   https://localhost:8082/accounts/22222222-2222-2222-2222-222222222222/summary
+```
+
+**auth-server — un cliente no puede pedir scopes de otro canal**
+
+```bash
+# bff-web pidiendo un scope mobile -> redirige con error=invalid_scope y sin código
+curl -sS --cacert dev/certs/ca.crt -H "Accept: text/html" -o /dev/null -w '%{redirect_url}\n' \
+  "https://localhost:9000/oauth2/authorize?response_type=code&client_id=bff-web&redirect_uri=https://localhost:8081/login/oauth2/code/oidc&scope=openid%20mobile:accounts:read&state=s&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
 ```
 
 Health y OpenAPI:
@@ -218,6 +272,8 @@ curl -sS http://localhost:8080/actuator/health
 curl -sS http://localhost:8084/actuator/health
 curl -sS http://localhost:8888/actuator/health
 curl -sS http://localhost:8761/actuator/health
+curl -sS --cacert dev/certs/ca.crt https://localhost:9000/actuator/health
+curl -sS --cacert dev/certs/ca.crt https://localhost:9000/.well-known/openid-configuration
 curl -sS --cacert dev/certs/ca.crt https://localhost:8081/v3/api-docs
 ```
 
@@ -238,10 +294,13 @@ Los ITs de PostgreSQL/MySQL usan Testcontainers. Sin Docker se omiten (`disabled
 ## Troubleshooting
 
 - **Puertos 3306 o 5432 ocupados.** Otro MySQL/Postgres local está usando el puerto. Para este stack esos puertos deben estar libres, o para el stack con `docker compose down` (eso no apaga bases de otros proyectos).
-- **Puertos 8084, 8888, 8761 o 9092 ocupados.** Otro proceso está usando el puerto de `interests-service`, `config-server`, `eureka-server` o Kafka. Libéralos o baja el stack con `docker compose down`.
+- **Puertos 8084, 8888, 8761, 9000 o 9092 ocupados.** Otro proceso está usando el puerto de `interests-service`, `config-server`, `eureka-server`, `auth-server` o Kafka. Libéralos o baja el stack con `docker compose down`.
 - **El seed de demo desapareció o el dashboard da 404.** Flyway no reinserta filas de una versión ya aplicada. Reset: `docker compose down -v` y vuelve a `up --build`.
 - **La migración falló y core-service no arranca.** Compose espera `service_completed_successfully`. Revisa `docker compose logs data-migration`.
 - **PostgreSQL cae con el stack ya arriba.** `GET http://localhost:8080/actuator/health` deja de reportar UP (Actuator incluye el datasource). Los BFFs no tienen base propia: su health sigue UP aunque Postgres esté caído.
 - **Testcontainers skipped.** Arranca Docker Desktop y vuelve a `mvn verify`.
 - **Solo quieres experimentar el job CSV.** Sigue usando [`data-migration/docker-compose.yml`](data-migration/docker-compose.yml) (MySQL aislado). El camino soportado de plataforma completa es el Compose de la raíz.
 - **`curl` falla el handshake TLS contra `bff-atm` con un certificado de cliente (`error:...SSL routines:ST_CONNECT:tlsv1 alert protocol version` o similar).** El `curl`/LibreSSL que trae macOS de fábrica tiene problemas negociando TLS con certificados de cliente P12 contra este stack. Instala una build de `curl` enlazada con OpenSSL (p. ej. `brew install curl`) o usa `openssl s_client` para depurar la conexión.
+- **El navegador muestra un error de certificado en `localhost:9000` o `localhost:8081`.** El navegador no confía en la CA de desarrollo. Instálala como se indica en [Certificados TLS de desarrollo](#certificados-tls-de-desarrollo) y reinicia el navegador (en macOS, Chrome usa el llavero del sistema).
+- **El callback de login responde `401` (`authorization_request_not_found`).** La sesión de `bff-web`/`bff-mobile` que guardaba la solicitud de autorización se perdió: se reinició el BFF a mitad del login, o se reutilizó un callback ya procesado. Vuelve a empezar desde `/oauth2/authorization/oidc`. (Las cookies no distinguen puertos: por eso `auth-server` usa su propia cookie `XYZ_AUTH_SESSION` y no pisa el `JSESSIONID` de los BFFs en `localhost`.)
+- **`auth-server` no arranca con `Token signing keystore ...`.** Falta o no se puede leer `dev/certs/auth-server/signing.p12` (o su contraseña/alias). Regenéralo con `./scripts/generate-dev-auth-server-keys.sh`; no hay clave de respaldo en memoria a propósito.
