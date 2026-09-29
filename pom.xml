@@ -19,6 +19,7 @@
         <module>platform/eureka-server</module>
         <module>platform/interests-service</module>
         <module>platform/core-service</module>
+        <module>platform/auth-server</module>
         <module>bff/bff-web</module>
         <module>bff/bff-mobile</module>
         <module>bff/bff-atm</module>

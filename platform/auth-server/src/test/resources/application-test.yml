@@ -1,0 +1,7 @@
+auth:
+  signing:
+    keystore-path: classpath:signing/signing.p12
+    keystore-password: xyzbank-dev
+    key-alias: auth-server-signing
+  demo-customer:
+    password: demo-password
