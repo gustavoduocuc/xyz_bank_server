@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.authserver.clients.domain.valueobjects;
 
+import cl.duoc.xyzbank.authserver.shared.domain.DomainException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 
 import java.util.HashSet;
@@ -12,6 +13,7 @@ import java.util.Set;
 public final class ChannelClient {
 
     private static final Set<String> OIDC_SCOPES = Set.of("openid", "profile");
+    private static final Set<Channel> OAUTH_CHANNELS = Set.of(Channel.WEB, Channel.MOBILE);
 
     private final String clientId;
     private final Channel channel;
@@ -26,6 +28,15 @@ public final class ChannelClient {
     }
 
     public static ChannelClient create(String clientId, Channel channel, ClientType type, String redirectUri) {
+        if (clientId == null || clientId.isBlank()) {
+            throw DomainException.validation("Client id cannot be blank");
+        }
+        if (!OAUTH_CHANNELS.contains(channel)) {
+            throw DomainException.validation("Only the web and mobile channels log in through OAuth, not " + channel);
+        }
+        if (redirectUri == null || !redirectUri.startsWith("https://")) {
+            throw DomainException.validation("Redirect URI must use HTTPS: " + redirectUri);
+        }
         return new ChannelClient(clientId, channel, type, redirectUri);
     }
 
