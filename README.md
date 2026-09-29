@@ -324,6 +324,8 @@ mvn verify
 
 Los ITs de PostgreSQL/MySQL usan Testcontainers. Sin Docker se omiten (`disabledWithoutDocker`) en lugar de fallar.
 
+Baja el stack (`docker compose down`) antes de correr `mvn verify`: los tests de `core-service` levantan su conector de verificación de PIN en el puerto fijo 8453, el mismo que publica el contenedor `core-service`.
+
 ## Troubleshooting
 
 - **Puertos 3306 o 5432 ocupados.** Otro MySQL/Postgres local está usando el puerto. Para este stack esos puertos deben estar libres, o para el stack con `docker compose down` (eso no apaga bases de otros proyectos).
