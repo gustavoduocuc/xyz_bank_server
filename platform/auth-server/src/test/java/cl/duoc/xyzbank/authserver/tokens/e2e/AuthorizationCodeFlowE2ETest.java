@@ -17,8 +17,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 
-import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.MOBILE_CLIENT_ID;
-import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.MOBILE_REDIRECT_URI;
 import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.MOBILE_SCOPES;
 import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.WEB_CLIENT_ID;
 import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.WEB_CLIENT_SECRET;
@@ -36,7 +34,7 @@ class AuthorizationCodeFlowE2ETest extends AbstractAuthServerIT {
      * Cases:
      * 1. The demo customer's web login yields RS256 ID and access tokens issued by the public
      *    issuer, identifying the seed customer on the WEB channel with exactly the web scopes
-     * 2. The demo customer's mobile login (public client, no secret) yields MOBILE tokens with
+     * 2. The demo customer's mobile login (confidential client, on a device) yields MOBILE tokens with
      *    exactly the mobile scopes
      * 3. Retrying an exchange with an already-used code is rejected and issues nothing
      * 4. A code verifier that does not match the challenge is rejected
@@ -87,10 +85,10 @@ class AuthorizationCodeFlowE2ETest extends AbstractAuthServerIT {
     }
 
     @Test
-    @DisplayName("issues mobile tokens with only the mobile scopes to the public mobile client")
-    void issuesMobileTokensWithOnlyTheMobileScopesToThePublicMobileClient() throws Exception {
+    @DisplayName("issues mobile tokens with only the mobile scopes to the mobile client")
+    void issuesMobileTokensWithOnlyTheMobileScopesToTheMobileClient() throws Exception {
         String verifier = AuthorizationCodeFlow.newCodeVerifier();
-        String code = flow.authorizationCodeFor(MOBILE_CLIENT_ID, MOBILE_REDIRECT_URI, MOBILE_SCOPES, verifier);
+        String code = flow.mobileAuthorizationCodeFor("D1", verifier);
 
         Response tokenResponse = flow.exchangeAsMobileClient(code, verifier);
 
@@ -121,7 +119,7 @@ class AuthorizationCodeFlowE2ETest extends AbstractAuthServerIT {
     @DisplayName("rejects a code verifier that does not match the challenge")
     void rejectsACodeVerifierThatDoesNotMatchTheChallenge() {
         String verifier = AuthorizationCodeFlow.newCodeVerifier();
-        String code = flow.authorizationCodeFor(MOBILE_CLIENT_ID, MOBILE_REDIRECT_URI, MOBILE_SCOPES, verifier);
+        String code = flow.mobileAuthorizationCodeFor("D1", verifier);
 
         Response response = flow.exchangeAsMobileClient(code, AuthorizationCodeFlow.newCodeVerifier());
 

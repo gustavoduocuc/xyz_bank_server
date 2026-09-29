@@ -1,6 +1,11 @@
 package cl.duoc.xyzbank.authserver.shared.config;
 
 import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.LoginClientsOnlyAuthorizationRequestProvider;
+import cl.duoc.xyzbank.authserver.customers.domain.repositories.CustomerLoginRepository;
+import cl.duoc.xyzbank.authserver.devices.application.usecases.AssertDeviceActiveUseCase;
+import cl.duoc.xyzbank.authserver.devices.application.usecases.RegisterDeviceForLoginUseCase;
+import cl.duoc.xyzbank.authserver.devices.infrastructure.adapters.DeviceAuthorizationRequestValidator;
+import cl.duoc.xyzbank.authserver.devices.infrastructure.adapters.DeviceRegisteringCodeExchangeProvider;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,10 +13,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeAuthenticationProvider;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationValidator;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
@@ -32,20 +41,47 @@ public class AuthorizationServerSecurityConfig {
     @Bean
     @Order(1)
     public SecurityFilterChain authorizationServerSecurityFilterChain(
-            HttpSecurity http, RegisteredClientRepository registeredClientRepository) throws Exception {
+            HttpSecurity http,
+            RegisteredClientRepository registeredClientRepository,
+            DeviceAuthorizationRequestValidator deviceAuthorizationRequestValidator,
+            OAuth2AuthorizationService authorizationService,
+            CustomerLoginRepository customerLoginRepository,
+            AssertDeviceActiveUseCase assertDeviceActive,
+            RegisterDeviceForLoginUseCase registerDevice) throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServer = OAuth2AuthorizationServerConfigurer.authorizationServer();
         http.securityMatcher(authorizationServer.getEndpointsMatcher())
                 .with(authorizationServer, server -> server
                         .oidc(Customizer.withDefaults())
                         .authorizationEndpoint(endpoint -> endpoint.authenticationProviders(providers ->
-                                providers.replaceAll(provider -> provider instanceof OAuth2AuthorizationCodeRequestAuthenticationProvider
-                                        ? new LoginClientsOnlyAuthorizationRequestProvider(provider, registeredClientRepository)
+                                providers.replaceAll(provider -> authorizationRequestProvider(
+                                        provider, registeredClientRepository, deviceAuthorizationRequestValidator))))
+                        .tokenEndpoint(endpoint -> endpoint.authenticationProviders(providers ->
+                                providers.replaceAll(provider -> provider instanceof OAuth2AuthorizationCodeAuthenticationProvider
+                                        ? new DeviceRegisteringCodeExchangeProvider(provider, authorizationService,
+                                                customerLoginRepository, assertDeviceActive, registerDevice)
                                         : provider))))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
                         new LoginUrlAuthenticationEntryPoint("/login"),
                         new MediaTypeRequestMatcher(MediaType.TEXT_HTML)));
         return http.build();
+    }
+
+    /**
+     * Authorization requests: service clients are refused before any redirect, and mobile
+     * logins must name an active device (validated after the redirect URI and scopes).
+     */
+    private static AuthenticationProvider authorizationRequestProvider(
+            AuthenticationProvider provider,
+            RegisteredClientRepository registeredClientRepository,
+            DeviceAuthorizationRequestValidator deviceAuthorizationRequestValidator) {
+        if (!(provider instanceof OAuth2AuthorizationCodeRequestAuthenticationProvider requestProvider)) {
+            return provider;
+        }
+        requestProvider.setAuthenticationValidator(OAuth2AuthorizationCodeRequestAuthenticationValidator.DEFAULT_REDIRECT_URI_VALIDATOR
+                .andThen(OAuth2AuthorizationCodeRequestAuthenticationValidator.DEFAULT_SCOPE_VALIDATOR)
+                .andThen(deviceAuthorizationRequestValidator));
+        return new LoginClientsOnlyAuthorizationRequestProvider(requestProvider, registeredClientRepository);
     }
 
     @Bean
