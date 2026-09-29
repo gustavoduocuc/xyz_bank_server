@@ -128,7 +128,7 @@ class PinVerificationControllerE2ETest {
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("{\"customerId\":\"customer-1\"}")));
+                        .withBody("{\"customerId\":\"customer-1\",\"atmSessionId\":\"atm-session-1\"}")));
 
         Response response = given()
                 .contentType("application/json")
@@ -144,6 +144,7 @@ class PinVerificationControllerE2ETest {
         assertEquals("customer-1", callerContext.customerId());
         assertEquals(Channel.ATM, callerContext.channel());
         assertEquals("atm-terminal-001", callerContext.terminalId().orElseThrow());
+        assertEquals(java.util.Optional.of("atm-session-1"), tokenAdapter.atmSessionIdOf(sessionToken));
     }
 
     @Test

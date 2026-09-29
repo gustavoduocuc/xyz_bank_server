@@ -207,6 +207,33 @@ class WithdrawalControllerE2ETest {
     }
 
     @Test
+    @DisplayName("sends the pin verification's atm session id on the withdrawal call")
+    void sendsTheAtmSessionIdOnTheWithdrawalCall() {
+        CORE_SERVICE.stubFor(post(urlEqualTo("/internal/accounts/account-1/withdrawals"))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(
+                                "{\"transactionId\":\"tx-1\",\"accountId\":\"account-1\",\"amount\":40.00,\"currency\":\"USD\",\"occurredOn\":\"2026-01-01\",\"newBalance\":210.00}")));
+        String token = tokenAdapter.issue("customer-1", Channel.ATM, TERMINAL_ID, "atm-session-1");
+
+        given()
+                .header("Authorization", "Bearer " + token)
+                .header("Idempotency-Key", "key-1")
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body("{\"amount\":40.00,\"currency\":\"USD\"}")
+                .when()
+                .post("/accounts/{accountId}/withdrawals", "account-1")
+                .then()
+                .statusCode(201)
+                .body("transactionId", equalTo("tx-1"))
+                .body("newBalance", equalTo(210.00f));
+
+        CORE_SERVICE.verify(postRequestedFor(urlEqualTo("/internal/accounts/account-1/withdrawals"))
+                .withHeader("X-Atm-Session", WireMock.equalTo("atm-session-1")));
+    }
+
+    @Test
     @DisplayName("rejects a session bound to a different terminal than the one presenting it")
     void rejectsASessionBoundToADifferentTerminal() {
         given()

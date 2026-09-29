@@ -44,13 +44,14 @@ public class PinVerificationController {
                 .retrieve()
                 .body(CorePinVerificationResponse.class));
 
-        String sessionToken = tokenAdapter.issue(response.customerId(), Channel.ATM, terminalId);
+        String sessionToken = tokenAdapter.issue(
+                response.customerId(), Channel.ATM, terminalId, response.atmSessionId());
         return new AtmSessionResponse(sessionToken);
     }
 
     private record CorePinVerificationRequest(String cardNumber, String pin) {
     }
 
-    private record CorePinVerificationResponse(String customerId) {
+    private record CorePinVerificationResponse(String customerId, String atmSessionId) {
     }
 }
