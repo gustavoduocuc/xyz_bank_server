@@ -30,6 +30,10 @@ spring:
             jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:9999/mock-oidc/jwks}
             user-name-attribute: sub
 
+oidc:
+  # The "iss" every ID token must carry; defaults to the test suite's mock provider
+  expected-issuer: ${OIDC_ISSUER:http://localhost:9999/mock-oidc}
+
 core-service:
   base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
   connect-timeout-ms: 3000
