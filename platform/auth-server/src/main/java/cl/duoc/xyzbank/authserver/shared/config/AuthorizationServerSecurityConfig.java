@@ -5,6 +5,7 @@ import cl.duoc.xyzbank.authserver.customers.domain.repositories.CustomerLoginRep
 import cl.duoc.xyzbank.authserver.devices.application.usecases.AssertDeviceActiveUseCase;
 import cl.duoc.xyzbank.authserver.devices.application.usecases.RegisterDeviceForLoginUseCase;
 import cl.duoc.xyzbank.authserver.devices.infrastructure.adapters.DeviceAuthorizationRequestValidator;
+import cl.duoc.xyzbank.authserver.devices.infrastructure.adapters.DeviceBoundRefreshProvider;
 import cl.duoc.xyzbank.authserver.devices.infrastructure.adapters.DeviceRegisteringCodeExchangeProvider;
 import cl.duoc.xyzbank.authserver.sessions.application.usecases.DetectRefreshTokenReuseUseCase;
 import cl.duoc.xyzbank.authserver.sessions.infrastructure.adapters.RefreshTokenGrantGuard;
@@ -71,8 +72,9 @@ public class AuthorizationServerSecurityConfig {
     }
 
     /**
-     * Token requests: an authorization-code exchange registers the login's device; a refresh is
-     * refused unless its token is a login's current one, and a replayed token revokes its login.
+     * Token requests: an authorization-code exchange registers the login's device; a refresh of
+     * a device-bound login must come from that active device, and is refused unless its token is
+     * a login's current one (a replayed token revokes its login).
      */
     private static AuthenticationProvider tokenProvider(
             AuthenticationProvider provider,
@@ -86,7 +88,8 @@ public class AuthorizationServerSecurityConfig {
                     provider, authorizationService, customerLoginRepository, assertDeviceActive, registerDevice);
         }
         if (provider instanceof OAuth2RefreshTokenAuthenticationProvider) {
-            return new RefreshTokenGrantGuard(provider, detectRefreshTokenReuse);
+            return new DeviceBoundRefreshProvider(
+                    new RefreshTokenGrantGuard(provider, detectRefreshTokenReuse), authorizationService, assertDeviceActive);
         }
         return provider;
     }
