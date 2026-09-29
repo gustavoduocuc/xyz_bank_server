@@ -2,7 +2,7 @@
 
 Plataforma BFF de XYZ Bank: tres backends por canal (`bff-web`, `bff-mobile`, `bff-atm`) frente a un `core-service` interno y un `interests-service` extraído (con `config-server` y `eureka-server`), más un job de migración CSV hacia MySQL.
 
-**Autenticación y HTTPS están implementadas con configuración de desarrollo.** Cada canal se autentica con una credencial real — cookie de sesión (web), JWT de dispositivo (mobile), o certificado mTLS del terminal más un PIN de tarjeta (ATM) — pero todo el material de confianza es de dev/test: un usuario demo con contraseña fija, un secreto de cliente fijo para `bff-web`, una clave de firma de tokens commiteada (`dev/certs/auth-server/signing.p12`), un secreto de firma de sesión fijo, credenciales de servicio por BFF fijas, y una CA de desarrollo autofirmada (`scripts/generate-dev-tls-certs.sh`). Antes de un despliegue real hace falta: usuarios reales en el servidor de autorización, secretos y claves de firma provistos fuera del repo, una CA gestionada que emita certificados reales, y credenciales de servicio rotadas por BFF.
+**Autenticación y HTTPS están implementadas con configuración de desarrollo.** Cada canal se autentica con una credencial real — cookie de sesión (web), JWT de dispositivo (mobile), o certificado mTLS del terminal más un PIN de tarjeta (ATM) — pero todo el material de confianza es de dev/test: un usuario demo con contraseña fija, un secreto de cliente fijo para `bff-web`, un secreto de firma de sesión fijo, credenciales de servicio por BFF fijas, y una CA de desarrollo autofirmada con sus certificados y la clave de firma de tokens de `auth-server`. Estas últimas no están en el repositorio: cada desarrollador las genera en su máquina con `scripts/generate-dev-tls-certs.sh` (ver [Arranque local](#arranque-local)). Antes de un despliegue real hace falta: usuarios reales en el servidor de autorización, secretos y claves de firma provistos fuera del repo, una CA gestionada que emita certificados reales, y credenciales de servicio rotadas por BFF.
 
 El login de `bff-web`/`bff-mobile` pasa por `auth-server` (Spring Authorization Server, `platform/auth-server`), que corre dentro de `docker compose up` en `https://localhost:9000`. Los tres flujos (web, mobile y ATM) son ejecutables de punta a punta contra el stack, como se muestra más abajo. Los tests de `bff-web`/`bff-mobile` siguen usando su proveedor OIDC simulado (`MockOidcProvider`, WireMock), sin depender de `auth-server`.
 
@@ -78,8 +78,15 @@ flowchart LR
 Desde la raíz del repositorio:
 
 ```bash
+# 1. Solo la primera vez en cada máquina: genera la CA de desarrollo, los certificados TLS
+#    y la clave de firma de tokens en dev/certs/ (no versionado, ver más abajo)
+./scripts/generate-dev-tls-certs.sh
+
+# 2. Levanta el stack
 docker compose up --build
 ```
+
+`docker-compose.yml` monta los keystores de `dev/certs/` en los contenedores. Si te saltas el paso 1, los servicios con TLS (`auth-server`, los BFFs y `core-service`) no arrancan; ver [Troubleshooting](#troubleshooting). El paso 1 requiere `keytool`, que viene con el JDK 21 de los prerrequisitos.
 
 Eso levanta:
 
@@ -155,15 +162,29 @@ docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "S
 
 Los tres BFFs sirven HTTPS con certificados de una CA de desarrollo autofirmada; `bff-atm` además exige un certificado de cliente (mTLS) del terminal. `core-service` es plano HTTP salvo su conector de verificación de PIN (puerto 8453), que es TLS-only por diseño — ver `docs/contracts/core-service/openapi.yaml`.
 
+Los tres BFFs y `auth-server` usan una CA de desarrollo autofirmada. **`dev/certs/` no se versiona** (está en `.gitignore`): contiene claves privadas, incluida la de la CA, y cada desarrollador genera las suyas. Así ninguna clave privada queda publicada en el repositorio, y la CA en la que confía tu navegador solo existe en tu máquina.
+
 Generar (o regenerar) la CA y todos los certificados:
 
 ```bash
 ./scripts/generate-dev-tls-certs.sh
 ```
 
-Esto escribe `dev/certs/` (montado por `docker-compose.yml`) y una copia bajo `src/test/resources/tls/` en cada módulo que la necesita. Es dev-only: nunca reutilices esta CA en un entorno real.
+Esto escribe en `dev/certs/`:
 
-Para que `curl` acepte la cadena autofirmada sin desactivar la validación, pásale la CA con `--cacert dev/certs/ca.crt` (todos los ejemplos de abajo lo hacen); alternativamente, `-k` la ignora por completo. Para confiar en la CA a nivel de sistema/navegador (útil para abrir `bff-web` en un navegador):
+| Archivo | Contenido |
+|---|---|
+| `ca.crt` / `ca.p12` | Certificado y clave privada de la CA de desarrollo |
+| `truststore.p12` | Solo el certificado de la CA (lo usan `bff-atm` y, para llamar a `auth-server`, `bff-web`/`bff-mobile`) |
+| `<servicio>/keystore.p12` | Certificado TLS de `bff-web`, `bff-mobile`, `bff-atm`, `core-service` (conector de PIN) y `auth-server` |
+| `atm-terminal/keystore.p12` | Certificado de cliente (mTLS) del terminal ATM |
+| `auth-server/signing.p12` | Clave RSA con la que `auth-server` firma los tokens (RS256) |
+
+Regenerar reemplaza la CA: vuelve a confiar en el nuevo `ca.crt` (abajo) y reinicia el stack (`docker compose up -d --force-recreate`). Los tokens emitidos con la clave de firma anterior dejan de ser válidos. Para regenerar solo el material de `auth-server` sin tocar la CA: `./scripts/generate-dev-auth-server-keys.sh`.
+
+Los tests no dependen de `dev/certs/`: usan fixtures versionados bajo `src/test/resources/{tls,signing}/` de cada módulo, por lo que `mvn verify` funciona en un clon recién hecho. Si alguna vez hay que renovar esos fixtures (por ejemplo, cuando venzan), ejecuta el script con `--update-test-fixtures` y commitea los archivos de `src/test/resources/` que cambien. No lo uses en el día a día: generaría diffs en archivos versionados.
+
+Para que `curl` acepte la cadena autofirmada sin desactivar la validación, pásale la CA con `--cacert dev/certs/ca.crt` (todos los ejemplos de abajo lo hacen); alternativamente, `-k` la ignora por completo. Para confiar en la CA a nivel de sistema/navegador (necesario para el login web en el navegador):
 
 ```bash
 # macOS
@@ -172,6 +193,18 @@ security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-
 # Linux (Debian/Ubuntu)
 sudo cp dev/certs/ca.crt /usr/local/share/ca-certificates/xyz-bank-dev-ca.crt && sudo update-ca-certificates
 ```
+
+Confiar en una CA como raíz le permite firmar certificados para cualquier dominio. Hazlo solo con una CA generada en tu máquina (nunca con una recibida de otra persona o copiada desde el historial de git) y quítala cuando ya no la necesites:
+
+```bash
+# macOS
+security delete-certificate -c "XYZ Bank Dev CA" ~/Library/Keychains/login.keychain-db
+
+# Linux (Debian/Ubuntu)
+sudo rm /usr/local/share/ca-certificates/xyz-bank-dev-ca.crt && sudo update-ca-certificates --fresh
+```
+
+> Versiones anteriores de este repositorio incluían `dev/certs/` con la clave privada de la CA. Si confiaste en esa CA, bórrala del llavero con el comando de arriba y genera la tuya.
 
 ## Ejemplos de curl
 
@@ -301,6 +334,8 @@ Los ITs de PostgreSQL/MySQL usan Testcontainers. Sin Docker se omiten (`disabled
 - **Testcontainers skipped.** Arranca Docker Desktop y vuelve a `mvn verify`.
 - **Solo quieres experimentar el job CSV.** Sigue usando [`data-migration/docker-compose.yml`](data-migration/docker-compose.yml) (MySQL aislado). El camino soportado de plataforma completa es el Compose de la raíz.
 - **`curl` falla el handshake TLS contra `bff-atm` con un certificado de cliente (`error:...SSL routines:ST_CONNECT:tlsv1 alert protocol version` o similar).** El `curl`/LibreSSL que trae macOS de fábrica tiene problemas negociando TLS con certificados de cliente P12 contra este stack. Instala una build de `curl` enlazada con OpenSSL (p. ej. `brew install curl`) o usa `openssl s_client` para depurar la conexión.
+- **`auth-server`, un BFF o `core-service` no arranca con un error al cargar su keystore (p. ej. `Unable to create key store: Could not load store from 'file:/certs/keystore.p12'`).** Faltan los certificados de desarrollo: `dev/certs/` no está en el repositorio. Si `docker compose up` corrió sin ellos, Docker creó carpetas vacías en su lugar (p. ej. `dev/certs/auth-server/keystore.p12/`). Genéralos (el script borra y recrea `dev/certs/`) y recrea los contenedores: `./scripts/generate-dev-tls-certs.sh && docker compose up -d --force-recreate`.
+- **`./scripts/generate-dev-auth-server-keys.sh` falla con `Dev CA not found`.** Ese script reutiliza una CA existente. En una máquina nueva ejecuta `./scripts/generate-dev-tls-certs.sh`, que genera la CA y también el material de `auth-server`.
 - **El navegador muestra un error de certificado en `localhost:9000` o `localhost:8081`.** El navegador no confía en la CA de desarrollo. Instálala como se indica en [Certificados TLS de desarrollo](#certificados-tls-de-desarrollo) y reinicia el navegador (en macOS, Chrome usa el llavero del sistema).
 - **El callback de login responde `401` (`authorization_request_not_found`).** La sesión de `bff-web`/`bff-mobile` que guardaba la solicitud de autorización se perdió: se reinició el BFF a mitad del login, o se reutilizó un callback ya procesado. Vuelve a empezar desde `/oauth2/authorization/oidc`. (Las cookies no distinguen puertos: por eso `auth-server` usa su propia cookie `XYZ_AUTH_SESSION` y no pisa el `JSESSIONID` de los BFFs en `localhost`.)
-- **`auth-server` no arranca con `Token signing keystore ...`.** Falta o no se puede leer `dev/certs/auth-server/signing.p12` (o su contraseña/alias). Regenéralo con `./scripts/generate-dev-auth-server-keys.sh`; no hay clave de respaldo en memoria a propósito.
+- **`auth-server` no arranca con `Token signing keystore ...`.** Falta o no se puede leer `dev/certs/auth-server/signing.p12` (o su contraseña/alias). Regenéralo con `./scripts/generate-dev-auth-server-keys.sh` (o `./scripts/generate-dev-tls-certs.sh` si tampoco tienes la CA); no hay clave de respaldo en memoria a propósito.

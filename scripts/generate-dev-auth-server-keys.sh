@@ -5,10 +5,21 @@
 # - a separate RSA keystore used only to sign OAuth2/OIDC tokens (RS256).
 #
 # Unlike generate-dev-tls-certs.sh, this never regenerates the CA, so browsers that
-# already trust dev/certs/ca.crt and every other committed keystore stay valid.
+# already trust dev/certs/ca.crt and the other services' dev keystores stay valid.
+#
+# Output goes to dev/certs/auth-server/, which is NOT committed. Pass
+# --update-test-fixtures to also refresh auth-server's committed test fixtures.
 #
 # Dev/test use only. Never use this CA or these keys in a real deployment.
 set -euo pipefail
+
+UPDATE_TEST_FIXTURES=false
+for arg in "$@"; do
+  case "${arg}" in
+    --update-test-fixtures) UPDATE_TEST_FIXTURES=true ;;
+    *) echo "Unknown option: ${arg} (supported: --update-test-fixtures)" >&2; exit 1 ;;
+  esac
+done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CERTS_DIR="${ROOT_DIR}/dev/certs"
@@ -67,19 +78,21 @@ echo "== Verifying auth-server's TLS certificate chains to the dev CA =="
 keytool -list -v -keystore "${AUTH_DIR}/keystore.p12" -storepass "${PASS}" -alias "${TLS_ALIAS}" \
   | grep -E "Owner:|Issuer:|Alias name:"
 
-echo "== Copying auth-server key material into its test resources =="
-TEST_RESOURCES="${ROOT_DIR}/platform/auth-server/src/test/resources"
-mkdir -p "${TEST_RESOURCES}/tls" "${TEST_RESOURCES}/signing"
-cp "${AUTH_DIR}/keystore.p12" "${TEST_RESOURCES}/tls/keystore.p12"
-cp "${CERTS_DIR}/truststore.p12" "${TEST_RESOURCES}/tls/truststore.p12"
-cp "${AUTH_DIR}/signing.p12" "${TEST_RESOURCES}/signing/signing.p12"
+if [ "${UPDATE_TEST_FIXTURES}" = "true" ]; then
+  echo "== Copying auth-server key material into its test resources =="
+  TEST_RESOURCES="${ROOT_DIR}/platform/auth-server/src/test/resources"
+  mkdir -p "${TEST_RESOURCES}/tls" "${TEST_RESOURCES}/signing"
+  cp "${AUTH_DIR}/keystore.p12" "${TEST_RESOURCES}/tls/keystore.p12"
+  cp "${CERTS_DIR}/truststore.p12" "${TEST_RESOURCES}/tls/truststore.p12"
+  cp "${AUTH_DIR}/signing.p12" "${TEST_RESOURCES}/signing/signing.p12"
 
-# Test-only fixture: an EC (non-RSA) entry, to prove the server refuses to sign with it
-rm -f "${TEST_RESOURCES}/signing/ec-signing.p12"
-keytool -genkeypair \
-  -alias "${SIGNING_ALIAS}" \
-  -keyalg EC -groupname secp256r1 -validity "${VALIDITY_DAYS}" \
-  -keystore "${TEST_RESOURCES}/signing/ec-signing.p12" -storetype PKCS12 -storepass "${PASS}" -keypass "${PASS}" \
-  -dname "CN=auth-server EC test fixture,OU=dev,O=xyzbank"
+  # Test-only fixture: an EC (non-RSA) entry, to prove the server refuses to sign with it
+  rm -f "${TEST_RESOURCES}/signing/ec-signing.p12"
+  keytool -genkeypair \
+    -alias "${SIGNING_ALIAS}" \
+    -keyalg EC -groupname secp256r1 -validity "${VALIDITY_DAYS}" \
+    -keystore "${TEST_RESOURCES}/signing/ec-signing.p12" -storetype PKCS12 -storepass "${PASS}" -keypass "${PASS}" \
+    -dname "CN=auth-server EC test fixture,OU=dev,O=xyzbank"
+fi
 
 echo "== Done. auth-server key material is under ${AUTH_DIR} (dev/test use only). =="

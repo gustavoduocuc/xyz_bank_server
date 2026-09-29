@@ -12,3 +12,5 @@ target/
 .m7/
 .m8/
 .m9/
+# Dev TLS/JWT key material: generated locally by scripts/generate-dev-tls-certs.sh, never committed
+dev/certs/
