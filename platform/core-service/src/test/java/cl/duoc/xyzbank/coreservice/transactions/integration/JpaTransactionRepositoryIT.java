@@ -14,7 +14,7 @@ import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.DateRange;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionPage;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionType;
 import cl.duoc.xyzbank.coreservice.transactions.infrastructure.persistence.JpaTransactionRepository;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @DisplayName("The JPA transaction repository")
-class JpaTransactionRepositoryIT extends AbstractPostgresIT {
+class JpaTransactionRepositoryIT extends AbstractCoreServiceIT {
 
     /*
      * Cases:

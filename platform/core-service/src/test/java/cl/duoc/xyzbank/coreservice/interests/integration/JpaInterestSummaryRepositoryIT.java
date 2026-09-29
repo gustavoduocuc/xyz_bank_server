@@ -9,7 +9,7 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.interests.domain.entities.AnnualInterestSummary;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.interests.infrastructure.persistence.JpaInterestSummaryRepository;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @DisplayName("The JPA interest summary repository")
-class JpaInterestSummaryRepositoryIT extends AbstractPostgresIT {
+class JpaInterestSummaryRepositoryIT extends AbstractCoreServiceIT {
 
     /*
      * Cases:

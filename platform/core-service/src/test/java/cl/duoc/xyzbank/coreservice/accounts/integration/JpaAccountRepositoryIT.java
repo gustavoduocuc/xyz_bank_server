@@ -8,7 +8,7 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.infrastructure.persistence.JpaAccountRepository;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @DisplayName("The JPA account repository")
-class JpaAccountRepositoryIT extends AbstractPostgresIT {
+class JpaAccountRepositoryIT extends AbstractCoreServiceIT {
 
     /*
      * Cases:

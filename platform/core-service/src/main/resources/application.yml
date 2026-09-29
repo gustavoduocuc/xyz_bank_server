@@ -66,11 +66,6 @@ security:
     keystore-type: PKCS12
   enforcement:
     enabled: true
-  service-credentials:
-    web: ${SERVICE_CREDENTIAL_WEB:dev-service-credential-web}
-    mobile: ${SERVICE_CREDENTIAL_MOBILE:dev-service-credential-mobile}
-    atm: ${SERVICE_CREDENTIAL_ATM:dev-service-credential-atm}
-    interests: ${SERVICE_CREDENTIAL_INTERESTS:dev-service-credential-interests}
 
 # Access tokens are issued by auth-server and verified here with its public keys only
 # (adopt-oauth2-tokens-between-services design.md Decision 4): core-service holds no signing secret.

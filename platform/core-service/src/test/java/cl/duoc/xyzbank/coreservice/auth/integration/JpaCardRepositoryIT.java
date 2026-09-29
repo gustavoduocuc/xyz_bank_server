@@ -7,7 +7,7 @@ import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coredomain.cards.domain.services.PinHasher;
 import cl.duoc.xyzbank.coreservice.auth.infrastructure.persistence.JpaCardRepository;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @DisplayName("The JPA card repository")
-class JpaCardRepositoryIT extends AbstractPostgresIT {
+class JpaCardRepositoryIT extends AbstractCoreServiceIT {
 
     /*
      * Cases:
