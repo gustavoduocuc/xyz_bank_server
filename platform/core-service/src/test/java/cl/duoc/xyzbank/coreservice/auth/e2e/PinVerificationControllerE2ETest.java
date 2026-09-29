@@ -6,7 +6,8 @@ import cl.duoc.xyzbank.coredomain.cards.domain.entities.Card;
 import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.PinHasher;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
+import cl.duoc.xyzbank.testsupport.TestAccessTokens;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -25,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The PIN verification endpoint")
-class PinVerificationControllerE2ETest extends AbstractPostgresIT {
+class PinVerificationControllerE2ETest extends AbstractCoreServiceIT {
 
     /*
      * Cases:
@@ -76,7 +77,7 @@ class PinVerificationControllerE2ETest extends AbstractPostgresIT {
         return given()
                 .relaxedHTTPSValidation()
                 .baseUri("https://localhost:" + tlsPort)
-                .header("X-Service-Credential", "dev-service-credential-atm")
+                .header("Authorization", "Bearer " + TestAccessTokens.atm())
                 .contentType("application/json")
                 .body("{\"cardNumber\":\"" + cardNumber + "\",\"pin\":\"" + pin + "\"}")
                 .when()
