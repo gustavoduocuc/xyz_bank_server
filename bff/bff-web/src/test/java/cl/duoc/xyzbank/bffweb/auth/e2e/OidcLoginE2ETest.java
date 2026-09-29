@@ -3,6 +3,7 @@ package cl.duoc.xyzbank.bffweb.auth.e2e;
 import cl.duoc.xyzbank.bffweb.auth.testsupport.MockOidcProvider;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.nimbusds.jwt.SignedJWT;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.AfterAll;
@@ -24,12 +25,6 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
-import static com.github.tomakehurst.wiremock.client.WireMock.post;
-import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,19 +36,18 @@ class OidcLoginE2ETest {
 
     /*
      * Cases:
-     * 1. A successful OIDC callback sets an HttpOnly/Secure/SameSite session cookie carrying
-     *    the web channel's full scope set, and obtains a refresh token from core-service
-     *    using only the service credential (no user token yet)
+     * 1. A successful OIDC callback sets an HttpOnly/Secure/SameSite session cookie holding the
+     *    access token the authorization server issued (the web channel's full scope set) and a
+     *    refresh_token cookie holding its refresh token, and calls no core-service endpoint
      * 2. A callback where the provider denied authentication (error param) sets no cookie
      *    and never calls core-service
-     * 3. A callback whose token exchange fails sets no cookie and never calls core-service's
-     *    refresh-token endpoint
+     * 3. A callback whose token exchange fails sets no cookie and never calls core-service
      * 4. The authorization redirect asks for PKCE (S256) and exactly openid, profile and the web
      *    channel's scope set -- nothing the authorization server would refuse to a web client
      * 5. A correctly signed ID token from an unexpected issuer fails the login: no cookie, and
      *    core-service is never called
-     * 6. Replaying an already-processed callback sets no new cookies and answers 401, calling
-     *    core-service's refresh-token endpoint only for the first callback
+     * 6. Replaying an already-processed callback sets no new cookies and answers 401, exchanging
+     *    an authorization code only for the first callback
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -89,17 +83,10 @@ class OidcLoginE2ETest {
     }
 
     @Test
-    @DisplayName("sets the session cookie and obtains the first refresh token on a successful callback")
-    void setsTheSessionCookieAndObtainsTheFirstRefreshTokenOnASuccessfulCallback() {
+    @DisplayName("keeps the authorization server's access and refresh tokens as the session on a successful callback")
+    void keepsTheAuthorizationServersTokensAsTheSessionOnASuccessfulCallback() throws Exception {
         String code = "auth-code-1";
         String subject = "customer-42";
-        CORE_SERVICE.stubFor(post(urlPathEqualTo("/internal/auth/web/refresh-tokens"))
-                .withRequestBody(equalToJson(
-                        "{\"customerId\":\"" + subject + "\",\"refreshToken\":null}"))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("{\"refreshToken\":\"opaque-refresh-1\",\"expiry\":\"2099-01-01T00:00:00Z\"}")));
 
         Response authorizationResponse =
                 given().redirects().follow(false).when().get("/oauth2/authorization/oidc");
@@ -131,10 +118,15 @@ class OidcLoginE2ETest {
         assertTrue(sessionCookie.contains("HttpOnly"), "session cookie must be HttpOnly: " + sessionCookie);
         assertTrue(sessionCookie.contains("Secure"), "session cookie must be Secure: " + sessionCookie);
         assertTrue(sessionCookie.contains("SameSite"), "session cookie must carry SameSite: " + sessionCookie);
-        assertTrue(refreshCookie.contains("opaque-refresh-1"));
+        assertTrue(refreshCookie.contains(MockOidcProvider.refreshTokenFor(code)));
+        assertTrue(refreshCookie.contains("HttpOnly") && refreshCookie.contains("Secure")
+                && refreshCookie.contains("SameSite"));
+        String sessionToken = sessionCookie.substring("session=".length(), sessionCookie.indexOf(';'));
+        assertEquals(subject, SignedJWT.parse(sessionToken).getJWTClaimsSet().getSubject());
+        assertEquals(Channel.WEB.scopes(),
+                Set.copyOf(SignedJWT.parse(sessionToken).getJWTClaimsSet().getStringListClaim("scope")));
 
-        CORE_SERVICE.verify(postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens"))
-                .withHeader("X-Service-Credential", equalTo("dev-service-credential-web")));
+        assertTrue(CORE_SERVICE.getAllServeEvents().isEmpty(), "login must not call core-service");
     }
 
     @Test
@@ -155,11 +147,11 @@ class OidcLoginE2ETest {
                 .get("/login/oauth2/code/oidc");
 
         assertNoSessionOrRefreshCookieSet(callbackResponse);
-        CORE_SERVICE.verify(0, postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+        assertTrue(CORE_SERVICE.getAllServeEvents().isEmpty());
     }
 
     @Test
-    @DisplayName("sets no cookie and never calls core-service's refresh-token endpoint when the token exchange fails")
+    @DisplayName("sets no cookie and never calls core-service when the token exchange fails")
     void setsNoCookieWhenTheTokenExchangeFails() {
         String code = "auth-code-2";
         OIDC_PROVIDER.stubFailedTokenExchange(code);
@@ -179,7 +171,7 @@ class OidcLoginE2ETest {
                 .get("/login/oauth2/code/oidc");
 
         assertNoSessionOrRefreshCookieSet(callbackResponse);
-        CORE_SERVICE.verify(0, postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+        assertTrue(CORE_SERVICE.getAllServeEvents().isEmpty());
     }
 
     @Test
@@ -220,18 +212,13 @@ class OidcLoginE2ETest {
 
         assertEquals(401, callbackResponse.statusCode());
         assertNoSessionOrRefreshCookieSet(callbackResponse);
-        CORE_SERVICE.verify(0, postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+        assertTrue(CORE_SERVICE.getAllServeEvents().isEmpty());
     }
 
     @Test
     @DisplayName("sets no new session when an already-processed callback is replayed")
     void setsNoNewSessionWhenAnAlreadyProcessedCallbackIsReplayed() {
         String code = "auth-code-4";
-        CORE_SERVICE.stubFor(post(urlPathEqualTo("/internal/auth/web/refresh-tokens"))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("{\"refreshToken\":\"opaque-refresh-2\",\"expiry\":\"2099-01-01T00:00:00Z\"}")));
         Response authorizationResponse =
                 given().redirects().follow(false).when().get("/oauth2/authorization/oidc");
         String location = authorizationResponse.getHeader("Location");
@@ -251,7 +238,7 @@ class OidcLoginE2ETest {
 
         assertEquals(401, replay.statusCode());
         assertNoSessionOrRefreshCookieSet(replay);
-        CORE_SERVICE.verify(1, postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+        assertEquals(1, OIDC_PROVIDER.tokenRequests().size());
     }
 
     private static void assertNoSessionOrRefreshCookieSet(Response response) {
