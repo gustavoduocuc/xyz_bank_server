@@ -26,8 +26,9 @@ class ChannelClientTest {
      * 5. Rejects a client for the interests channel
      * 6. Rejects a blank client id
      * 7. Rejects a redirect URI that is not HTTPS
-     * 8. Equals another client with the same attributes
-     * 9. Differs from a client with a different redirect URI
+     * 8. Rejects a client without a redirect URI
+     * 9. Equals another client with the same attributes
+     * 10. Differs from a client with a different redirect URI
      */
 
     private static final String WEB_REDIRECT_URI = "https://localhost:8081/login/oauth2/code/oidc";
@@ -36,23 +37,25 @@ class ChannelClientTest {
     @Test
     @DisplayName("allows a web client exactly openid, profile and the web channel's scopes")
     void allowsAWebClientExactlyOpenidProfileAndTheWebChannelScopes() {
-        ChannelClient client = ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, WEB_REDIRECT_URI);
-
         Set<String> expected = new HashSet<>(Channel.WEB.scopes());
         expected.add("openid");
         expected.add("profile");
+
+        ChannelClient client = ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, WEB_REDIRECT_URI);
+
         assertEquals(expected, client.allowedScopes());
     }
 
     @Test
     @DisplayName("allows a mobile client exactly openid, profile and the mobile channel's scopes")
     void allowsAMobileClientExactlyOpenidProfileAndTheMobileChannelScopes() {
-        ChannelClient client =
-                ChannelClient.create("bff-mobile", Channel.MOBILE, ClientType.PUBLIC, MOBILE_REDIRECT_URI);
-
         Set<String> expected = new HashSet<>(Channel.MOBILE.scopes());
         expected.add("openid");
         expected.add("profile");
+
+        ChannelClient client =
+                ChannelClient.create("bff-mobile", Channel.MOBILE, ClientType.PUBLIC, MOBILE_REDIRECT_URI);
+
         assertEquals(expected, client.allowedScopes());
     }
 
@@ -107,6 +110,16 @@ class ChannelClientTest {
                 DomainException.class,
                 () -> ChannelClient.create(
                         "bff-web", Channel.WEB, ClientType.CONFIDENTIAL, "http://localhost:8081/login/oauth2/code/oidc"));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("rejects a client without a redirect URI")
+    void rejectsAClientWithoutARedirectUri() {
+        DomainException exception = assertThrows(
+                DomainException.class,
+                () -> ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, null));
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
     }

@@ -29,6 +29,7 @@ class ChannelRegisteredClientRepositoryTest {
      * 3. Knows no other client
      * 4. Finds a client by its registration id as well as its client id
      * 5. Refuses to register clients at runtime
+     * 6. Refuses to expose a confidential client whose secret is not configured
      */
 
     private static final String WEB_REDIRECT_URI = "https://localhost:8081/login/oauth2/code/oidc";
@@ -90,5 +91,17 @@ class ChannelRegisteredClientRepositoryTest {
         RegisteredClient client = repository.findByClientId("bff-web");
 
         assertThrows(UnsupportedOperationException.class, () -> repository.save(client));
+    }
+
+    @Test
+    @DisplayName("refuses to expose a confidential client whose secret is not configured")
+    void refusesToExposeAConfidentialClientWhoseSecretIsNotConfigured() {
+        ChannelRegisteredClientRepository withoutSecrets =
+                new ChannelRegisteredClientRepository(new InMemoryChannelClientRepository(WEB_CLIENT), Map.of());
+
+        IllegalStateException exception =
+                assertThrows(IllegalStateException.class, () -> withoutSecrets.findByClientId("bff-web"));
+
+        assertTrue(exception.getMessage().contains("bff-web"), exception.getMessage());
     }
 }

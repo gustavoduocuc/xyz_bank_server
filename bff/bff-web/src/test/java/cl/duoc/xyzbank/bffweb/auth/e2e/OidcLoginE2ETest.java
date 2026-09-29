@@ -25,7 +25,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static io.restassured.RestAssured.given;
@@ -91,7 +94,7 @@ class OidcLoginE2ETest {
         String code = "auth-code-1";
         String subject = "customer-42";
         CORE_SERVICE.stubFor(post(urlPathEqualTo("/internal/auth/web/refresh-tokens"))
-                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.equalToJson(
+                .withRequestBody(equalToJson(
                         "{\"customerId\":\"" + subject + "\",\"refreshToken\":null}"))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -130,10 +133,8 @@ class OidcLoginE2ETest {
         assertTrue(sessionCookie.contains("SameSite"), "session cookie must carry SameSite: " + sessionCookie);
         assertTrue(refreshCookie.contains("opaque-refresh-1"));
 
-        CORE_SERVICE.verify(com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
-                        urlPathEqualTo("/internal/auth/web/refresh-tokens"))
-                .withHeader("X-Service-Credential", com.github.tomakehurst.wiremock.client.WireMock.equalTo(
-                        "dev-service-credential-web")));
+        CORE_SERVICE.verify(postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens"))
+                .withHeader("X-Service-Credential", equalTo("dev-service-credential-web")));
     }
 
     @Test
@@ -154,8 +155,7 @@ class OidcLoginE2ETest {
                 .get("/login/oauth2/code/oidc");
 
         assertNoSessionOrRefreshCookieSet(callbackResponse);
-        CORE_SERVICE.verify(0, com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
-                urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+        CORE_SERVICE.verify(0, postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens")));
     }
 
     @Test
@@ -179,20 +179,20 @@ class OidcLoginE2ETest {
                 .get("/login/oauth2/code/oidc");
 
         assertNoSessionOrRefreshCookieSet(callbackResponse);
-        CORE_SERVICE.verify(0, com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
-                urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+        CORE_SERVICE.verify(0, postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens")));
     }
 
     @Test
     @DisplayName("asks the provider for PKCE and exactly the web channel's scopes")
     void asksTheProviderForPkceAndExactlyTheWebChannelScopes() {
-        Response authorizationResponse =
-                given().redirects().follow(false).when().get("/oauth2/authorization/oidc");
-        String location = authorizationResponse.getHeader("Location");
-
         Set<String> expectedScopes = new HashSet<>(Channel.WEB.scopes());
         expectedScopes.add("openid");
         expectedScopes.add("profile");
+
+        Response authorizationResponse =
+                given().redirects().follow(false).when().get("/oauth2/authorization/oidc");
+
+        String location = authorizationResponse.getHeader("Location");
         String scope = URLDecoder.decode(extractQueryParam(location, "scope"), StandardCharsets.UTF_8);
         assertEquals(expectedScopes, Set.of(scope.split(" ")));
         assertEquals("S256", extractQueryParam(location, "code_challenge_method"));
@@ -220,8 +220,7 @@ class OidcLoginE2ETest {
 
         assertEquals(401, callbackResponse.statusCode());
         assertNoSessionOrRefreshCookieSet(callbackResponse);
-        CORE_SERVICE.verify(0, com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
-                urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+        CORE_SERVICE.verify(0, postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens")));
     }
 
     @Test
@@ -252,8 +251,7 @@ class OidcLoginE2ETest {
 
         assertEquals(401, replay.statusCode());
         assertNoSessionOrRefreshCookieSet(replay);
-        CORE_SERVICE.verify(1, com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
-                urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+        CORE_SERVICE.verify(1, postRequestedFor(urlPathEqualTo("/internal/auth/web/refresh-tokens")));
     }
 
     private static void assertNoSessionOrRefreshCookieSet(Response response) {

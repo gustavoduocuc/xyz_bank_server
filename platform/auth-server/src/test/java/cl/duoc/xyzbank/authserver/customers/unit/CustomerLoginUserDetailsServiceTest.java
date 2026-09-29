@@ -5,8 +5,11 @@ import cl.duoc.xyzbank.authserver.customers.domain.valueobjects.CustomerId;
 import cl.duoc.xyzbank.authserver.customers.infrastructure.adapters.CustomerLoginUserDetailsService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -17,7 +20,8 @@ class CustomerLoginUserDetailsServiceTest {
     /*
      * Cases:
      * 1. Resolves a known username with its password hash
-     * 2. Refuses an unknown username
+     * 2. Grants a known username the customer role
+     * 3. Refuses an unknown username
      */
 
     private final CustomerLoginUserDetailsService service = new CustomerLoginUserDetailsService(
@@ -31,6 +35,16 @@ class CustomerLoginUserDetailsServiceTest {
 
         assertEquals("demo", user.getUsername());
         assertEquals("{noop}demo-password", user.getPassword());
+    }
+
+    @Test
+    @DisplayName("grants a known username the customer role")
+    void grantsAKnownUsernameTheCustomerRole() {
+        UserDetails user = service.loadUserByUsername("demo");
+
+        assertEquals(
+                Set.of("ROLE_CUSTOMER"),
+                AuthorityUtils.authorityListToSet(user.getAuthorities()));
     }
 
     @Test
