@@ -5,7 +5,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 
-public abstract class AbstractKafkaPostgresIT extends AbstractPostgresIT {
+public abstract class AbstractKafkaPostgresIT extends AbstractCoreServiceIT {
 
     protected static final KafkaContainer KAFKA = new KafkaContainer(
             DockerImageName.parse("apache/kafka-native:3.8.1"));
