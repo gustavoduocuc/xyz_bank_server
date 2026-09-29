@@ -2,7 +2,7 @@ package cl.duoc.xyzbank.authserver.clients.unit;
 
 import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ChannelClient;
 import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ClientType;
-import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.ChannelRegisteredClientRepository;
+import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.ChannelRegisteredClientMapper;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,17 +19,18 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@DisplayName("The ChannelRegisteredClientRepository")
-class ChannelRegisteredClientRepositoryTest {
+@DisplayName("The ChannelRegisteredClientMapper")
+class ChannelRegisteredClientMapperTest {
 
     /*
      * Cases:
-     * 1. Registers bff-web as a confidential, PKCE-only authorization-code client with its web scopes
-     * 2. Registers bff-mobile as a public, PKCE-only authorization-code client with its mobile scopes
-     * 3. Knows no other client
-     * 4. Finds a client by its registration id as well as its client id
-     * 5. Refuses to register clients at runtime
-     * 6. Refuses to expose a confidential client whose secret is not configured
+     * 1. Maps bff-web to a confidential, PKCE-only authorization-code client with its web scopes
+     * 2. Maps bff-mobile to a public, PKCE-only authorization-code client with its mobile scopes
+     * 3. Uses the client id as the registration id, so it is stable across restarts
+     * 4. Refuses to map a confidential client whose secret is not configured
+     *
+     * (Lookup of stored clients -- unknown client, find by id -- is covered by
+     * ChannelClientSeederIT against the JDBC client store.)
      */
 
     private static final String WEB_REDIRECT_URI = "https://localhost:8081/login/oauth2/code/oidc";
@@ -39,13 +40,13 @@ class ChannelRegisteredClientRepositoryTest {
     private static final ChannelClient MOBILE_CLIENT =
             ChannelClient.create("bff-mobile", Channel.MOBILE, ClientType.PUBLIC, MOBILE_REDIRECT_URI);
 
-    private final ChannelRegisteredClientRepository repository = new ChannelRegisteredClientRepository(
-            new InMemoryChannelClientRepository(WEB_CLIENT, MOBILE_CLIENT), Map.of("bff-web", "{noop}web-secret"));
+    private final ChannelRegisteredClientMapper mapper =
+            new ChannelRegisteredClientMapper(Map.of("bff-web", "{noop}web-secret"));
 
     @Test
-    @DisplayName("registers bff-web as a confidential, PKCE-only authorization-code client with its web scopes")
-    void registersBffWebAsAConfidentialPkceOnlyAuthorizationCodeClient() {
-        RegisteredClient client = repository.findByClientId("bff-web");
+    @DisplayName("maps bff-web to a confidential, PKCE-only authorization-code client with its web scopes")
+    void mapsBffWebToAConfidentialPkceOnlyAuthorizationCodeClient() {
+        RegisteredClient client = mapper.toRegisteredClient(WEB_CLIENT);
 
         assertEquals(Set.of(ClientAuthenticationMethod.CLIENT_SECRET_BASIC), client.getClientAuthenticationMethods());
         assertEquals("{noop}web-secret", client.getClientSecret());
@@ -57,9 +58,9 @@ class ChannelRegisteredClientRepositoryTest {
     }
 
     @Test
-    @DisplayName("registers bff-mobile as a public, PKCE-only authorization-code client with its mobile scopes")
-    void registersBffMobileAsAPublicPkceOnlyAuthorizationCodeClient() {
-        RegisteredClient client = repository.findByClientId("bff-mobile");
+    @DisplayName("maps bff-mobile to a public, PKCE-only authorization-code client with its mobile scopes")
+    void mapsBffMobileToAPublicPkceOnlyAuthorizationCodeClient() {
+        RegisteredClient client = mapper.toRegisteredClient(MOBILE_CLIENT);
 
         assertEquals(Set.of(ClientAuthenticationMethod.NONE), client.getClientAuthenticationMethods());
         assertNull(client.getClientSecret());
@@ -70,37 +71,25 @@ class ChannelRegisteredClientRepositoryTest {
         assertFalse(client.getClientSettings().isRequireAuthorizationConsent());
     }
 
+
+
+
     @Test
-    @DisplayName("knows no client other than the channel clients")
-    void knowsNoClientOtherThanTheChannelClients() {
-        assertNull(repository.findByClientId("bff-atm"));
-        assertNull(repository.findById("bff-atm"));
+    @DisplayName("uses the client id as the registration id")
+    void usesTheClientIdAsTheRegistrationId() {
+        RegisteredClient client = mapper.toRegisteredClient(WEB_CLIENT);
+
+        assertEquals("bff-web", client.getId());
+        assertEquals("bff-web", client.getClientId());
     }
 
     @Test
-    @DisplayName("finds a client by its registration id")
-    void findsAClientByItsRegistrationId() {
-        RegisteredClient byClientId = repository.findByClientId("bff-web");
-
-        assertEquals(byClientId, repository.findById(byClientId.getId()));
-    }
-
-    @Test
-    @DisplayName("refuses to register clients at runtime")
-    void refusesToRegisterClientsAtRuntime() {
-        RegisteredClient client = repository.findByClientId("bff-web");
-
-        assertThrows(UnsupportedOperationException.class, () -> repository.save(client));
-    }
-
-    @Test
-    @DisplayName("refuses to expose a confidential client whose secret is not configured")
-    void refusesToExposeAConfidentialClientWhoseSecretIsNotConfigured() {
-        ChannelRegisteredClientRepository withoutSecrets =
-                new ChannelRegisteredClientRepository(new InMemoryChannelClientRepository(WEB_CLIENT), Map.of());
+    @DisplayName("refuses to map a confidential client whose secret is not configured")
+    void refusesToMapAConfidentialClientWhoseSecretIsNotConfigured() {
+        ChannelRegisteredClientMapper withoutSecrets = new ChannelRegisteredClientMapper(Map.of());
 
         IllegalStateException exception =
-                assertThrows(IllegalStateException.class, () -> withoutSecrets.findByClientId("bff-web"));
+                assertThrows(IllegalStateException.class, () -> withoutSecrets.toRegisteredClient(WEB_CLIENT));
 
         assertTrue(exception.getMessage().contains("bff-web"), exception.getMessage());
     }

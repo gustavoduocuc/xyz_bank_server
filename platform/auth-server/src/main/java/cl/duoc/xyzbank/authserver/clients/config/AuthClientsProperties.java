@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * The deployment-specific parts of the two channel clients. The channel rules (which
  * channels, which scopes, HTTPS redirects) live in ChannelClient; the protocol policy
- * (authorization_code only, PKCE, no consent) in ChannelRegisteredClientRepository.
+ * (authorization_code only, PKCE, no consent) in ChannelRegisteredClientMapper.
  */
 @ConfigurationProperties(prefix = "auth.clients")
 public record AuthClientsProperties(WebClient web, MobileClient mobile) {

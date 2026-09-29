@@ -3,12 +3,13 @@ package cl.duoc.xyzbank.authserver.clients.config;
 import cl.duoc.xyzbank.authserver.clients.domain.repositories.ChannelClientRepository;
 import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ChannelClient;
 import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ClientType;
-import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.ChannelRegisteredClientRepository;
+import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.ChannelRegisteredClientMapper;
 import cl.duoc.xyzbank.authserver.clients.infrastructure.persistence.ConfiguredChannelClientRepository;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.oauth2.server.authorization.client.InMemoryRegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 
 import java.util.List;
@@ -33,7 +34,9 @@ public class ClientsConfig {
             ChannelClientRepository channelClientRepository, AuthClientsProperties properties) {
         String encodedWebSecret =
                 PasswordEncoderFactories.createDelegatingPasswordEncoder().encode(properties.web().clientSecret());
-        return new ChannelRegisteredClientRepository(
-                channelClientRepository, Map.of(properties.web().clientId(), encodedWebSecret));
+        ChannelRegisteredClientMapper mapper =
+                new ChannelRegisteredClientMapper(Map.of(properties.web().clientId(), encodedWebSecret));
+        return new InMemoryRegisteredClientRepository(
+                channelClientRepository.findAll().stream().map(mapper::toRegisteredClient).toList());
     }
 }
