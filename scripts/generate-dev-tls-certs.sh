@@ -121,4 +121,7 @@ copy_module_tls "bff/bff-atm" "bff-atm"
 cp "${CERTS_DIR}/atm-terminal/keystore.p12" "${ROOT_DIR}/bff/bff-atm/src/test/resources/tls/terminal-keystore.p12"
 copy_module_tls "platform/core-service" "core-service"
 
+echo "== Issuing auth-server's TLS certificate and token signing keystore from the new dev CA =="
+"${ROOT_DIR}/scripts/generate-dev-auth-server-keys.sh"
+
 echo "== Done. Dev CA and certificates are under ${CERTS_DIR} (dev/test use only). =="
