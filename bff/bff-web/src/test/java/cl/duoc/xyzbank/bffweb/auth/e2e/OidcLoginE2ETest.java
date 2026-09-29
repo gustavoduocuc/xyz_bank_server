@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.bffweb.auth.e2e;
 
 import cl.duoc.xyzbank.bffweb.auth.testsupport.MockOidcProvider;
+import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
@@ -17,7 +18,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,6 +29,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -41,6 +45,8 @@ class OidcLoginE2ETest {
      *    and never calls core-service
      * 3. A callback whose token exchange fails sets no cookie and never calls core-service's
      *    refresh-token endpoint
+     * 4. The authorization redirect asks for PKCE (S256) and exactly openid, profile and the web
+     *    channel's scope set -- nothing the authorization server would refuse to a web client
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -171,6 +177,21 @@ class OidcLoginE2ETest {
         assertNoSessionOrRefreshCookieSet(callbackResponse);
         CORE_SERVICE.verify(0, com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
                 urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+    }
+
+    @Test
+    @DisplayName("asks the provider for PKCE and exactly the web channel's scopes")
+    void asksTheProviderForPkceAndExactlyTheWebChannelScopes() {
+        Response authorizationResponse =
+                given().redirects().follow(false).when().get("/oauth2/authorization/oidc");
+        String location = authorizationResponse.getHeader("Location");
+
+        Set<String> expectedScopes = new HashSet<>(Channel.WEB.scopes());
+        expectedScopes.add("openid");
+        expectedScopes.add("profile");
+        String scope = URLDecoder.decode(extractQueryParam(location, "scope"), StandardCharsets.UTF_8);
+        assertEquals(expectedScopes, Set.of(scope.split(" ")));
+        assertEquals("S256", extractQueryParam(location, "code_challenge_method"));
     }
 
     private static void assertNoSessionOrRefreshCookieSet(Response response) {

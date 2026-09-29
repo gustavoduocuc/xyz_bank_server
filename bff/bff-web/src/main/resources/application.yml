@@ -20,7 +20,9 @@ spring:
             client-secret: ${OIDC_CLIENT_SECRET:xyz-bank-web-dev-secret}
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-            scope: openid,profile,email
+            # Exactly the web channel's scope set (Channel.WEB): the authorization server refuses
+            # the whole request if it contains any scope not registered for bff-web
+            scope: openid,profile,web:accounts:read,web:customers:read,web:transactions:read,web:interests:read
         provider:
           oidc:
             authorization-uri: ${OIDC_AUTHORIZATION_URI:http://localhost:9999/mock-oidc/authorize}
