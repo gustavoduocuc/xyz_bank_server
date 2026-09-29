@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.authserver.clients.e2e;
 
+import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,7 +9,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.test.context.ActiveProfiles;
 
 import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.DEMO_PASSWORD;
 import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.DEMO_USERNAME;
@@ -24,9 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@ActiveProfiles("test")
 @DisplayName("The channel scope confinement")
-class ScopeConfinementE2ETest {
+class ScopeConfinementE2ETest extends AbstractAuthServerIT {
 
     /*
      * Cases:

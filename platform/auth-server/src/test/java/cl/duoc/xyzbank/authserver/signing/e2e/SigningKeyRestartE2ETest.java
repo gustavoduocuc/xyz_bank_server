@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.authserver.signing.e2e;
 
 import cl.duoc.xyzbank.authserver.AuthServerApplication;
+import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.jwk.JWK;
@@ -21,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("The signing key across restarts")
-class SigningKeyRestartE2ETest {
+class SigningKeyRestartE2ETest extends AbstractAuthServerIT {
 
     /*
      * Cases:
@@ -55,7 +56,7 @@ class SigningKeyRestartE2ETest {
     private static ConfigurableApplicationContext start() {
         return new SpringApplicationBuilder(AuthServerApplication.class)
                 .profiles("test")
-                .run("--server.port=0");
+                .run(datasourceArguments("--server.port=0"));
     }
 
     private static int portOf(ConfigurableApplicationContext context) {

@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.authserver.clients.e2e;
 
+import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
@@ -10,7 +11,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Map;
 import java.util.Set;
@@ -32,9 +32,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@ActiveProfiles("test")
 @DisplayName("The channel client registrations")
-class ClientRegistrationE2ETest {
+class ClientRegistrationE2ETest extends AbstractAuthServerIT {
 
     /*
      * Cases:

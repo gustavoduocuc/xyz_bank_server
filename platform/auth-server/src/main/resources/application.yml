@@ -16,6 +16,14 @@ server:
 spring:
   application:
     name: auth-server
+  # auth-server's own database (auth-postgres in the local stack): OAuth state only, never
+  # core_service's banking data, and never core-service's credentials
+  datasource:
+    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5433/auth_server}
+    username: ${AUTH_DB_USERNAME:auth_server}
+    password: ${AUTH_DB_PASSWORD:auth_server}
+  flyway:
+    enabled: true
 
 auth:
   issuer: ${AUTH_ISSUER:https://localhost:9000}
