@@ -106,13 +106,13 @@ Eso levanta:
 | bff-atm | 8083 | Saldo y retiro |
 | auth-server | 9000 | Servidor OAuth 2.0 / OIDC (login web y mobile), solo HTTPS |
 
-El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`/`bff-mobile` esperan a que `auth-server` esté sano (`bff-atm` no depende de él).
+El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`, `bff-mobile`, `bff-atm` e `interests-service` esperan a que `auth-server` esté sano.
 
 ### Servidor de autorización (`auth-server`)
 
-`auth-server` emite los tokens del login web y mobile. Dos clientes, uno por canal, ambos `authorization_code` + PKCE obligatorio: `bff-web` (confidencial, con secreto) y `bff-mobile` (público, sin secreto). Cada cliente solo puede pedir `openid`, `profile` y los scopes de su canal (`Channel.java`); si pide un scope de otro canal, la solicitud entera se rechaza con `invalid_scope`. Los tokens (ID y access) llevan `sub` = id del cliente del banco y el claim `channel` (`WEB` | `MOBILE`), firmados RS256 con la clave de `dev/certs/auth-server/signing.p12`; la clave pública se publica en `https://localhost:9000/oauth2/jwks`. Si falta el keystore de firma, `auth-server` no arranca: nunca genera una clave en memoria, así que reiniciarlo no invalida los tokens emitidos.
+`auth-server` es el único emisor de tokens. Cuatro clientes confidenciales: `bff-web` y `bff-mobile` (`authorization_code` + PKCE obligatorio y `refresh_token`), `bff-atm` e `interests-service` (`client_credentials` solamente). Los clientes de canal solo pueden pedir `openid`, `profile` y los scopes de su canal (`Channel.java`); si piden un scope de otro canal, la solicitud entera se rechaza con `invalid_scope`. Los tokens de usuario llevan `sub` = id del cliente del banco y el claim `channel` (`WEB` | `MOBILE`). Los de servicio llevan `channel` `ATM` o `INTERESTS` y no identifican a un cliente. Todos se firman RS256 con la clave de `dev/certs/auth-server/signing.p12`; la clave pública se publica en `https://localhost:9000/oauth2/jwks`. Si falta el keystore de firma, `auth-server` no arranca: nunca genera una clave en memoria, así que reiniciarlo no invalida los tokens emitidos. Ningún servicio comparte un secreto de firma con otro. La sesión de cajero (HS256, 120 s) la firma solo `bff-atm` con `BFF_ATM_SESSION_SECRET`.
 
-El estado de `auth-server` (autorizaciones, consentimientos y clientes registrados) vive en su propia base PostgreSQL, `auth-postgres`: contenedor, base (`auth_server`), usuario y volumen propios, separados de `core_service`. Sobrevive a reinicios de `auth-server` (un código emitido antes de reiniciar sigue canjeable, y uno ya usado sigue rechazado). Flyway crea el esquema al arrancar y los dos clientes (`bff-web`, `bff-mobile`) se registran en cada arranque a partir de `Channel.java`, con el secreto guardado solo como hash bcrypt. Para inspeccionarla:
+El estado de `auth-server` (autorizaciones, consentimientos, clientes registrados, rotación de refresh tokens y dispositivos móviles) vive en su propia base PostgreSQL, `auth-postgres`: contenedor, base (`auth_server`), usuario y volumen propios, separados de `core_service`. Sobrevive a reinicios de `auth-server` (un código emitido antes de reiniciar sigue canjeable, y uno ya usado sigue rechazado). Flyway crea el esquema al arrancar y los cuatro clientes se registran en cada arranque, con el secreto guardado solo como hash bcrypt. Para inspeccionarla:
 
 ```bash
 docker compose exec auth-postgres psql -U auth_server -d auth_server -c 'select client_id from oauth2_registered_client'
@@ -123,7 +123,11 @@ El issuer es siempre `https://localhost:9000`. El navegador llega a `auth-server
 | Variable | Default en Compose | Uso |
 |---|---|---|
 | `AUTH_DEMO_PASSWORD` | `demo-password` | Contraseña del usuario demo `demo` |
-| `BFF_WEB_CLIENT_SECRET` | `bff-web-dev-secret` | Secreto del cliente `bff-web` (lo comparten `auth-server` y `bff-web`) |
+| `BFF_WEB_CLIENT_SECRET` | `bff-web-dev-secret` | Secreto de `bff-web` (`auth-server` y `bff-web`) |
+| `BFF_MOBILE_CLIENT_SECRET` | `bff-mobile-dev-secret` | Secreto de `bff-mobile` (`auth-server` y `bff-mobile`) |
+| `BFF_ATM_CLIENT_SECRET` | `bff-atm-dev-secret` | Secreto de `bff-atm` (`auth-server` y `bff-atm`) |
+| `BFF_ATM_SESSION_SECRET` | `dev-channel-auth-jwt-signing-secret-please-rotate-in-prod` | Firma HS256 de la sesión de terminal; solo `bff-atm` |
+| `INTERESTS_SERVICE_CLIENT_SECRET` | `interests-service-dev-secret` | Secreto de `interests-service` (`auth-server` e `interests-service`) |
 | `AUTH_DB_USERNAME` / `AUTH_DB_PASSWORD` | `auth_server` / `auth_server` | Credenciales de `auth-postgres`, que solo usa `auth-server` |
 
 `auth-server` y los certificados/llaves de desarrollo: `./scripts/generate-dev-auth-server-keys.sh` reemite el certificado TLS de `auth-server` (válido para `localhost` y `auth-server`) y su keystore de firma usando la CA existente, sin regenerarla.
@@ -270,6 +274,21 @@ curl -sS --cacert dev/certs/ca.crt \
   "https://localhost:8081/accounts/22222222-2222-2222-2222-222222222222/interest-summary?year=2025"
 ```
 
+**interests-service — acreditar intereses**
+
+El POST de aplicación exige un access token de `interests-service` (`client_credentials`, scope `interests:write`). El año `2025` ya está en el seed; usa `2026`:
+
+```bash
+INTERESTS_TOKEN=$(curl -sS --cacert dev/certs/ca.crt \
+  -u 'interests-service:interests-service-dev-secret' \
+  -d 'grant_type=client_credentials' \
+  https://localhost:9000/oauth2/token | jq -r .access_token)
+
+curl -sS -X POST \
+  -H "Authorization: Bearer $INTERESTS_TOKEN" \
+  "http://localhost:8084/accounts/22222222-2222-2222-2222-222222222222/interest-applications?year=2026"
+```
+
 **bff-mobile — login paso a paso**
 
 El cliente nativo abre el login en un navegador embebido y recibe la sesión en el cuerpo JSON del callback (no en una cookie). Se puede hacer de dos formas:
@@ -278,7 +297,7 @@ El cliente nativo abre el login en un navegador embebido y recibe la sesión en 
 
 1. Abre `https://localhost:8082/oauth2/authorization/oidc?deviceId=demo-phone-1`. `bff-mobile` recuerda el `deviceId` y te redirige a `https://localhost:9000/login`.
 2. Inicia sesión con `demo` / `demo-password`.
-3. `auth-server` vuelve a `https://localhost:8082/login/oauth2/code/oidc?code=...`; `bff-mobile` canjea el código (PKCE, sin secreto) y el navegador muestra `{"sessionToken": "...", "refreshToken": "...", "refreshTokenExpiry": "..."}`.
+3. `auth-server` vuelve a `https://localhost:8082/login/oauth2/code/oidc?code=...`; `bff-mobile` canjea el código (PKCE, `client_secret_basic`) y el navegador muestra `{"sessionToken": "...", "refreshToken": "...", "refreshTokenExpiry": "..."}`.
 
 *Con `curl`, sin navegador* — [`scripts/dev-mobile-login.sh`](scripts/dev-mobile-login.sh) recorre las mismas redirecciones con un cookie jar (incluido el token CSRF del formulario de login) e imprime ese JSON:
 
@@ -351,3 +370,5 @@ Baja el stack (`docker compose down`) antes de correr `mvn verify`: los tests de
 - **`auth-server` no arranca con `Connection to auth-postgres:5432 refused` (o no pasa a healthy).** `auth-server` no sirve nada sin su base: revisa `docker compose ps auth-postgres` y `docker compose logs auth-postgres`. Para empezar de cero su estado (clientes y autorizaciones se recrean solos): `docker compose rm -sf auth-server auth-postgres && docker volume rm xyz_bank_server_xyz_bank_auth_postgres_data && docker compose up -d`.
 - **Después de cambiar de rama o de un `git pull`, faltan archivos en `dev/certs/` y los servicios con TLS no arrancan.** Si el cambio cruza el commit que dejó de versionar `dev/certs/`, git borra esos archivos de tu copia de trabajo. Regenera con `./scripts/generate-dev-tls-certs.sh` y recrea los contenedores (`docker compose up -d --force-recreate`).
 - **`auth-server` no arranca con `Token signing keystore ...`.** Falta o no se puede leer `dev/certs/auth-server/signing.p12` (o su contraseña/alias). Regenéralo con `./scripts/generate-dev-auth-server-keys.sh` (o `./scripts/generate-dev-tls-certs.sh` si tampoco tienes la CA); no hay clave de respaldo en memoria a propósito.
+- **`core-service` o `interests-service` responden 401 a un token recién emitido, o no arrancan al leer el JWKS.** El contenedor no confía en la CA de desarrollo, así que no puede bajar `https://auth-server:9000/oauth2/jwks`. Comprueba que `dev/certs/truststore.p12` existe (`./scripts/generate-dev-tls-certs.sh`) y que el servicio tiene `JAVA_TOOL_OPTIONS` apuntando a `/certs/truststore.p12`. El issuer sigue siendo `https://localhost:9000` aunque el JWKS se pida por el nombre interno `auth-server`.
+- **El token de `interests-service` o `bff-atm` sale `invalid_client`.** El secreto del cliente en el llamador no coincide con el de `auth-server`. Las variables son `INTERESTS_SERVICE_CLIENT_SECRET` y `BFF_ATM_CLIENT_SECRET` (defaults `interests-service-dev-secret` y `bff-atm-dev-secret`); cámbialas en los dos servicios a la vez y recrea los contenedores.

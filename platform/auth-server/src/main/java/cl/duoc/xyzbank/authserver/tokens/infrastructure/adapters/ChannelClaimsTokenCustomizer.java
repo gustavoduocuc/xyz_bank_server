@@ -49,6 +49,12 @@ public class ChannelClaimsTokenCustomizer implements OAuth2TokenCustomizer<JwtEn
                     // A mutable ArrayList on purpose: the claims are persisted as JSON by the JDBC
                     // authorization store, whose Jackson allowlist rejects immutable collections
                     .audience(new ArrayList<>(tokenClaims.audiences()));
+            // client_credentials with no scope parameter authorizes nothing (Spring Authorization
+            // Server 1.5). A service client's token still has to carry its channel scopes.
+            if (AuthorizationGrantType.CLIENT_CREDENTIALS.equals(context.getAuthorizationGrantType())
+                    && context.getAuthorizedScopes().isEmpty()) {
+                context.getClaims().claim("scope", new ArrayList<>(context.getRegisteredClient().getScopes()));
+            }
             tokenClaims.deviceId().ifPresent(deviceId -> context.getClaims().claim(DEVICE_ID_CLAIM, deviceId));
         }
     }

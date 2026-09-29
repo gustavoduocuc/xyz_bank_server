@@ -2,25 +2,26 @@ openapi: 3.0.3
 info:
   title: core-service — accounts
   description: >
-    Internal endpoints for customer profiles, account balances, and channel
-    authentication. core-service is the only component with database access;
+    Internal endpoints for customer profiles, account balances, and PIN
+    verification. core-service is the only component with database access;
     these endpoints are internal-network-only and are not exposed through any
-    BFF. Every endpoint requires the calling BFF's service credential; the
-    seven domain endpoints additionally require a valid user bearer token
-    carrying the scope shown in that operation's description. The four
-    pre-auth endpoints (called before any user token exists) require only the
-    service credential.
+    BFF. Every endpoint requires a bearer access token issued by auth-server.
+    Domain endpoints require the scope shown in that operation's description.
+    PIN verification requires a bff-atm client token. ATM balance and
+    withdrawal also require the X-Atm-Session header for the session
+    core-service created when the PIN was verified. Web and mobile refresh
+    tokens and device revocation live on auth-server, not here.
   version: "1.0.0"
 servers:
   - url: http://localhost:8080
 security:
-  - ServiceCredential: []
+  - BearerAuth: []
 paths:
   /internal/auth/atm/pin-verifications:
     post:
-      summary: Verify a card PIN and report the owning customer id
+      summary: Verify a card PIN and open an ATM session
       description: >
-        Pre-auth endpoint (service credential only). The PIN is accepted only
+        Requires a bff-atm access token (client_credentials). The PIN is accepted only
         in the request body, never a query parameter or path segment. Served
         exclusively over this operation's TLS-only connector (design.md
         Decision 8); the same request over the plain-HTTP connector is
@@ -41,7 +42,7 @@ paths:
               $ref: '#/components/schemas/PinVerificationRequest'
       responses:
         '200':
-          description: Correct PIN; resets the failure count
+          description: Correct PIN; resets the failure count and returns the new ATM session id
           content:
             application/json:
               schema:
@@ -50,76 +51,13 @@ paths:
           description: Incorrect PIN or unknown card (indistinguishable)
         '423':
           description: Card is locked (third consecutive failure, or already locked)
-  /internal/auth/web/refresh-tokens:
-    post:
-      summary: Rotate a web refresh token
-      description: >
-        Pre-auth endpoint (service credential only). Rotation is not
-        idempotent: presenting an already-used (rotated or revoked) token is
-        rejected and revokes the rest of that token's chain, rather than
-        replaying the prior result.
-      operationId: rotateWebRefreshToken
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshTokenRequest'
-      responses:
-        '200':
-          description: A new session and refresh token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RefreshTokenResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-  /internal/auth/mobile/devices/{deviceId}/refresh-tokens:
-    post:
-      summary: Rotate a device-bound mobile refresh token
-      description: >
-        Pre-auth endpoint (service credential only). Rejects a refresh token
-        presented against a device it was not issued for, or a revoked
-        device, identically to an unknown token (404) — no existence oracle.
-        Also not idempotent (see the web refresh-token endpoint).
-      operationId: rotateMobileRefreshToken
-      parameters:
-        - $ref: '#/components/parameters/DeviceId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshTokenRequest'
-      responses:
-        '200':
-          description: A new session and refresh token, bound to the same device
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RefreshTokenResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-  /internal/auth/mobile/devices/{deviceId}/revocations:
-    post:
-      summary: Revoke one mobile device
-      description: >
-        Pre-auth endpoint (service credential only). Revoking one device does
-        not affect any other device registered to the same customer.
-      operationId: revokeMobileDevice
-      parameters:
-        - $ref: '#/components/parameters/DeviceId'
-      responses:
-        '204':
-          description: The device is revoked (or was already revoked)
   /internal/customers/{customerId}:
     get:
       summary: Get a customer's profile
       description: Domain endpoint. Requires the `web:customers:read` scope.
       operationId: getCustomerProfile
       security:
-        - ServiceCredential: []
-          BearerAuth: []
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/CustomerId'
       responses:
@@ -139,8 +77,7 @@ paths:
       description: Domain endpoint. Requires the `web:accounts:read` scope.
       operationId: listAccountsForCustomer
       security:
-        - ServiceCredential: []
-          BearerAuth: []
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/CustomerId'
       responses:
@@ -167,10 +104,10 @@ paths:
         calling channel.
       operationId: getAccountBalance
       security:
-        - ServiceCredential: []
-          BearerAuth: []
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/AtmSession'
       responses:
         '200':
           description: The account's current balance
@@ -194,8 +131,7 @@ paths:
         the calling channel.
       operationId: listAccountTransactions
       security:
-        - ServiceCredential: []
-          BearerAuth: []
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/AccountId'
         - name: from
@@ -248,8 +184,7 @@ paths:
         Ownership resolves through the transaction's account.
       operationId: getTransactionDetail
       security:
-        - ServiceCredential: []
-          BearerAuth: []
+        - BearerAuth: []
       parameters:
         - name: transactionId
           in: path
@@ -273,8 +208,7 @@ paths:
       description: Domain endpoint. Requires the `web:interests:read` scope.
       operationId: getAnnualInterestSummary
       security:
-        - ServiceCredential: []
-          BearerAuth: []
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/AccountId'
         - name: year
@@ -307,10 +241,10 @@ paths:
         `atm:withdraw` scope.
       operationId: withdrawFromAccount
       security:
-        - ServiceCredential: []
-          BearerAuth: []
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/AtmSession'
         - name: Idempotency-Key
           in: header
           required: true
@@ -350,8 +284,7 @@ paths:
         (service call).
       operationId: creditInterestToAccount
       security:
-        - ServiceCredential: []
-          BearerAuth: []
+        - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/AccountId'
         - name: Idempotency-Key
@@ -380,22 +313,15 @@ paths:
           $ref: '#/components/responses/UnprocessableEntity'
 components:
   securitySchemes:
-    ServiceCredential:
-      type: apiKey
-      in: header
-      name: X-Service-Credential
-      description: >
-        Static, per-BFF shared secret. Required on every /internal/**
-        endpoint, including the four pre-auth ones.
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
       description: >
-        HS256 JWT identifying the end customer, channel, and scope.
-        Required in addition to ServiceCredential on the seven domain
-        endpoints; see each operation's description for its required
-        scope(s).
+        RS256 access token issued by auth-server (iss https://localhost:9000,
+        aud core-service). Domain calls carry the end-customer token and its
+        channel scopes. PIN verification carries the bff-atm client token.
+        ATM balance and withdrawal also send X-Atm-Session.
   parameters:
     CustomerId:
       name: customerId
@@ -409,10 +335,13 @@ components:
       required: true
       schema:
         type: string
-    DeviceId:
-      name: deviceId
-      in: path
-      required: true
+    AtmSession:
+      name: X-Atm-Session
+      in: header
+      required: false
+      description: >
+        Opaque session id returned by PIN verification. Required when the
+        bearer token's channel is ATM; ignored for other channels.
       schema:
         type: string
   responses:
@@ -631,34 +560,13 @@ components:
           type: string
     PinVerificationResponse:
       type: object
-      required: [customerId]
+      required: [customerId, atmSessionId]
       properties:
         customerId:
           type: string
-    RefreshTokenRequest:
-      type: object
-      description: >
-        customerId identifies the token's owner for the web flow; the mobile
-        flow instead binds ownership to the deviceId path segment and may
-        omit it.
-      required: [refreshToken]
-      properties:
-        customerId:
+        atmSessionId:
           type: string
-          nullable: true
-        refreshToken:
-          type: string
-    RefreshTokenResponse:
-      type: object
-      required: [customerId, refreshToken, expiry]
-      properties:
-        customerId:
-          type: string
-        refreshToken:
-          type: string
-        expiry:
-          type: string
-          format: date-time
+          description: Opaque id the ATM channel sends back as X-Atm-Session
     ProblemDetail:
       type: object
       description: RFC 7807 problem details

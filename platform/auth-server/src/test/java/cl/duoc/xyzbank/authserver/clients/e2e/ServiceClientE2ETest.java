@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.authserver.clients.e2e;
 
 import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow;
+import com.nimbusds.jwt.SignedJWT;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +13,9 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+
+import java.text.ParseException;
+import java.util.Set;
 
 import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.DEMO_PASSWORD;
 import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.DEMO_USERNAME;
@@ -61,6 +65,7 @@ class ServiceClientE2ETest extends AbstractAuthServerIT {
         assertNotNull(response.jsonPath().getString("access_token"));
         assertNull(response.jsonPath().getString("refresh_token"));
         assertNull(response.jsonPath().getString("id_token"));
+        assertEquals(expectedScopes(clientId), scopesOf(response.jsonPath().getString("access_token")));
     }
 
     @ParameterizedTest
@@ -115,6 +120,20 @@ class ServiceClientE2ETest extends AbstractAuthServerIT {
 
         assertEquals(400, response.statusCode(), response.asString());
         assertEquals("unauthorized_client", response.jsonPath().getString("error"));
+    }
+
+    private static Set<String> expectedScopes(String clientId) {
+        return "bff-atm".equals(clientId)
+                ? Set.of("atm:read-balance", "atm:withdraw")
+                : Set.of("interests:write");
+    }
+
+    private static Set<String> scopesOf(String accessToken) {
+        try {
+            return Set.copyOf(SignedJWT.parse(accessToken).getJWTClaimsSet().getStringListClaim("scope"));
+        } catch (ParseException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private Response clientCredentials(String clientId, String secret, String scope) {

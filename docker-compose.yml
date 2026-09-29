@@ -113,6 +113,7 @@ services:
       - "8453:8453"
     volumes:
       - ./dev/certs/core-service/keystore.p12:/certs/keystore.p12:ro
+      - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,10 +133,9 @@ services:
       DB_PASSWORD: core_service
       TLS_PIN_KEYSTORE_PATH: file:/certs/keystore.p12
       TLS_PIN_KEYSTORE_PASSWORD: xyzbank-dev
-      SERVICE_CREDENTIAL_WEB: dev-service-credential-web
-      SERVICE_CREDENTIAL_MOBILE: dev-service-credential-mobile
-      SERVICE_CREDENTIAL_ATM: dev-service-credential-atm
-      SERVICE_CREDENTIAL_INTERESTS: dev-service-credential-interests
+      AUTH_ISSUER: https://localhost:9000
+      AUTH_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/certs/truststore.p12 -Djavax.net.ssl.trustStorePassword=xyzbank-dev -Djavax.net.ssl.trustStoreType=PKCS12
       EUREKA_CLIENT_ENABLED: "true"
       EUREKA_SERVER_URL: http://eureka-server:8761
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -193,12 +193,16 @@ services:
     container_name: xyz-bank-interests-service
     ports:
       - "8084:8084"
+    volumes:
+      - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
     depends_on:
       config-server:
         condition: service_healthy
       eureka-server:
         condition: service_healthy
       core-service:
+        condition: service_healthy
+      auth-server:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -207,8 +211,11 @@ services:
     environment:
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761
-      CORE_SERVICE_CREDENTIAL: dev-service-credential-interests
-      CHANNEL_AUTH_JWT_SECRET: dev-channel-auth-jwt-signing-secret-please-rotate-in-prod
+      AUTH_ISSUER: https://localhost:9000
+      AUTH_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      AUTH_TOKEN_URI: https://auth-server:9000/oauth2/token
+      INTERESTS_SERVICE_CLIENT_SECRET: ${INTERESTS_SERVICE_CLIENT_SECRET:-interests-service-dev-secret}
+      JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/certs/truststore.p12 -Djavax.net.ssl.trustStorePassword=xyzbank-dev -Djavax.net.ssl.trustStoreType=PKCS12
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       FEATURE_INTEREST_CREDIT_VIA_KAFKA: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:-false}
     healthcheck:
@@ -245,6 +252,9 @@ services:
       AUTH_SIGNING_KEYSTORE_PASSWORD: xyzbank-dev
       AUTH_SIGNING_KEY_ALIAS: auth-server-signing
       BFF_WEB_CLIENT_SECRET: ${BFF_WEB_CLIENT_SECRET:-bff-web-dev-secret}
+      BFF_MOBILE_CLIENT_SECRET: ${BFF_MOBILE_CLIENT_SECRET:-bff-mobile-dev-secret}
+      BFF_ATM_CLIENT_SECRET: ${BFF_ATM_CLIENT_SECRET:-bff-atm-dev-secret}
+      INTERESTS_SERVICE_CLIENT_SECRET: ${INTERESTS_SERVICE_CLIENT_SECRET:-interests-service-dev-secret}
       AUTH_DEMO_PASSWORD: ${AUTH_DEMO_PASSWORD:-demo-password}
     healthcheck:
       test: ["CMD", "sh", "-c", "wget --no-check-certificate -qO- https://127.0.0.1:9000/actuator/health | grep -q UP"]
@@ -272,7 +282,6 @@ services:
         condition: service_healthy
     environment:
       CORE_SERVICE_BASE_URL: http://core-service:8080
-      CORE_SERVICE_CREDENTIAL: dev-service-credential-web
       INTERESTS_SERVICE_BASE_URL: http://interests-service:8084
       FEATURE_USE_INTERESTS_SERVICE: ${FEATURE_USE_INTERESTS_SERVICE:-true}
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
@@ -313,12 +322,13 @@ services:
         condition: service_healthy
     environment:
       CORE_SERVICE_BASE_URL: http://core-service:8080
-      CORE_SERVICE_CREDENTIAL: dev-service-credential-mobile
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
       TLS_KEYSTORE_PASSWORD: xyzbank-dev
-      # OIDC against auth-server as a public client (no secret); same public/internal URL
+      # OIDC against auth-server as a confidential client; same public/internal URL
       # split as bff-web (design.md Decision 1)
       OIDC_CLIENT_ID: bff-mobile
+      OIDC_CLIENT_SECRET: ${BFF_MOBILE_CLIENT_SECRET:-bff-mobile-dev-secret}
+      AUTH_SERVER_BASE_URL: https://auth-server:9000
       OIDC_AUTHORIZATION_URI: https://localhost:9000/oauth2/authorize
       OIDC_TOKEN_URI: https://auth-server:9000/oauth2/token
       OIDC_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
@@ -346,14 +356,20 @@ services:
     depends_on:
       core-service:
         condition: service_healthy
+      auth-server:
+        condition: service_healthy
     environment:
       CORE_SERVICE_BASE_URL: http://core-service:8080
       CORE_SERVICE_PIN_VERIFICATION_BASE_URL: https://core-service:8453
-      CORE_SERVICE_CREDENTIAL: dev-service-credential-atm
+      AUTH_TOKEN_URI: https://auth-server:9000/oauth2/token
+      BFF_ATM_CLIENT_ID: bff-atm
+      BFF_ATM_CLIENT_SECRET: ${BFF_ATM_CLIENT_SECRET:-bff-atm-dev-secret}
+      BFF_ATM_SESSION_SECRET: ${BFF_ATM_SESSION_SECRET:-dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
       TLS_KEYSTORE_PASSWORD: xyzbank-dev
       TLS_TRUSTSTORE_PATH: file:/certs/truststore.p12
       TLS_TRUSTSTORE_PASSWORD: xyzbank-dev
+      JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/certs/truststore.p12 -Djavax.net.ssl.trustStorePassword=xyzbank-dev -Djavax.net.ssl.trustStoreType=PKCS12
     healthcheck:
       # bff-atm's connector requires a client certificate (client-auth: need), so even
       # the health check must present one: it uses the same dev terminal certificate a
