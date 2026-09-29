@@ -35,6 +35,9 @@ oidc:
   # The "iss" every ID token must carry; defaults to the test suite's mock provider
   expected-issuer: ${OIDC_ISSUER:http://localhost:9999/mock-oidc}
 
+auth-server:
+  base-url: ${AUTH_SERVER_BASE_URL:http://localhost:9999}
+
 core-service:
   base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
   connect-timeout-ms: 3000

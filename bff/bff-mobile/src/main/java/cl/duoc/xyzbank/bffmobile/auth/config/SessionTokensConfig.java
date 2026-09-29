@@ -19,8 +19,9 @@ public class SessionTokensConfig {
     @Bean
     public AuthServerTokenClient authServerTokenClient(
             @Value("${spring.security.oauth2.client.provider.oidc.token-uri}") String tokenUri,
+            @Value("${auth-server.base-url}") String revocationBaseUri,
             @Value("${spring.security.oauth2.client.registration.oidc.client-id}") String clientId,
             @Value("${spring.security.oauth2.client.registration.oidc.client-secret}") String clientSecret) {
-        return new AuthServerTokenClient(RestClient.create(), tokenUri, clientId, clientSecret);
+        return new AuthServerTokenClient(RestClient.create(), tokenUri, revocationBaseUri, clientId, clientSecret);
     }
 }
