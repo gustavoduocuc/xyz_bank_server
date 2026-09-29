@@ -10,12 +10,12 @@ import cl.duoc.xyzbank.coreservice.auth.application.usecases.RevokeDeviceUseCase
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.RotateMobileRefreshTokenUseCase;
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.RotateWebRefreshTokenUseCase;
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.VerifyPinUseCase;
+import cl.duoc.xyzbank.coreservice.auth.infrastructure.adapters.StoredAtmSessionLookup;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.OpaqueTokenGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
-import java.util.Optional;
 
 @Configuration
 public class AuthConfig {
@@ -29,10 +29,9 @@ public class AuthConfig {
         return bcryptHasher::matches;
     }
 
-    // Until core-service records ATM sessions (verified PINs), no ATM session is known
     @Bean
-    public AtmSessionLookup atmSessionLookup() {
-        return atmSessionId -> Optional.empty();
+    public AtmSessionLookup atmSessionLookup(AtmSessionRepository atmSessionRepository) {
+        return new StoredAtmSessionLookup(atmSessionRepository, Clock.systemUTC());
     }
 
     @Bean
