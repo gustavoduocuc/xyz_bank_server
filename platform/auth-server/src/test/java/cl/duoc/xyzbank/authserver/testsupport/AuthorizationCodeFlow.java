@@ -68,6 +68,30 @@ public final class AuthorizationCodeFlow {
         }
     }
 
+    /**
+     * A bff-mobile authorization request for the given device, as bff-mobile sends it.
+     */
+    public static Map<String, String> mobileAuthorizationRequest(String deviceId, String codeVerifier) {
+        Map<String, String> parameters =
+                authorizationRequest(MOBILE_CLIENT_ID, MOBILE_REDIRECT_URI, MOBILE_SCOPES, codeVerifier);
+        parameters.put("device_id", deviceId);
+        return parameters;
+    }
+
+    /**
+     * Runs a complete, successful mobile login for the demo customer on the given device and
+     * returns the code.
+     */
+    public String mobileAuthorizationCodeFor(String deviceId, String codeVerifier) {
+        Response response = authorize(mobileAuthorizationRequest(deviceId, codeVerifier), DEMO_USERNAME, DEMO_PASSWORD);
+        String code = queryParam(response.getHeader("Location"), "code");
+        if (code == null) {
+            throw new AssertionError("No authorization code; status " + response.statusCode()
+                    + ", Location " + response.getHeader("Location") + ", body " + response.asString());
+        }
+        return code;
+    }
+
     public static Map<String, String> authorizationRequest(
             String clientId, String redirectUri, String scopes, String codeVerifier) {
         Map<String, String> parameters = new LinkedHashMap<>();
