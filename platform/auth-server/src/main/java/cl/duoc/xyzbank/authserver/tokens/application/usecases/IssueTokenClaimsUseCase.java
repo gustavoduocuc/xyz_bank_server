@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.authserver.tokens.application.usecases;
 
+import cl.duoc.xyzbank.authserver.shared.domain.DomainException;
 import cl.duoc.xyzbank.authserver.tokens.application.dto.TokenClaims;
 import cl.duoc.xyzbank.authserver.tokens.application.ports.ClientChannelLookup;
 import cl.duoc.xyzbank.authserver.tokens.application.ports.CustomerIdLookup;
@@ -20,8 +21,12 @@ public class IssueTokenClaimsUseCase {
     }
 
     public TokenClaims execute(String clientId, String username) {
-        Channel channel = clientChannelLookup.channelOf(clientId).orElseThrow();
-        String customerId = customerIdLookup.customerIdOf(username).orElseThrow();
+        Channel channel = clientChannelLookup
+                .channelOf(clientId)
+                .orElseThrow(() -> DomainException.notFound("No channel is registered for client " + clientId));
+        String customerId = customerIdLookup
+                .customerIdOf(username)
+                .orElseThrow(() -> DomainException.notFound("No customer is linked to username " + username));
         return new TokenClaims(customerId, channel);
     }
 }
