@@ -35,6 +35,23 @@ services:
       timeout: 5s
       retries: 20
 
+  auth-postgres:
+    # auth-server's own database (OAuth authorizations and registered clients), separate from
+    # core_service: own container, database, user and volume, not published on the host
+    image: postgres:16-alpine
+    container_name: xyz-bank-auth-postgres
+    environment:
+      POSTGRES_DB: auth_server
+      POSTGRES_USER: ${AUTH_DB_USERNAME:-auth_server}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-auth_server}
+    volumes:
+      - xyz_bank_auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d auth_server"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   data-migration:
     build:
       context: .
@@ -211,7 +228,13 @@ services:
     volumes:
       - ./dev/certs/auth-server/keystore.p12:/certs/keystore.p12:ro
       - ./dev/certs/auth-server/signing.p12:/certs/signing.p12:ro
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
     environment:
+      AUTH_DB_URL: jdbc:postgresql://auth-postgres:5432/auth_server
+      AUTH_DB_USERNAME: ${AUTH_DB_USERNAME:-auth_server}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_server}
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
       TLS_KEYSTORE_PASSWORD: xyzbank-dev
       # Public issuer: the URL the browser uses. Tokens carry it even when a BFF container
@@ -344,3 +367,4 @@ services:
 volumes:
   xyz_bank_mysql_data:
   xyz_bank_postgres_data:
+  xyz_bank_auth_postgres_data:
