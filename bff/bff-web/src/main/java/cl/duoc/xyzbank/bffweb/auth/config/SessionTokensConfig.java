@@ -1,14 +1,18 @@
 package cl.duoc.xyzbank.bffweb.auth.config;
 
+import cl.duoc.xyzbank.bffweb.auth.infrastructure.adapters.AuthServerTokenClient;
 import cl.duoc.xyzbank.bffweb.auth.infrastructure.rest.RequestScopedAuthorizedClientRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
+import org.springframework.web.client.RestClient;
 
 /**
- * The tokens of a just-completed login must be readable by {@code OidcLoginSuccessHandler}
- * and then live only in the session cookies. Spring's default repository would keep every
- * customer's tokens in bff-web's memory.
+ * The authorization server's tokens are bff-web's session. Refresh reuses the same token
+ * endpoint and client credentials as the login code exchange. The authorized-client
+ * repository keeps a login's tokens only for the callback request, so they live afterward
+ * only in the session cookies.
  */
 @Configuration
 public class SessionTokensConfig {
@@ -16,5 +20,14 @@ public class SessionTokensConfig {
     @Bean
     public OAuth2AuthorizedClientRepository authorizedClientRepository() {
         return new RequestScopedAuthorizedClientRepository();
+    }
+
+    /** A plain RestClient on purpose: the core-service client would add a bearer token. */
+    @Bean
+    public AuthServerTokenClient authServerTokenClient(
+            @Value("${spring.security.oauth2.client.provider.oidc.token-uri}") String tokenUri,
+            @Value("${spring.security.oauth2.client.registration.oidc.client-id}") String clientId,
+            @Value("${spring.security.oauth2.client.registration.oidc.client-secret}") String clientSecret) {
+        return new AuthServerTokenClient(RestClient.create(), tokenUri, clientId, clientSecret);
     }
 }
