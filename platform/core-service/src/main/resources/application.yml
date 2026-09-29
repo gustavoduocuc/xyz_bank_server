@@ -72,9 +72,17 @@ security:
     atm: ${SERVICE_CREDENTIAL_ATM:dev-service-credential-atm}
     interests: ${SERVICE_CREDENTIAL_INTERESTS:dev-service-credential-interests}
 
-channel-auth:
-  jwt:
-    secret: ${CHANNEL_AUTH_JWT_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
+# Access tokens are issued by auth-server and verified here with its public keys only
+# (adopt-oauth2-tokens-between-services design.md Decision 4): core-service holds no signing secret.
+auth:
+  issuer: ${AUTH_ISSUER:https://localhost:9000}
+  jwk-set-uri: ${AUTH_JWK_SET_URI:https://localhost:9000/oauth2/jwks}
+  audience: core-service
+  channel-clients:
+    WEB: bff-web
+    MOBILE: bff-mobile
+    ATM: bff-atm
+    INTERESTS: interests-service
 
 management:
   endpoints:

@@ -4,15 +4,16 @@ import cl.duoc.xyzbank.coredomain.auth.domain.repositories.DeviceRegistrationRep
 import cl.duoc.xyzbank.coredomain.auth.domain.repositories.RefreshTokenRepository;
 import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
 import cl.duoc.xyzbank.coredomain.cards.domain.services.PinHasher;
+import cl.duoc.xyzbank.coreservice.auth.application.ports.AtmSessionLookup;
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.RevokeDeviceUseCase;
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.RotateMobileRefreshTokenUseCase;
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.RotateWebRefreshTokenUseCase;
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.VerifyPinUseCase;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.OpaqueTokenGenerator;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.Optional;
 
 @Configuration
 public class AuthConfig {
@@ -26,10 +27,10 @@ public class AuthConfig {
         return bcryptHasher::matches;
     }
 
+    // Until core-service records ATM sessions (verified PINs), no ATM session is known
     @Bean
-    public JwtCallerContextAdapter jwtCallerContextAdapter(
-            @Value("${channel-auth.jwt.secret}") String jwtSecret) {
-        return new JwtCallerContextAdapter(jwtSecret);
+    public AtmSessionLookup atmSessionLookup() {
+        return atmSessionId -> Optional.empty();
     }
 
     @Bean
