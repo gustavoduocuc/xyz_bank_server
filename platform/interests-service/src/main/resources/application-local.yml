@@ -9,14 +9,25 @@ core-service:
   base-url: http://localhost:8080
   connect-timeout-ms: 3000
   read-timeout-ms: 3000
-  service-credential: ${CORE_SERVICE_CREDENTIAL:dev-service-credential-interests}
 
 interests:
   annual-rate: 0.035
 
-channel-auth:
-  jwt:
-    secret: ${CHANNEL_AUTH_JWT_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
+# Access tokens (adopt-oauth2-tokens-between-services): incoming ones are verified with
+# auth-server's public keys only; outgoing calls to core-service use interests-service's own
+# client_credentials token. No signing secret is configured here.
+auth:
+  issuer: ${AUTH_ISSUER:https://localhost:9000}
+  jwk-set-uri: ${AUTH_JWK_SET_URI:https://localhost:9000/oauth2/jwks}
+  audience: interests-service
+  channel-clients:
+    WEB: bff-web
+    MOBILE: bff-mobile
+    ATM: bff-atm
+    INTERESTS: interests-service
+  token-uri: ${AUTH_TOKEN_URI:https://localhost:9000/oauth2/token}
+  client-id: interests-service
+  client-secret: ${INTERESTS_SERVICE_CLIENT_SECRET:interests-service-dev-secret}
 
 eureka:
   client:
