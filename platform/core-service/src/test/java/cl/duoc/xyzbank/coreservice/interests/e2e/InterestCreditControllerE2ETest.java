@@ -7,9 +7,8 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepositor
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
+import cl.duoc.xyzbank.testsupport.TestAccessTokens;
 import io.restassured.RestAssured;
 import io.restassured.specification.RequestSpecification;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The InterestCredit controller")
-class InterestCreditControllerE2ETest extends AbstractPostgresIT {
+class InterestCreditControllerE2ETest extends AbstractCoreServiceIT {
 
     /*
      * Cases:
@@ -53,9 +52,6 @@ class InterestCreditControllerE2ETest extends AbstractPostgresIT {
     @Autowired
     private CustomerRepository customerRepository;
 
-    @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
-
     private Id ownerId;
 
     @BeforeEach
@@ -67,14 +63,12 @@ class InterestCreditControllerE2ETest extends AbstractPostgresIT {
 
     private RequestSpecification asInterestsService() {
         return given()
-                .header("X-Service-Credential", "dev-service-credential-interests")
-                .header("Authorization", "Bearer " + tokenAdapter.issue("interests-service", Channel.INTERESTS, null));
+                .header("Authorization", "Bearer " + TestAccessTokens.interests());
     }
 
     private RequestSpecification asOwner() {
         return given()
-                .header("X-Service-Credential", "dev-service-credential-web")
-                .header("Authorization", "Bearer " + tokenAdapter.issue(ownerId.getValue(), Channel.WEB, null));
+                .header("Authorization", "Bearer " + TestAccessTokens.web(ownerId.getValue()));
     }
 
     @Test
