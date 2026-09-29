@@ -20,7 +20,7 @@ class ServiceClientTest {
      * Cases:
      * 1. The ATM service client allows exactly the ATM channel's scopes
      * 2. The interests service client allows exactly interests:write
-     * 3. Service tokens are meant for core-service only
+     * 3. bff-atm's tokens are meant for core-service; interests-service's also for itself
      * 4. Rejects a service client for the web or mobile channel (those log customers in)
      * 5. Rejects a blank client id
      */
@@ -42,11 +42,13 @@ class ServiceClientTest {
     }
 
     @Test
-    @DisplayName("aims service tokens at core-service only")
-    void aimsServiceTokensAtCoreServiceOnly() {
-        ServiceClient client = ServiceClient.create("interests-service", Channel.INTERESTS);
+    @DisplayName("aims bff-atm's tokens at core-service and interests-service's also at itself")
+    void aimsServiceTokensAtTheirAudiences() {
+        ServiceClient atm = ServiceClient.create("bff-atm", Channel.ATM);
+        ServiceClient interests = ServiceClient.create("interests-service", Channel.INTERESTS);
 
-        assertEquals(Set.of("core-service"), client.audiences());
+        assertEquals(Set.of("core-service"), atm.audiences());
+        assertEquals(Set.of("core-service", "interests-service"), interests.audiences());
     }
 
     @ParameterizedTest

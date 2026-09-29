@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.interestsservice.interestview.e2e;
 
+import cl.duoc.xyzbank.interestsservice.testsupport.TestAccessTokens;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -27,6 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("Circuit Breaker E2E")
 class CircuitBreakerE2ETest {
+
+    // A token as auth-server issues it; interests-service now validates the bearer it receives
+    private static final String WEB_TOKEN = TestAccessTokens.web("customer-1");
 
     /*
      * Cases:
@@ -85,6 +89,7 @@ class CircuitBreakerE2ETest {
 
         for (int i = 0; i < 3; i++) {
             given()
+                    .header("Authorization", "Bearer " + WEB_TOKEN)
                     .queryParam("year", "2025")
                     .when()
                     .get("/accounts/{accountId}/interest-summary", "account-123")
@@ -105,6 +110,7 @@ class CircuitBreakerE2ETest {
 
         for (int i = 0; i < 3; i++) {
             given()
+                    .header("Authorization", "Bearer " + WEB_TOKEN)
                     .queryParam("year", "2025")
                     .when()
                     .get("/accounts/{accountId}/interest-summary", "account-123");
@@ -113,6 +119,7 @@ class CircuitBreakerE2ETest {
         coreServiceMock.resetRequests();
 
         given()
+                .header("Authorization", "Bearer " + WEB_TOKEN)
                 .queryParam("year", "2025")
                 .when()
                 .get("/accounts/{accountId}/interest-summary", "account-123")
@@ -132,6 +139,7 @@ class CircuitBreakerE2ETest {
                         .withFixedDelay(5000)));
 
         given()
+                .header("Authorization", "Bearer " + WEB_TOKEN)
                 .queryParam("year", "2025")
                 .when()
                 .get("/accounts/{accountId}/interest-summary", "account-123")

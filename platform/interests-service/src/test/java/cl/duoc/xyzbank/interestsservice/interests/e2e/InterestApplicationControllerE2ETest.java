@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.interestsservice.interests.e2e;
 
+import cl.duoc.xyzbank.interestsservice.testsupport.TestAccessTokens;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.AfterAll;
@@ -26,6 +27,9 @@ import static org.hamcrest.Matchers.equalTo;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("Interest Application Controller E2E")
 class InterestApplicationControllerE2ETest {
+
+    // A token as auth-server issues it; interests-service now validates the bearer it receives
+    private static final String INTERESTS_TOKEN = TestAccessTokens.interests();
 
     /*
      * Cases:
@@ -98,7 +102,7 @@ class InterestApplicationControllerE2ETest {
                                 """)));
 
             given()
-                    .header("Authorization", "Bearer user-jwt")
+                    .header("Authorization", "Bearer " + INTERESTS_TOKEN)
                     .queryParam("year", "2025")
                     .when()
                     .post("/accounts/{accountId}/interest-applications", "account-123")

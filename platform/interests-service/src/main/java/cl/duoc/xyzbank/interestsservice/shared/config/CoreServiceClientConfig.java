@@ -31,7 +31,6 @@ public class CoreServiceClientConfig {
             @Value("${core-service.base-url}") String baseUrl,
             @Value("${core-service.connect-timeout-ms:3000}") int connectTimeout,
             @Value("${core-service.read-timeout-ms:3000}") int readTimeout,
-            @Value("${core-service.service-credential}") String serviceCredential,
             BearerTokenClientInterceptor bearerTokenClientInterceptor) {
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -41,7 +40,6 @@ public class CoreServiceClientConfig {
         return restClientBuilder
                 .baseUrl(baseUrl)
                 .requestFactory(factory)
-                .defaultHeader("X-Service-Credential", serviceCredential)
                 .requestInterceptor(bearerTokenClientInterceptor)
                 .build();
     }

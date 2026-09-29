@@ -13,14 +13,22 @@ core-service:
   base-url: http://localhost:9999
   connect-timeout-ms: 3000
   read-timeout-ms: 3000
-  service-credential: dev-service-credential-interests
 
 interests:
   annual-rate: 0.035
 
-channel-auth:
-  jwt:
-    secret: dev-channel-auth-jwt-signing-secret-please-rotate-in-prod
+auth:
+  issuer: https://localhost:9000
+  jwk-set-uri: http://localhost:9997/oauth2/jwks
+  audience: interests-service
+  channel-clients:
+    WEB: bff-web
+    MOBILE: bff-mobile
+    ATM: bff-atm
+    INTERESTS: interests-service
+  token-uri: http://localhost:9997/oauth2/token
+  client-id: interests-service
+  client-secret: interests-service-test-secret
 
 eureka:
   client:

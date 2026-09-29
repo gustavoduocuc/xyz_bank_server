@@ -3,18 +3,22 @@ package cl.duoc.xyzbank.authserver.clients.domain.valueobjects;
 import cl.duoc.xyzbank.authserver.shared.domain.DomainException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
 /**
  * A client that obtains tokens for itself (client_credentials), not for a logged-in
- * customer: bff-atm and interests-service. Its scopes are its channel's scope set, and its
- * tokens are meant for core-service only.
+ * customer: bff-atm and interests-service. Its scopes are its channel's scope set.
  */
 public final class ServiceClient {
 
     private static final Set<Channel> SERVICE_CHANNELS = Set.of(Channel.ATM, Channel.INTERESTS);
-    private static final Set<String> AUDIENCES = Set.of("core-service");
+    // interests-service's own token also reaches interests-service itself (the interest
+    // application trigger requires interests:write); bff-atm's only reaches core-service
+    private static final Map<Channel, Set<String>> AUDIENCES = Map.of(
+            Channel.ATM, Set.of("core-service"),
+            Channel.INTERESTS, Set.of("core-service", "interests-service"));
 
     private final String clientId;
     private final Channel channel;
@@ -51,7 +55,7 @@ public final class ServiceClient {
     }
 
     public Set<String> audiences() {
-        return AUDIENCES;
+        return AUDIENCES.get(channel);
     }
 
     @Override
