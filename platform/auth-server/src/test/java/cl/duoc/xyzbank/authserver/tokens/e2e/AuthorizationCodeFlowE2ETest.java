@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 
@@ -41,6 +42,9 @@ class AuthorizationCodeFlowE2ETest extends AbstractAuthServerIT {
      * 4. A code verifier that does not match the challenge is rejected
      * 5. bff-web cannot exchange a code without its secret
      * 6. bff-web cannot exchange a code with a wrong secret
+     * 7. The web access token names bff-web as azp, is meant for core-service and
+     *    interests-service, and lives 15 minutes
+     * 8. The mobile access token is bound to the login's device
      */
 
     private static final String ISSUER = "https://localhost:9000";
@@ -150,5 +154,35 @@ class AuthorizationCodeFlowE2ETest extends AbstractAuthServerIT {
         assertEquals(status, response.statusCode(), response.asString());
         assertEquals(error, response.jsonPath().getString("error"));
         assertNull(response.jsonPath().getString("access_token"));
+    }
+
+    @Test
+    @DisplayName("issues a web access token for bff-web, meant for core-service and interests-service, living 15 minutes")
+    void issuesAWebAccessTokenForBffWebMeantForCoreServiceAndInterestsService() throws Exception {
+        String verifier = AuthorizationCodeFlow.newCodeVerifier();
+        String code = flow.authorizationCodeFor(WEB_CLIENT_ID, WEB_REDIRECT_URI, WEB_SCOPES, verifier);
+
+        SignedJWT accessToken = SignedJWT.parse(
+                flow.exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET).jsonPath().getString("access_token"));
+
+        var claims = accessToken.getJWTClaimsSet();
+        assertEquals("bff-web", claims.getStringClaim("azp"));
+        assertEquals(Set.of("core-service", "interests-service"), Set.copyOf(claims.getAudience()));
+        assertEquals(Duration.ofMinutes(15),
+                Duration.between(claims.getIssueTime().toInstant(), claims.getExpirationTime().toInstant()));
+    }
+
+    @Test
+    @DisplayName("binds the mobile access token to the login's device")
+    void bindsTheMobileAccessTokenToTheLoginsDevice() throws Exception {
+        String verifier = AuthorizationCodeFlow.newCodeVerifier();
+        String code = flow.mobileAuthorizationCodeFor("D1", verifier);
+
+        SignedJWT accessToken =
+                SignedJWT.parse(flow.exchangeAsMobileClient(code, verifier).jsonPath().getString("access_token"));
+
+        assertEquals("D1", accessToken.getJWTClaimsSet().getStringClaim("device_id"));
+        assertEquals(List.of("core-service"), accessToken.getJWTClaimsSet().getAudience());
+        assertEquals("bff-mobile", accessToken.getJWTClaimsSet().getStringClaim("azp"));
     }
 }
