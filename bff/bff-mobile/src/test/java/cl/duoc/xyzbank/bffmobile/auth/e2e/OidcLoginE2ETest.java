@@ -50,6 +50,8 @@ class OidcLoginE2ETest {
      * 4. The code is exchanged as a public client: PKCE verifier, no client secret
      * 5. A correctly signed ID token from an unexpected issuer fails the login: no tokens in the
      *    body, and core-service is never called
+     * 6. Replaying an already-processed callback returns no second session, registering the
+     *    device with core-service only once
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -220,6 +222,40 @@ class OidcLoginE2ETest {
         assertEquals(401, callbackResponse.statusCode());
         assertNoTokensIn(callbackResponse);
         CORE_SERVICE.verify(0, postRequestedFor(urlPathEqualTo("/internal/auth/mobile/devices/device-3/refresh-tokens")));
+    }
+
+    @Test
+    @DisplayName("returns no second session when an already-processed callback is replayed")
+    void returnsNoSecondSessionWhenAnAlreadyProcessedCallbackIsReplayed() {
+        String code = "auth-code-6";
+        CORE_SERVICE.stubFor(post(urlPathEqualTo("/internal/auth/mobile/devices/device-6/refresh-tokens"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"customerId\":\"customer-42\",\"refreshToken\":\"opaque-refresh-6\","
+                                + "\"expiry\":\"2099-01-01T00:00:00Z\"}")));
+        Response authorizationResponse = given()
+                .redirects().follow(false)
+                .when()
+                .get("/oauth2/authorization/oidc?deviceId=device-6");
+        String location = authorizationResponse.getHeader("Location");
+        String state = URLDecoder.decode(extractQueryParam(location, "state"), StandardCharsets.UTF_8);
+        String jsessionId = authorizationResponse.getCookie("JSESSIONID");
+        OIDC_PROVIDER.stubSuccessfulTokenExchange(code, "customer-42", extractQueryParam(location, "nonce"));
+        given().cookie("JSESSIONID", jsessionId).queryParam("code", code).queryParam("state", state)
+                .redirects().follow(false).when().get("/login/oauth2/code/oidc");
+
+        Response replay = given()
+                .cookie("JSESSIONID", jsessionId)
+                .queryParam("code", code)
+                .queryParam("state", state)
+                .redirects().follow(false)
+                .when()
+                .get("/login/oauth2/code/oidc");
+
+        assertEquals(401, replay.statusCode());
+        assertNoTokensIn(replay);
+        CORE_SERVICE.verify(1, postRequestedFor(urlPathEqualTo("/internal/auth/mobile/devices/device-6/refresh-tokens")));
     }
 
     private static void assertNoTokensIn(Response response) {
