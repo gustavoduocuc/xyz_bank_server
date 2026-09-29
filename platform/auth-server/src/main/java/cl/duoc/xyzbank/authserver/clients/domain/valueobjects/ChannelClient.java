@@ -3,6 +3,8 @@ package cl.duoc.xyzbank.authserver.clients.domain.valueobjects;
 import cl.duoc.xyzbank.authserver.shared.domain.DomainException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 
+import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -16,6 +18,14 @@ public final class ChannelClient {
 
     private static final Set<String> OIDC_SCOPES = Set.of("openid", "profile");
     private static final Set<Channel> OAUTH_CHANNELS = Set.of(Channel.WEB, Channel.MOBILE);
+    // Web tokens also reach interests-service (interest summary relayed through it); mobile
+    // tokens only core-service. Refresh lifetimes match the channel's session model.
+    private static final Map<Channel, Set<String>> AUDIENCES = Map.of(
+            Channel.WEB, Set.of("core-service", "interests-service"),
+            Channel.MOBILE, Set.of("core-service"));
+    private static final Map<Channel, Duration> REFRESH_TOKEN_LIFETIMES = Map.of(
+            Channel.WEB, Duration.ofDays(30),
+            Channel.MOBILE, Duration.ofDays(180));
 
     private final String clientId;
     private final Channel channel;
@@ -65,6 +75,14 @@ public final class ChannelClient {
     public Set<String> allowedScopes() {
         return Stream.concat(OIDC_SCOPES.stream(), channel.scopes().stream())
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    public Set<String> audiences() {
+        return AUDIENCES.get(channel);
+    }
+
+    public Duration refreshTokenLifetime() {
+        return REFRESH_TOKEN_LIFETIMES.get(channel);
     }
 
     @Override
