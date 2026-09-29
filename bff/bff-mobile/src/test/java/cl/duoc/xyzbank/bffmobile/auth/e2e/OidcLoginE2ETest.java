@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.bffmobile.auth.e2e;
 
 import cl.duoc.xyzbank.bffmobile.auth.testsupport.MockOidcProvider;
+import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
@@ -17,6 +18,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,6 +44,9 @@ class OidcLoginE2ETest {
      *    registers the device with core-service
      * 2. A callback where the provider denied authentication returns no tokens and never
      *    calls core-service
+     * 3. The authorization redirect asks for PKCE (S256) and exactly openid, profile and the
+     *    mobile channel's scope set
+     * 4. The code is exchanged as a public client: PKCE verifier, no client secret
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -138,6 +144,53 @@ class OidcLoginE2ETest {
 
         assertEquals(401, callbackResponse.statusCode());
         CORE_SERVICE.verify(0, postRequestedFor(urlPathEqualTo("/internal/auth/mobile/devices/device-1/refresh-tokens")));
+    }
+
+    @Test
+    @DisplayName("asks the provider for PKCE and exactly the mobile channel's scopes")
+    void asksTheProviderForPkceAndExactlyTheMobileChannelScopes() {
+        Response authorizationResponse = given()
+                .redirects().follow(false)
+                .when()
+                .get("/oauth2/authorization/oidc?deviceId=device-1");
+        String location = authorizationResponse.getHeader("Location");
+
+        Set<String> expectedScopes = new HashSet<>(Channel.MOBILE.scopes());
+        expectedScopes.add("openid");
+        expectedScopes.add("profile");
+        String scope = URLDecoder.decode(extractQueryParam(location, "scope"), StandardCharsets.UTF_8);
+        assertEquals(expectedScopes, Set.of(scope.split(" ")));
+        assertEquals("S256", extractQueryParam(location, "code_challenge_method"));
+    }
+
+    @Test
+    @DisplayName("exchanges the code as a public client, with a PKCE verifier and no client secret")
+    void exchangesTheCodeAsAPublicClientWithAPkceVerifierAndNoClientSecret() {
+        String code = "auth-code-5";
+        CORE_SERVICE.stubFor(post(urlPathEqualTo("/internal/auth/mobile/devices/device-5/refresh-tokens"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"customerId\":\"customer-42\",\"refreshToken\":\"opaque-refresh-5\","
+                                + "\"expiry\":\"2099-01-01T00:00:00Z\"}")));
+        Response authorizationResponse = given()
+                .redirects().follow(false)
+                .when()
+                .get("/oauth2/authorization/oidc?deviceId=device-5");
+        String location = authorizationResponse.getHeader("Location");
+        String state = URLDecoder.decode(extractQueryParam(location, "state"), StandardCharsets.UTF_8);
+        OIDC_PROVIDER.stubSuccessfulTokenExchange(code, "customer-42", extractQueryParam(location, "nonce"));
+
+        Response callbackResponse = given()
+                .cookie("JSESSIONID", authorizationResponse.getCookie("JSESSIONID"))
+                .queryParam("code", code)
+                .queryParam("state", state)
+                .redirects().follow(false)
+                .when()
+                .get("/login/oauth2/code/oidc");
+
+        assertEquals(200, callbackResponse.statusCode(), callbackResponse.asString());
+        OIDC_PROVIDER.verifyTokenExchangeWithoutClientSecret();
     }
 
     private static String extractQueryParam(String url, String param) {

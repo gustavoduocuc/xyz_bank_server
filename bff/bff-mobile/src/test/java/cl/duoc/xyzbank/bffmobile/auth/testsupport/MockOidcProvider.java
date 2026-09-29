@@ -74,6 +74,18 @@ public final class MockOidcProvider {
                                 + "\"id_token\":\"" + idToken + "\"}")));
     }
 
+    /**
+     * Verifies the client exchanged its code as a public client: identified by client_id in
+     * the body, with no client secret anywhere (neither Basic auth nor client_secret).
+     */
+    public void verifyTokenExchangeWithoutClientSecret() {
+        server.verify(com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(urlPathEqualTo("/mock-oidc/token"))
+                .withoutHeader("Authorization")
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("client_id=" + CLIENT_ID))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.notContaining("client_secret"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("code_verifier=")));
+    }
+
     public void stubFailedTokenExchange(String code) {
         server.stubFor(post(urlPathEqualTo("/mock-oidc/token"))
                 .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("code=" + code))
