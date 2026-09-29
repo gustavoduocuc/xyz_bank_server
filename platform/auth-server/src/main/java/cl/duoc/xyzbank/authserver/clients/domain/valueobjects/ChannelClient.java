@@ -3,6 +3,7 @@ package cl.duoc.xyzbank.authserver.clients.domain.valueobjects;
 import cl.duoc.xyzbank.authserver.shared.domain.DomainException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -64,5 +65,19 @@ public final class ChannelClient {
     public Set<String> allowedScopes() {
         return Stream.concat(OIDC_SCOPES.stream(), channel.scopes().stream())
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        return other instanceof ChannelClient client
+                && clientId.equals(client.clientId)
+                && channel == client.channel
+                && type == client.type
+                && redirectUri.equals(client.redirectUri);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(clientId, channel, type, redirectUri);
     }
 }

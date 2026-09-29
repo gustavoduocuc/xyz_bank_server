@@ -3,8 +3,9 @@ package cl.duoc.xyzbank.authserver.clients.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * The deployment-specific parts of the two channel clients. Everything that is a rule (grant
- * type, PKCE, scopes, client type) lives in the channel model instead.
+ * The deployment-specific parts of the two channel clients. The channel rules (which
+ * channels, which scopes, HTTPS redirects) live in ChannelClient; the protocol policy
+ * (authorization_code only, PKCE, no consent) in ChannelRegisteredClientRepository.
  */
 @ConfigurationProperties(prefix = "auth.clients")
 public record AuthClientsProperties(WebClient web, MobileClient mobile) {

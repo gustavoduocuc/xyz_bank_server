@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @DisplayName("The ChannelClient")
@@ -25,6 +26,8 @@ class ChannelClientTest {
      * 5. Rejects a client for the interests channel
      * 6. Rejects a blank client id
      * 7. Rejects a redirect URI that is not HTTPS
+     * 8. Equals another client with the same attributes
+     * 9. Differs from a client with a different redirect URI
      */
 
     private static final String WEB_REDIRECT_URI = "https://localhost:8081/login/oauth2/code/oidc";
@@ -106,5 +109,26 @@ class ChannelClientTest {
                         "bff-web", Channel.WEB, ClientType.CONFIDENTIAL, "http://localhost:8081/login/oauth2/code/oidc"));
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("equals another client with the same attributes")
+    void equalsAnotherClientWithTheSameAttributes() {
+        ChannelClient client = ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, WEB_REDIRECT_URI);
+        ChannelClient sameClient =
+                ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, WEB_REDIRECT_URI);
+
+        assertEquals(client, sameClient);
+        assertEquals(client.hashCode(), sameClient.hashCode());
+    }
+
+    @Test
+    @DisplayName("differs from a client with a different redirect URI")
+    void differsFromAClientWithADifferentRedirectUri() {
+        ChannelClient client = ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, WEB_REDIRECT_URI);
+        ChannelClient otherClient =
+                ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, MOBILE_REDIRECT_URI);
+
+        assertNotEquals(client, otherClient);
     }
 }

@@ -3,6 +3,8 @@ package cl.duoc.xyzbank.authserver.customers.domain.entities;
 import cl.duoc.xyzbank.authserver.customers.domain.valueobjects.CustomerId;
 import cl.duoc.xyzbank.authserver.shared.domain.DomainException;
 
+import java.util.Objects;
+
 /**
  * The credentials a customer logs in with, identified by username, and the customer they
  * authenticate as. The username is only a login handle; tokens identify the customer by
@@ -47,5 +49,15 @@ public final class CustomerLogin {
 
     public CustomerId customerId() {
         return customerId;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        return other instanceof CustomerLogin login && username.equals(login.username);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(username);
     }
 }
