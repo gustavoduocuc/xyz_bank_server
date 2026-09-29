@@ -18,6 +18,7 @@ class CustomerIdTest {
      * 3. Rejects a value that is not a UUID
      * 4. Two ids with the same value are equal
      * 5. Rejects an abbreviated UUID that Java's parser would tolerate
+     * 6. Ignores whitespace surrounding the UUID
      */
 
     private static final String SEED_CUSTOMER = "11111111-1111-1111-1111-111111111111";
@@ -58,5 +59,13 @@ class CustomerIdTest {
         DomainException exception = assertThrows(DomainException.class, () -> CustomerId.create("1-1-1-1-1"));
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("ignores whitespace surrounding the UUID")
+    void ignoresWhitespaceSurroundingTheUuid() {
+        CustomerId customerId = CustomerId.create("  " + SEED_CUSTOMER + " ");
+
+        assertEquals(CustomerId.create(SEED_CUSTOMER), customerId);
     }
 }

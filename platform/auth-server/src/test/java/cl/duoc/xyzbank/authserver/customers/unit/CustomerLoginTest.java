@@ -18,8 +18,9 @@ class CustomerLoginTest {
      * 1. Links a username and its password hash to the customer it identifies
      * 2. Rejects a blank username
      * 3. Rejects a blank password hash
-     * 4. Is the same login as another with the same username
-     * 5. Is a different login from one with another username
+     * 4. Rejects a login that identifies no customer
+     * 5. Is the same login as another with the same username
+     * 6. Is a different login from one with another username
      */
 
     private static final CustomerId SEED_CUSTOMER = CustomerId.create("11111111-1111-1111-1111-111111111111");
@@ -48,6 +49,15 @@ class CustomerLoginTest {
     void rejectsABlankPasswordHash() {
         DomainException exception =
                 assertThrows(DomainException.class, () -> CustomerLogin.create("demo", "", SEED_CUSTOMER));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("rejects a login that identifies no customer")
+    void rejectsALoginThatIdentifiesNoCustomer() {
+        DomainException exception =
+                assertThrows(DomainException.class, () -> CustomerLogin.create("demo", "{bcrypt}hash", null));
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
     }

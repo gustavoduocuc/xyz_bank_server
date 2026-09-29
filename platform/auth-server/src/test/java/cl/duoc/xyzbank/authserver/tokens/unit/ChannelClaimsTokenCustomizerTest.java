@@ -13,6 +13,7 @@ import cl.duoc.xyzbank.authserver.tokens.infrastructure.adapters.ChannelClientLo
 import cl.duoc.xyzbank.authserver.tokens.infrastructure.adapters.CustomerLoginLookupAdapter;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -29,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @DisplayName("The ChannelClaimsTokenCustomizer")
 class ChannelClaimsTokenCustomizerTest {
@@ -38,6 +40,7 @@ class ChannelClaimsTokenCustomizerTest {
      * 1. Stamps the customer id as "sub" and WEB as "channel" on tokens issued to bff-web
      * 2. Stamps MOBILE as "channel" on tokens issued to bff-mobile
      * 3. Overwrites any "channel" value already present, so only the client decides it
+     * 4. Leaves tokens that carry no customer identity (e.g. refresh tokens) untouched
      */
 
     private static final String SEED_CUSTOMER = "11111111-1111-1111-1111-111111111111";
@@ -87,6 +90,17 @@ class ChannelClaimsTokenCustomizerTest {
         JwtClaimsSet claims = customize("bff-web", tokenType, preset);
 
         assertEquals("WEB", claims.getClaimAsString("channel"));
+    }
+
+    @Test
+    @DisplayName("leaves tokens that carry no customer identity untouched")
+    void leavesTokensThatCarryNoCustomerIdentityUntouched() {
+        JwtClaimsSet.Builder refreshTokenClaims = JwtClaimsSet.builder().subject("demo");
+
+        JwtClaimsSet claims = customize("bff-web", OAuth2TokenType.REFRESH_TOKEN.getValue(), refreshTokenClaims);
+
+        assertEquals("demo", claims.getSubject());
+        assertNull(claims.getClaim("channel"));
     }
 
     private JwtClaimsSet customize(String clientId, String tokenType, JwtClaimsSet.Builder claims) {

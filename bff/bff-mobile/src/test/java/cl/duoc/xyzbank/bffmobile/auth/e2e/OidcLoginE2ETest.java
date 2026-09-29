@@ -154,15 +154,16 @@ class OidcLoginE2ETest {
     @Test
     @DisplayName("asks the provider for PKCE and exactly the mobile channel's scopes")
     void asksTheProviderForPkceAndExactlyTheMobileChannelScopes() {
+        Set<String> expectedScopes = new HashSet<>(Channel.MOBILE.scopes());
+        expectedScopes.add("openid");
+        expectedScopes.add("profile");
+
         Response authorizationResponse = given()
                 .redirects().follow(false)
                 .when()
                 .get("/oauth2/authorization/oidc?deviceId=device-1");
-        String location = authorizationResponse.getHeader("Location");
 
-        Set<String> expectedScopes = new HashSet<>(Channel.MOBILE.scopes());
-        expectedScopes.add("openid");
-        expectedScopes.add("profile");
+        String location = authorizationResponse.getHeader("Location");
         String scope = URLDecoder.decode(extractQueryParam(location, "scope"), StandardCharsets.UTF_8);
         assertEquals(expectedScopes, Set.of(scope.split(" ")));
         assertEquals("S256", extractQueryParam(location, "code_challenge_method"));
