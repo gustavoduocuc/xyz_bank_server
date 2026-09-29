@@ -31,6 +31,7 @@ public final class AuthorizationCodeFlow {
     public static final String WEB_CLIENT_SECRET = "bff-web-dev-secret";
     public static final String WEB_REDIRECT_URI = "https://localhost:8081/login/oauth2/code/oidc";
     public static final String MOBILE_CLIENT_ID = "bff-mobile";
+    public static final String MOBILE_CLIENT_SECRET = "bff-mobile-dev-secret";
     public static final String MOBILE_REDIRECT_URI = "https://localhost:8082/login/oauth2/code/oidc";
     public static final String WEB_SCOPES =
             "openid profile web:accounts:read web:customers:read web:transactions:read web:interests:read";
@@ -151,8 +152,8 @@ public final class AuthorizationCodeFlow {
 
     public Response exchangeAsMobileClient(String code, String codeVerifier) {
         return request().contentType(ContentType.URLENC)
+                .auth().preemptive().basic(MOBILE_CLIENT_ID, MOBILE_CLIENT_SECRET)
                 .formParam("grant_type", "authorization_code")
-                .formParam("client_id", MOBILE_CLIENT_ID)
                 .formParam("code", code)
                 .formParam("redirect_uri", MOBILE_REDIRECT_URI)
                 .formParam("code_verifier", codeVerifier)

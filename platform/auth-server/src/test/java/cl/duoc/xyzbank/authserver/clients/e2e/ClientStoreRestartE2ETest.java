@@ -63,7 +63,7 @@ class ClientStoreRestartE2ETest extends AbstractAuthServerIT {
 
         List<String> clientIds = jdbcTemplate.queryForList(
                 "SELECT client_id FROM oauth2_registered_client ORDER BY client_id", String.class);
-        assertEquals(List.of("bff-mobile", "bff-web"), clientIds);
+        assertEquals(List.of("bff-atm", "bff-mobile", "bff-web", "interests-service"), clientIds);
     }
 
     @Test

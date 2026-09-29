@@ -25,7 +25,7 @@ class ClientStoreE2ETest extends AbstractAuthServerIT {
 
     /*
      * Cases:
-     * 1. Holds exactly the two channel clients after startup
+     * 1. Holds exactly the four clients after startup
      * 2. Stores bff-web's secret only as a one-way hash, which the configured secret still matches
      */
 
@@ -36,12 +36,12 @@ class ClientStoreE2ETest extends AbstractAuthServerIT {
     private int port;
 
     @Test
-    @DisplayName("holds exactly the two channel clients after startup")
-    void holdsExactlyTheTwoChannelClientsAfterStartup() {
+    @DisplayName("holds exactly the four clients after startup")
+    void holdsExactlyTheFourClientsAfterStartup() {
         List<String> clientIds = jdbcTemplate.queryForList(
                 "SELECT client_id FROM oauth2_registered_client ORDER BY client_id", String.class);
 
-        assertEquals(List.of("bff-mobile", "bff-web"), clientIds);
+        assertEquals(List.of("bff-atm", "bff-mobile", "bff-web", "interests-service"), clientIds);
     }
 
     @Test

@@ -1,10 +1,11 @@
 package cl.duoc.xyzbank.authserver.tokens.config;
 
 import cl.duoc.xyzbank.authserver.clients.domain.repositories.ChannelClientRepository;
+import cl.duoc.xyzbank.authserver.clients.domain.repositories.ServiceClientRepository;
 import cl.duoc.xyzbank.authserver.customers.domain.repositories.CustomerLoginRepository;
 import cl.duoc.xyzbank.authserver.tokens.application.usecases.IssueTokenClaimsUseCase;
 import cl.duoc.xyzbank.authserver.tokens.infrastructure.adapters.ChannelClaimsTokenCustomizer;
-import cl.duoc.xyzbank.authserver.tokens.infrastructure.adapters.ChannelClientLookupAdapter;
+import cl.duoc.xyzbank.authserver.tokens.infrastructure.adapters.ClientProfileLookupAdapter;
 import cl.duoc.xyzbank.authserver.tokens.infrastructure.adapters.CustomerLoginLookupAdapter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,9 +17,11 @@ public class TokensConfig {
 
     @Bean
     public IssueTokenClaimsUseCase issueTokenClaimsUseCase(
-            ChannelClientRepository channelClientRepository, CustomerLoginRepository customerLoginRepository) {
+            ChannelClientRepository channelClientRepository,
+            ServiceClientRepository serviceClientRepository,
+            CustomerLoginRepository customerLoginRepository) {
         return new IssueTokenClaimsUseCase(
-                new ChannelClientLookupAdapter(channelClientRepository),
+                new ClientProfileLookupAdapter(channelClientRepository, serviceClientRepository),
                 new CustomerLoginLookupAdapter(customerLoginRepository));
     }
 

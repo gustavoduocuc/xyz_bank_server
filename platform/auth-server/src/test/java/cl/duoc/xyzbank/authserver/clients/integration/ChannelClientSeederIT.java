@@ -2,9 +2,11 @@ package cl.duoc.xyzbank.authserver.clients.integration;
 
 import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ChannelClient;
 import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ClientType;
+import cl.duoc.xyzbank.authserver.clients.domain.valueobjects.ServiceClient;
 import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.ChannelClientSeeder;
 import cl.duoc.xyzbank.authserver.clients.infrastructure.adapters.ChannelRegisteredClientMapper;
 import cl.duoc.xyzbank.authserver.clients.unit.InMemoryChannelClientRepository;
+import cl.duoc.xyzbank.authserver.clients.unit.InMemoryServiceClientRepository;
 import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import org.flywaydb.core.Flyway;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.server.authorization.client.JdbcRegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 
@@ -32,6 +35,7 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
      * 2. Seeding again keeps one registration per client
      * 3. Seeding with a changed redirect URI updates the stored client instead of adding one
      * 4. Seeding with a changed secret updates the stored client's secret
+     * 5. Seeding also stores the service clients, as client_credentials clients
      */
 
     private static final String SCHEMA = "seeder_it";
@@ -107,6 +111,22 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
         assertEquals(Set.of("bff-web"), storedClientIds());
     }
 
+    @Test
+    @DisplayName("stores the service clients as client_credentials clients")
+    void storesTheServiceClientsAsClientCredentialsClients() {
+        ChannelClientSeeder seeder = new ChannelClientSeeder(
+                new InMemoryChannelClientRepository(),
+                new InMemoryServiceClientRepository(ServiceClient.create("bff-atm", Channel.ATM)),
+                new ChannelRegisteredClientMapper(Map.of("bff-atm", "{noop}atm-secret")),
+                registeredClients);
+
+        seeder.seed();
+
+        RegisteredClient atm = registeredClients.findByClientId("bff-atm");
+        assertEquals(Set.of(AuthorizationGrantType.CLIENT_CREDENTIALS), atm.getAuthorizationGrantTypes());
+        assertEquals(Set.of("atm:read-balance", "atm:withdraw"), atm.getScopes());
+    }
+
     private ChannelClientSeeder seederFor(ChannelClient... clients) {
         return seederFor("{noop}web-secret", clients);
     }
@@ -114,6 +134,7 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
     private ChannelClientSeeder seederFor(String encodedWebSecret, ChannelClient... clients) {
         return new ChannelClientSeeder(
                 new InMemoryChannelClientRepository(clients),
+                new InMemoryServiceClientRepository(),
                 new ChannelRegisteredClientMapper(Map.of("bff-web", encodedWebSecret)),
                 registeredClients);
     }

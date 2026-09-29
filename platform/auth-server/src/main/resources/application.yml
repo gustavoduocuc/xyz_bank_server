@@ -39,7 +39,14 @@ auth:
       redirect-uri: ${BFF_WEB_REDIRECT_URI:https://localhost:8081/login/oauth2/code/oidc}
     mobile:
       client-id: bff-mobile
+      client-secret: ${BFF_MOBILE_CLIENT_SECRET:bff-mobile-dev-secret}
       redirect-uri: ${BFF_MOBILE_REDIRECT_URI:https://localhost:8082/login/oauth2/code/oidc}
+    atm:
+      client-id: bff-atm
+      client-secret: ${BFF_ATM_CLIENT_SECRET:bff-atm-dev-secret}
+    interests:
+      client-id: interests-service
+      client-secret: ${INTERESTS_SERVICE_CLIENT_SECRET:interests-service-dev-secret}
   demo-customer:
     username: demo
     password: ${AUTH_DEMO_PASSWORD:demo-password}
