@@ -115,8 +115,11 @@ public class AuthorizationServerSecurityConfig {
     @Order(2)
     public SecurityFilterChain loginSecurityFilterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/actuator/health", "/error").permitAll()
+                        // device revocation authenticates its caller itself (bff-mobile's
+                        // client secret plus the device's token), not through a login session
+                        .requestMatchers("/actuator/health", "/error", "/devices/**").permitAll()
                         .anyRequest().authenticated())
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/devices/**"))
                 .formLogin(Customizer.withDefaults());
         return http.build();
     }

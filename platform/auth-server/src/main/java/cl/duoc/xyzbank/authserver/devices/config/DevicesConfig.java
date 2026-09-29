@@ -6,10 +6,14 @@ import cl.duoc.xyzbank.authserver.devices.application.usecases.RegisterDeviceFor
 import cl.duoc.xyzbank.authserver.devices.application.usecases.RevokeDeviceUseCase;
 import cl.duoc.xyzbank.authserver.devices.domain.repositories.DeviceRegistrationRepository;
 import cl.duoc.xyzbank.authserver.devices.infrastructure.adapters.DeviceAuthorizationRequestValidator;
+import cl.duoc.xyzbank.authserver.devices.infrastructure.adapters.DeviceRevocationAuthenticator;
 import cl.duoc.xyzbank.authserver.devices.infrastructure.persistence.JdbcDeviceRegistrationRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 
 @Configuration
 public class DevicesConfig {
@@ -38,5 +42,12 @@ public class DevicesConfig {
     public DeviceAuthorizationRequestValidator deviceAuthorizationRequestValidator(
             ChannelClientRepository channelClients, AssertDeviceActiveUseCase assertDeviceActive) {
         return new DeviceAuthorizationRequestValidator(channelClients, assertDeviceActive);
+    }
+
+    @Bean
+    public DeviceRevocationAuthenticator deviceRevocationAuthenticator(
+            RegisteredClientRepository registeredClients, ChannelClientRepository channelClients, JwtDecoder jwtDecoder) {
+        return new DeviceRevocationAuthenticator(
+                registeredClients, channelClients, PasswordEncoderFactories.createDelegatingPasswordEncoder(), jwtDecoder);
     }
 }
