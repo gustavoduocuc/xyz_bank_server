@@ -23,8 +23,9 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 /**
  * Wires spring-boot-starter-oauth2-client for the OIDC authorization-code + PKCE handshake
  * only (design.md Decision 3). Every request is otherwise permitted through unauthenticated;
- * the rest of bff-web keeps resolving identity from its own short-lived JWT cookie via
- * CallerContextInterceptor, never from Spring Security's SecurityContext. The handshake
+ * the rest of bff-web keeps resolving identity from the authorization server's access token
+ * in the session cookie via CallerContextInterceptor, never from Spring Security's
+ * SecurityContext. The handshake
  * itself needs a session (Spring Security's standard authorization-request/state/PKCE
  * round-trip between the redirect and the callback stores its pending request there) --
  * that session is created on demand for exactly that round-trip and never consulted again
