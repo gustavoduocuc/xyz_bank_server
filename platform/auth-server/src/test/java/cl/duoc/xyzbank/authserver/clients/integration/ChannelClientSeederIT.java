@@ -29,6 +29,8 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
     /*
      * Cases:
      * 1. Seeding stores exactly one registration per channel client, findable by client id and by id
+     * 2. Seeding again keeps one registration per client
+     * 3. Seeding with a changed redirect URI updates the stored client instead of adding one
      */
 
     private static final String SCHEMA = "seeder_it";
@@ -78,5 +80,29 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
 
     private Set<String> storedClientIds() {
         return Set.copyOf(jdbcTemplate.queryForList("SELECT client_id FROM oauth2_registered_client", String.class));
+    }
+
+    @Test
+    @DisplayName("keeps one registration per client when seeded again")
+    void keepsOneRegistrationPerClientWhenSeededAgain() {
+        seederFor(Map.of("bff-web", "{noop}web-secret"), WEB_CLIENT, MOBILE_CLIENT).seed();
+
+        seederFor(Map.of("bff-web", "{noop}web-secret"), WEB_CLIENT, MOBILE_CLIENT).seed();
+
+        Integer rows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM oauth2_registered_client", Integer.class);
+        assertEquals(2, rows);
+    }
+
+    @Test
+    @DisplayName("updates a stored client whose redirect URI changed")
+    void updatesAStoredClientWhoseRedirectUriChanged() {
+        seederFor(Map.of("bff-web", "{noop}web-secret"), WEB_CLIENT).seed();
+        String newRedirectUri = "https://localhost:18081/login/oauth2/code/oidc";
+        ChannelClient movedWebClient = ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, newRedirectUri);
+
+        seederFor(Map.of("bff-web", "{noop}web-secret"), movedWebClient).seed();
+
+        assertEquals(Set.of(newRedirectUri), registeredClients.findByClientId("bff-web").getRedirectUris());
+        assertEquals(Set.of("bff-web"), storedClientIds());
     }
 }
