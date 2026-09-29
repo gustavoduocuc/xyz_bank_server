@@ -1,4 +1,4 @@
-package cl.duoc.xyzbank.authserver.shared.e2e;
+package cl.duoc.xyzbank.authserver.shared.integration;
 
 import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import org.junit.jupiter.api.DisplayName;
@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 @SpringBootTest
 @DisplayName("The authorization server's state stores")
-class AuthorizationStoreIsNotInMemoryE2ETest extends AbstractAuthServerIT {
+class AuthorizationStoreIsNotInMemoryIT extends AbstractAuthServerIT {
 
     /*
      * Cases:

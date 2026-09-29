@@ -59,6 +59,7 @@ class AuthServerDatabaseHealthE2ETest {
         Response afterDatabaseLoss = flow.request().get("/actuator/health");
 
         assertEquals("UP", whileReachable.jsonPath().getString("status"));
+        assertNull(whileReachable.jsonPath().get("components"));
         assertNotEquals("UP", afterDatabaseLoss.jsonPath().getString("status"), afterDatabaseLoss.asString());
         assertNull(afterDatabaseLoss.jsonPath().get("components"));
     }
