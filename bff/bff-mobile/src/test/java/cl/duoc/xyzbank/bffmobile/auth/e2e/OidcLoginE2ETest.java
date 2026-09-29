@@ -32,6 +32,7 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMoc
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("bff-mobile's OIDC login")
@@ -47,6 +48,8 @@ class OidcLoginE2ETest {
      * 3. The authorization redirect asks for PKCE (S256) and exactly openid, profile and the
      *    mobile channel's scope set
      * 4. The code is exchanged as a public client: PKCE verifier, no client secret
+     * 5. A correctly signed ID token from an unexpected issuer fails the login: no tokens in the
+     *    body, and core-service is never called
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -191,6 +194,38 @@ class OidcLoginE2ETest {
 
         assertEquals(200, callbackResponse.statusCode(), callbackResponse.asString());
         OIDC_PROVIDER.verifyTokenExchangeWithoutClientSecret();
+    }
+
+    @Test
+    @DisplayName("fails the login when a correctly signed ID token comes from an unexpected issuer")
+    void failsTheLoginWhenACorrectlySignedIdTokenComesFromAnUnexpectedIssuer() {
+        String code = "auth-code-3";
+        Response authorizationResponse = given()
+                .redirects().follow(false)
+                .when()
+                .get("/oauth2/authorization/oidc?deviceId=device-3");
+        String location = authorizationResponse.getHeader("Location");
+        String state = URLDecoder.decode(extractQueryParam(location, "state"), StandardCharsets.UTF_8);
+        OIDC_PROVIDER.stubSuccessfulTokenExchange(
+                code, "customer-42", extractQueryParam(location, "nonce"), "https://impostor.example");
+
+        Response callbackResponse = given()
+                .cookie("JSESSIONID", authorizationResponse.getCookie("JSESSIONID"))
+                .queryParam("code", code)
+                .queryParam("state", state)
+                .redirects().follow(false)
+                .when()
+                .get("/login/oauth2/code/oidc");
+
+        assertEquals(401, callbackResponse.statusCode());
+        assertNoTokensIn(callbackResponse);
+        CORE_SERVICE.verify(0, postRequestedFor(urlPathEqualTo("/internal/auth/mobile/devices/device-3/refresh-tokens")));
+    }
+
+    private static void assertNoTokensIn(Response response) {
+        String body = response.asString();
+        assertNull(body.isBlank() ? null : response.jsonPath().getString("sessionToken"), body);
+        assertNull(body.isBlank() ? null : response.jsonPath().getString("refreshToken"), body);
     }
 
     private static String extractQueryParam(String url, String param) {
