@@ -1,16 +1,16 @@
 package cl.duoc.xyzbank.bffweb.dashboard.e2e;
 
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
+import cl.duoc.xyzbank.bffweb.auth.testsupport.MockOidcProvider;
+import cl.duoc.xyzbank.bffweb.auth.testsupport.TestSessions;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -38,14 +38,20 @@ class DashboardControllerE2ETest {
      * 3. Non-web channel is rejected
      * 4. Outbound core-service calls carry the inbound correlation id
      * 5. A generated correlation id is forwarded when the inbound header is absent
-     * 6. Every outbound core-service call carries the service credential
+     * 6. Every outbound core-service call sends no static service credential
      * 7. Every outbound core-service call forwards the caller's session token as a bearer token
      */
 
+    private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
 
     static {
         CORE_SERVICE.start();
+    }
+
+    @BeforeAll
+    static void startAuthorizationServer() {
+        OIDC_PROVIDER.start();
     }
 
     @DynamicPropertySource
@@ -56,9 +62,6 @@ class DashboardControllerE2ETest {
     @LocalServerPort
     private int port;
 
-    @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
-
     @BeforeEach
     void configureRestAssured() {
         RestAssured.port = port;
@@ -68,11 +71,12 @@ class DashboardControllerE2ETest {
     }
 
     private String webSessionFor(String customerId) {
-        return tokenAdapter.issue(customerId, Channel.WEB, null);
+        return TestSessions.webSessionFor(customerId);
     }
 
     @AfterAll
-    static void stopCoreServiceStub() {
+    static void stopServers() {
+        OIDC_PROVIDER.stop();
         CORE_SERVICE.stop();
     }
 
@@ -124,7 +128,7 @@ class DashboardControllerE2ETest {
     @DisplayName("rejects a caller whose channel is not web")
     void rejectsACallerWhoseChannelIsNotWeb() {
         given()
-                .cookie("session", tokenAdapter.issue("customer-1", Channel.MOBILE, null))
+                .cookie("session", TestSessions.mobileSessionFor("customer-1"))
                 .when()
                 .get("/customers/{customerId}/dashboard", "customer-1")
                 .then()
@@ -146,12 +150,8 @@ class DashboardControllerE2ETest {
     @Test
     @DisplayName("rejects a request with an expired session cookie")
     void rejectsARequestWithAnExpiredSessionCookie() {
-        JwtCallerContextAdapter expiredTokenAdapter = new JwtCallerContextAdapter(
-                "dev-channel-auth-jwt-signing-secret-please-rotate-in-prod",
-                java.time.Clock.fixed(java.time.Instant.parse("2020-01-01T00:00:00Z"), java.time.ZoneOffset.UTC));
-
         given()
-                .cookie("session", expiredTokenAdapter.issue("customer-1", Channel.WEB, null))
+                .cookie("session", TestSessions.expiredWebSessionFor("customer-1"))
                 .when()
                 .get("/customers/{customerId}/dashboard", "customer-1")
                 .then()
@@ -218,8 +218,8 @@ class DashboardControllerE2ETest {
     }
 
     @Test
-    @DisplayName("carries the service credential on every outbound core-service call")
-    void carriesTheServiceCredentialOnEveryOutboundCoreServiceCall() {
+    @DisplayName("sends no static service credential on outbound core-service calls")
+    void sendsNoStaticServiceCredentialOnOutboundCoreServiceCalls() {
         CORE_SERVICE.stubFor(get(urlEqualTo("/internal/customers/customer-1"))
                 .willReturn(json("{\"id\":\"customer-1\",\"fullName\":\"Ana Perez\",\"email\":\"ana@example.com\"}")));
         CORE_SERVICE.stubFor(get(urlEqualTo("/internal/customers/customer-1/accounts"))
@@ -236,11 +236,11 @@ class DashboardControllerE2ETest {
                 .statusCode(200);
 
         CORE_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/customers/customer-1"))
-                .withHeader("X-Service-Credential", WireMock.equalTo("dev-service-credential-web")));
+                .withoutHeader("X-Service-Credential"));
         CORE_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/customers/customer-1/accounts"))
-                .withHeader("X-Service-Credential", WireMock.equalTo("dev-service-credential-web")));
+                .withoutHeader("X-Service-Credential"));
         CORE_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/accounts/account-1/transactions?pageSize=5"))
-                .withHeader("X-Service-Credential", WireMock.equalTo("dev-service-credential-web")));
+                .withoutHeader("X-Service-Credential"));
     }
 
     @Test
