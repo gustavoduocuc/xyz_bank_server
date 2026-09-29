@@ -49,6 +49,12 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
+        <!-- NimbusJwtDecoder and JWT validators only, to verify auth-server tokens; no Spring
+             Security filter chain (adopt-oauth2-tokens-between-services design.md Decision 4) -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.xyzbank</groupId>
             <artifactId>shared-security</artifactId>
