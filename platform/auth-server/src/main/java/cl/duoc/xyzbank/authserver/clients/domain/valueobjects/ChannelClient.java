@@ -40,6 +40,22 @@ public final class ChannelClient {
         return new ChannelClient(clientId, channel, type, redirectUri);
     }
 
+    public String clientId() {
+        return clientId;
+    }
+
+    public Channel channel() {
+        return channel;
+    }
+
+    public ClientType type() {
+        return type;
+    }
+
+    public String redirectUri() {
+        return redirectUri;
+    }
+
     public Set<String> allowedScopes() {
         Set<String> scopes = new HashSet<>(OIDC_SCOPES);
         scopes.addAll(channel.scopes());
