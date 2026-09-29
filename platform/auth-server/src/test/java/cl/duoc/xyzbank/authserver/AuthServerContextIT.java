@@ -28,7 +28,7 @@ class AuthServerContextIT extends AbstractAuthServerIT {
      * Cases:
      * 1. Starts with the provisioned signing keystore and exposes exactly that one key
      * 2. Refuses to start when no signing keystore is configured
-     * 3. Creates its schema through Flyway on startup
+     * 3. Creates its schema (V1 and V2) through Flyway on startup
      * 4. Refuses to start when its database is unreachable
      */
 
@@ -64,7 +64,7 @@ class AuthServerContextIT extends AbstractAuthServerIT {
         List<String> appliedVersions = jdbcTemplate.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank", String.class);
 
-        assertTrue(appliedVersions.contains("1"), appliedVersions.toString());
+        assertTrue(appliedVersions.containsAll(List.of("1", "2")), appliedVersions.toString());
     }
 
     @Test
