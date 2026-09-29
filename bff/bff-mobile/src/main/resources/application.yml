@@ -42,11 +42,6 @@ core-service:
   base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
   connect-timeout-ms: 3000
   read-timeout-ms: 3000
-  service-credential: ${CORE_SERVICE_CREDENTIAL:dev-service-credential-mobile}
-
-channel-auth:
-  jwt:
-    secret: ${CHANNEL_AUTH_JWT_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
 
 management:
   endpoints:

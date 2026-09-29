@@ -1,7 +1,7 @@
 package cl.duoc.xyzbank.bffmobile.accountsummary.e2e;
 
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
+import cl.duoc.xyzbank.bffmobile.auth.testsupport.MockOidcProvider;
+import cl.duoc.xyzbank.bffmobile.auth.testsupport.TestSessions;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import io.restassured.RestAssured;
@@ -10,7 +10,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -33,9 +32,11 @@ import static org.hamcrest.Matchers.nullValue;
 class AccountSummaryControllerE2ETest {
 
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
+    private static final MockOidcProvider AUTHORIZATION_SERVER = new MockOidcProvider();
 
     static {
         CORE_SERVICE.start();
+        AUTHORIZATION_SERVER.start();
     }
 
     @DynamicPropertySource
@@ -45,9 +46,6 @@ class AccountSummaryControllerE2ETest {
 
     @LocalServerPort
     private int port;
-
-    @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
 
     @BeforeEach
     void configureRestAssured() {
@@ -59,13 +57,14 @@ class AccountSummaryControllerE2ETest {
     }
 
     @AfterAll
-    static void stopCoreServiceStub() {
+    static void stopStubs() {
         CORE_SERVICE.stop();
+        AUTHORIZATION_SERVER.stop();
     }
 
     private RequestSpecification asDevice(String deviceId) {
         return given()
-                .header("Authorization", "Bearer " + tokenAdapter.issue("customer-1", Channel.MOBILE, deviceId))
+                .header("Authorization", "Bearer " + TestSessions.mobileSessionFor("customer-1", deviceId))
                 .header("X-Device-Id", deviceId);
     }
 
@@ -107,7 +106,7 @@ class AccountSummaryControllerE2ETest {
     @DisplayName("rejects a caller whose channel is not mobile")
     void rejectsACallerWhoseChannelIsNotMobile() {
         given()
-                .header("Authorization", "Bearer " + tokenAdapter.issue("customer-1", Channel.WEB, null))
+                .header("Authorization", "Bearer " + TestSessions.webSessionFor("customer-1"))
                 .header("X-Device-Id", "device-1")
                 .when()
                 .get("/accounts/{accountId}/summary", "account-1")
@@ -120,7 +119,7 @@ class AccountSummaryControllerE2ETest {
     @DisplayName("rejects a token presented with a mismatched device id")
     void rejectsATokenPresentedWithAMismatchedDeviceId() {
         given()
-                .header("Authorization", "Bearer " + tokenAdapter.issue("customer-1", Channel.MOBILE, "device-1"))
+                .header("Authorization", "Bearer " + TestSessions.mobileSessionFor("customer-1", "device-1"))
                 .header("X-Device-Id", "device-2")
                 .when()
                 .get("/accounts/{accountId}/summary", "account-1")
@@ -182,8 +181,8 @@ class AccountSummaryControllerE2ETest {
     }
 
     @Test
-    @DisplayName("carries the service credential on every outbound core-service call")
-    void carriesTheServiceCredentialOnEveryOutboundCoreServiceCall() {
+    @DisplayName("sends no static service credential on outbound core-service calls")
+    void sendsNoStaticServiceCredentialOnOutboundCoreServiceCalls() {
         asDevice("device-1")
                 .when()
                 .get("/accounts/{accountId}/summary", "account-1")
@@ -191,15 +190,15 @@ class AccountSummaryControllerE2ETest {
                 .statusCode(200);
 
         CORE_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/accounts/account-1/balance"))
-                .withHeader("X-Service-Credential", WireMock.equalTo("dev-service-credential-mobile")));
+                .withoutHeader("X-Service-Credential"));
         CORE_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/accounts/account-1/transactions?pageSize=5"))
-                .withHeader("X-Service-Credential", WireMock.equalTo("dev-service-credential-mobile")));
+                .withoutHeader("X-Service-Credential"));
     }
 
     @Test
     @DisplayName("forwards the caller's session token as a bearer token on every outbound core-service call")
     void forwardsTheCallersSessionTokenAsABearerTokenOnEveryOutboundCoreServiceCall() {
-        String token = tokenAdapter.issue("customer-1", Channel.MOBILE, "device-1");
+        String token = TestSessions.mobileSessionFor("customer-1", "device-1");
 
         given()
                 .header("Authorization", "Bearer " + token)
