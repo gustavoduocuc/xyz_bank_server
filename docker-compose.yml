@@ -201,6 +201,35 @@ services:
       retries: 20
       start_period: 40s
 
+  auth-server:
+    build:
+      context: .
+      dockerfile: platform/auth-server/Dockerfile
+    container_name: xyz-bank-auth-server
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./dev/certs/auth-server/keystore.p12:/certs/keystore.p12:ro
+      - ./dev/certs/auth-server/signing.p12:/certs/signing.p12:ro
+    environment:
+      TLS_KEYSTORE_PATH: file:/certs/keystore.p12
+      TLS_KEYSTORE_PASSWORD: xyzbank-dev
+      # Public issuer: the URL the browser uses. Tokens carry it even when a BFF container
+      # reaches this server as https://auth-server:9000 (design.md Decision 1)
+      AUTH_ISSUER: https://localhost:9000
+      # Mounted, persistent signing key: restarting this container keeps issued tokens valid
+      AUTH_SIGNING_KEYSTORE_PATH: file:/certs/signing.p12
+      AUTH_SIGNING_KEYSTORE_PASSWORD: xyzbank-dev
+      AUTH_SIGNING_KEY_ALIAS: auth-server-signing
+      BFF_WEB_CLIENT_SECRET: ${BFF_WEB_CLIENT_SECRET:-bff-web-dev-secret}
+      AUTH_DEMO_PASSWORD: ${AUTH_DEMO_PASSWORD:-demo-password}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --no-check-certificate -qO- https://127.0.0.1:9000/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
   bff-web:
     build:
       context: .
@@ -210,10 +239,13 @@ services:
       - "8081:8081"
     volumes:
       - ./dev/certs/bff-web/keystore.p12:/certs/keystore.p12:ro
+      - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
     depends_on:
       core-service:
         condition: service_healthy
       interests-service:
+        condition: service_healthy
+      auth-server:
         condition: service_healthy
     environment:
       CORE_SERVICE_BASE_URL: http://core-service:8080
@@ -222,6 +254,18 @@ services:
       FEATURE_USE_INTERESTS_SERVICE: ${FEATURE_USE_INTERESTS_SERVICE:-true}
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
       TLS_KEYSTORE_PASSWORD: xyzbank-dev
+      # OIDC against auth-server (design.md Decision 1): the browser is sent to the public
+      # authorization URL, while this container exchanges codes and fetches keys over the
+      # Docker network; the ID token's issuer is checked against the public URL
+      OIDC_CLIENT_ID: bff-web
+      OIDC_CLIENT_SECRET: ${BFF_WEB_CLIENT_SECRET:-bff-web-dev-secret}
+      OIDC_AUTHORIZATION_URI: https://localhost:9000/oauth2/authorize
+      OIDC_TOKEN_URI: https://auth-server:9000/oauth2/token
+      OIDC_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      OIDC_ISSUER: https://localhost:9000
+      # Trust the dev CA for the TLS calls to auth-server. This replaces the JVM's default
+      # CAs, which is fine because this BFF makes no other TLS client calls (design.md Decision 6)
+      JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/certs/truststore.p12 -Djavax.net.ssl.trustStorePassword=xyzbank-dev -Djavax.net.ssl.trustStoreType=PKCS12
     healthcheck:
       test: ["CMD", "sh", "-c", "wget --no-check-certificate -qO- https://127.0.0.1:8081/actuator/health | grep -q UP"]
       interval: 10s
@@ -238,14 +282,26 @@ services:
       - "8082:8082"
     volumes:
       - ./dev/certs/bff-mobile/keystore.p12:/certs/keystore.p12:ro
+      - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
     depends_on:
       core-service:
+        condition: service_healthy
+      auth-server:
         condition: service_healthy
     environment:
       CORE_SERVICE_BASE_URL: http://core-service:8080
       CORE_SERVICE_CREDENTIAL: dev-service-credential-mobile
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
       TLS_KEYSTORE_PASSWORD: xyzbank-dev
+      # OIDC against auth-server as a public client (no secret); same public/internal URL
+      # split as bff-web (design.md Decision 1)
+      OIDC_CLIENT_ID: bff-mobile
+      OIDC_AUTHORIZATION_URI: https://localhost:9000/oauth2/authorize
+      OIDC_TOKEN_URI: https://auth-server:9000/oauth2/token
+      OIDC_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      OIDC_ISSUER: https://localhost:9000
+      # Trust the dev CA for the TLS calls to auth-server (design.md Decision 6)
+      JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/certs/truststore.p12 -Djavax.net.ssl.trustStorePassword=xyzbank-dev -Djavax.net.ssl.trustStoreType=PKCS12
     healthcheck:
       test: ["CMD", "sh", "-c", "wget --no-check-certificate -qO- https://127.0.0.1:8082/actuator/health | grep -q UP"]
       interval: 10s
