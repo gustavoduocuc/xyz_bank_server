@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.bffatm.shared.config;
 
+import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.AtmSessionClientInterceptor;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.BearerTokenClientInterceptor;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.ClientCredentialsTokenInterceptor;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.CorrelationIdClientInterceptor;
@@ -42,6 +43,7 @@ public class CoreServiceClientConfig {
             @Value("${core-service.read-timeout-ms}") int readTimeoutMs,
             CorrelationIdClientInterceptor correlationIdClientInterceptor,
             BearerTokenClientInterceptor bearerTokenClientInterceptor,
+            AtmSessionClientInterceptor atmSessionClientInterceptor,
             ClientCredentialsTokenInterceptor clientCredentialsTokenInterceptor) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(connectTimeoutMs);
@@ -51,6 +53,7 @@ public class CoreServiceClientConfig {
                 .requestFactory(requestFactory)
                 .requestInterceptor(correlationIdClientInterceptor)
                 .requestInterceptor(bearerTokenClientInterceptor)
+                .requestInterceptor(atmSessionClientInterceptor)
                 .requestInterceptor(clientCredentialsTokenInterceptor)
                 .build();
     }

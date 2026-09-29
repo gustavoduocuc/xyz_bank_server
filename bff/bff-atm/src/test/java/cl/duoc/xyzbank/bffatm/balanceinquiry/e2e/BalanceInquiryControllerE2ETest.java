@@ -145,6 +145,29 @@ class BalanceInquiryControllerE2ETest {
     }
 
     @Test
+    @DisplayName("sends the pin verification's atm session id on the balance call")
+    void sendsTheAtmSessionIdOnTheBalanceCall() {
+        CORE_SERVICE.stubFor(get(urlEqualTo("/internal/accounts/account-1/balance"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"accountId\":\"account-1\",\"balance\":250.00,\"currency\":\"USD\"}")));
+        String token = tokenAdapter.issue("customer-1", Channel.ATM, TERMINAL_ID, "atm-session-1");
+
+        given()
+                .header("Authorization", "Bearer " + token)
+                .when()
+                .get("/accounts/{accountId}/balance", "account-1")
+                .then()
+                .statusCode(200)
+                .body("balance", equalTo(250.00f))
+                .body("currency", equalTo("USD"));
+
+        CORE_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/accounts/account-1/balance"))
+                .withHeader("X-Atm-Session", WireMock.equalTo("atm-session-1")));
+    }
+
+    @Test
     @DisplayName("rejects a missing bearer token")
     void rejectsAMissingBearerToken() {
         given()

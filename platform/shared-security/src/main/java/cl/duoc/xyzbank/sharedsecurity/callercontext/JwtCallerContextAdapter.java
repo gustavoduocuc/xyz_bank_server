@@ -33,6 +33,10 @@ public final class JwtCallerContextAdapter {
     }
 
     public String issue(String customerId, Channel channel, String terminalId) {
+        return issue(customerId, channel, terminalId, null);
+    }
+
+    public String issue(String customerId, Channel channel, String terminalId, String atmSessionId) {
         Instant now = clock.instant();
         JwtBuilder builder = Jwts.builder()
                 .subject(customerId)
@@ -44,24 +48,18 @@ public final class JwtCallerContextAdapter {
         if (terminalId != null) {
             builder.claim("terminalId", terminalId);
         }
+        if (atmSessionId != null) {
+            builder.claim("atmSessionId", atmSessionId);
+        }
         return builder.compact();
     }
 
+    public Optional<String> atmSessionIdOf(String token) {
+        return Optional.ofNullable(claimsOf(token).get("atmSessionId", String.class));
+    }
+
     public CallerContext resolve(String token) {
-        if (token == null || token.isBlank()) {
-            throw CallerIdentityException.invalid("Token is required");
-        }
-        Claims claims;
-        try {
-            claims = Jwts.parser()
-                    .verifyWith(key)
-                    .clock(() -> Date.from(clock.instant()))
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-        } catch (JwtException | IllegalArgumentException exception) {
-            throw CallerIdentityException.invalid("Invalid or expired token");
-        }
+        Claims claims = claimsOf(token);
         Channel channel;
         try {
             channel = Channel.valueOf(claims.get("channel", String.class));
@@ -71,6 +69,22 @@ public final class JwtCallerContextAdapter {
         String customerId = claims.getSubject();
         String terminalId = claims.get("terminalId", String.class);
         return new ResolvedCallerContext(customerId, channel, channel.scopes(), terminalId);
+    }
+
+    private Claims claimsOf(String token) {
+        if (token == null || token.isBlank()) {
+            throw CallerIdentityException.invalid("Token is required");
+        }
+        try {
+            return Jwts.parser()
+                    .verifyWith(key)
+                    .clock(() -> Date.from(clock.instant()))
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+        } catch (JwtException | IllegalArgumentException exception) {
+            throw CallerIdentityException.invalid("Invalid or expired token");
+        }
     }
 
     private Duration expiryFor(Channel channel) {

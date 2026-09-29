@@ -29,7 +29,7 @@ auth-server:
 
 channel-auth:
   jwt:
-    secret: ${CHANNEL_AUTH_JWT_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
+    secret: ${BFF_ATM_SESSION_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
 
 management:
   endpoints:
