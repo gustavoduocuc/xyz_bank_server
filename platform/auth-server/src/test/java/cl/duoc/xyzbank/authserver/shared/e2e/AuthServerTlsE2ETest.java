@@ -1,10 +1,10 @@
 package cl.duoc.xyzbank.authserver.shared.e2e;
 
+import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.test.context.ActiveProfiles;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -25,9 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@ActiveProfiles("test")
 @DisplayName("The auth-server transport")
-class AuthServerTlsE2ETest {
+class AuthServerTlsE2ETest extends AbstractAuthServerIT {
 
     /*
      * Cases:

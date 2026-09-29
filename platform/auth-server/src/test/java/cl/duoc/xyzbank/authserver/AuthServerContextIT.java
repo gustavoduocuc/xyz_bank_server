@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.authserver;
 
 import cl.duoc.xyzbank.authserver.signing.infrastructure.adapters.SigningKeyUnavailableException;
+import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import com.nimbusds.jose.jwk.JWKSelector;
 import com.nimbusds.jose.jwk.JWKMatcher;
 import com.nimbusds.jose.jwk.source.JWKSource;
@@ -10,16 +11,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@ActiveProfiles("test")
 @DisplayName("The auth-server application context")
-class AuthServerContextIT {
+class AuthServerContextIT extends AbstractAuthServerIT {
 
     /*
      * Cases:
@@ -45,7 +44,7 @@ class AuthServerContextIT {
                 .profiles("test");
 
         Exception exception = assertThrows(
-                Exception.class, () -> application.run("--server.port=0", "--auth.signing.keystore-path="));
+                Exception.class, () -> application.run(datasourceArguments("--server.port=0", "--auth.signing.keystore-path=")));
 
         assertTrue(hasCause(exception, SigningKeyUnavailableException.class), "unexpected failure: " + exception);
     }
