@@ -71,9 +71,6 @@ class ChannelRegisteredClientMapperTest {
         assertFalse(client.getClientSettings().isRequireAuthorizationConsent());
     }
 
-
-
-
     @Test
     @DisplayName("uses the client id as the registration id")
     void usesTheClientIdAsTheRegistrationId() {

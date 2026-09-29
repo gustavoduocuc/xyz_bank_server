@@ -1,13 +1,10 @@
 package cl.duoc.xyzbank.authserver.shared.e2e;
 
-import cl.duoc.xyzbank.authserver.AuthServerApplication;
 import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.web.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import static cl.duoc.xyzbank.authserver.testsupport.AuthorizationCodeFlow.WEB_CLIENT_ID;
@@ -32,13 +29,13 @@ class AuthorizationPersistenceE2ETest extends AbstractAuthServerIT {
     void exchangesAfterARestartACodeIssuedBeforeIt() {
         String verifier = AuthorizationCodeFlow.newCodeVerifier();
         String code;
-        try (ConfigurableApplicationContext firstRun = start()) {
+        try (ConfigurableApplicationContext firstRun = startAuthServer()) {
             code = new AuthorizationCodeFlow(portOf(firstRun))
                     .authorizationCodeFor(WEB_CLIENT_ID, WEB_REDIRECT_URI, WEB_SCOPES, verifier);
         }
 
         Response exchange;
-        try (ConfigurableApplicationContext secondRun = start()) {
+        try (ConfigurableApplicationContext secondRun = startAuthServer()) {
             exchange = new AuthorizationCodeFlow(portOf(secondRun)).exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET);
         }
 
@@ -51,29 +48,19 @@ class AuthorizationPersistenceE2ETest extends AbstractAuthServerIT {
     void keepsRejectingAfterARestartACodeAlreadyExchangedBeforeIt() {
         String verifier = AuthorizationCodeFlow.newCodeVerifier();
         String code;
-        try (ConfigurableApplicationContext firstRun = start()) {
+        try (ConfigurableApplicationContext firstRun = startAuthServer()) {
             AuthorizationCodeFlow flow = new AuthorizationCodeFlow(portOf(firstRun));
             code = flow.authorizationCodeFor(WEB_CLIENT_ID, WEB_REDIRECT_URI, WEB_SCOPES, verifier);
             assertEquals(200, flow.exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET).statusCode());
         }
 
         Response retry;
-        try (ConfigurableApplicationContext secondRun = start()) {
+        try (ConfigurableApplicationContext secondRun = startAuthServer()) {
             retry = new AuthorizationCodeFlow(portOf(secondRun)).exchangeAsWebClient(code, verifier, WEB_CLIENT_SECRET);
         }
 
         assertEquals(400, retry.statusCode(), retry.asString());
         assertEquals("invalid_grant", retry.jsonPath().getString("error"));
         assertNull(retry.jsonPath().getString("access_token"));
-    }
-
-    private static ConfigurableApplicationContext start() {
-        return new SpringApplicationBuilder(AuthServerApplication.class)
-                .profiles("test")
-                .run(datasourceArguments("--server.port=0"));
-    }
-
-    private static int portOf(ConfigurableApplicationContext context) {
-        return ((WebServerApplicationContext) context).getWebServer().getPort();
     }
 }

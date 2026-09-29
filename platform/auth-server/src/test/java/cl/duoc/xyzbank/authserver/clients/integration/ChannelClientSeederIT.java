@@ -62,7 +62,7 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
     @Test
     @DisplayName("stores exactly one registration per channel client")
     void storesExactlyOneRegistrationPerChannelClient() {
-        seederFor(Map.of("bff-web", "{noop}web-secret"), WEB_CLIENT, MOBILE_CLIENT).seed();
+        seederFor(WEB_CLIENT, MOBILE_CLIENT).seed();
 
         assertEquals(Set.of("bff-web", "bff-mobile"), storedClientIds());
         RegisteredClient web = registeredClients.findByClientId("bff-web");
@@ -71,23 +71,12 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
         assertNull(registeredClients.findByClientId("bff-atm"));
     }
 
-    private ChannelClientSeeder seederFor(Map<String, String> encodedSecrets, ChannelClient... clients) {
-        return new ChannelClientSeeder(
-                new InMemoryChannelClientRepository(clients),
-                new ChannelRegisteredClientMapper(encodedSecrets),
-                registeredClients);
-    }
-
-    private Set<String> storedClientIds() {
-        return Set.copyOf(jdbcTemplate.queryForList("SELECT client_id FROM oauth2_registered_client", String.class));
-    }
-
     @Test
     @DisplayName("keeps one registration per client when seeded again")
     void keepsOneRegistrationPerClientWhenSeededAgain() {
-        seederFor(Map.of("bff-web", "{noop}web-secret"), WEB_CLIENT, MOBILE_CLIENT).seed();
+        seederFor(WEB_CLIENT, MOBILE_CLIENT).seed();
 
-        seederFor(Map.of("bff-web", "{noop}web-secret"), WEB_CLIENT, MOBILE_CLIENT).seed();
+        seederFor(WEB_CLIENT, MOBILE_CLIENT).seed();
 
         Integer rows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM oauth2_registered_client", Integer.class);
         assertEquals(2, rows);
@@ -96,13 +85,24 @@ class ChannelClientSeederIT extends AbstractAuthServerIT {
     @Test
     @DisplayName("updates a stored client whose redirect URI changed")
     void updatesAStoredClientWhoseRedirectUriChanged() {
-        seederFor(Map.of("bff-web", "{noop}web-secret"), WEB_CLIENT).seed();
+        seederFor(WEB_CLIENT).seed();
         String newRedirectUri = "https://localhost:18081/login/oauth2/code/oidc";
         ChannelClient movedWebClient = ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, newRedirectUri);
 
-        seederFor(Map.of("bff-web", "{noop}web-secret"), movedWebClient).seed();
+        seederFor(movedWebClient).seed();
 
         assertEquals(Set.of(newRedirectUri), registeredClients.findByClientId("bff-web").getRedirectUris());
         assertEquals(Set.of("bff-web"), storedClientIds());
+    }
+
+    private ChannelClientSeeder seederFor(ChannelClient... clients) {
+        return new ChannelClientSeeder(
+                new InMemoryChannelClientRepository(clients),
+                new ChannelRegisteredClientMapper(Map.of("bff-web", "{noop}web-secret")),
+                registeredClients);
+    }
+
+    private Set<String> storedClientIds() {
+        return Set.copyOf(jdbcTemplate.queryForList("SELECT client_id FROM oauth2_registered_client", String.class));
     }
 }
