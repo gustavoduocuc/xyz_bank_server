@@ -133,11 +133,15 @@ public final class AuthorizationCodeFlow {
         return code;
     }
 
+    /**
+     * Exchanges a code as bff-web. A null secret presents the client id alone, as a public
+     * client would -- the way to try skipping bff-web's secret.
+     */
     public Response exchangeAsWebClient(String code, String codeVerifier, String clientSecret) {
         RequestSpecification request = request().contentType(ContentType.URLENC);
-        if (clientSecret != null) {
-            request = request.auth().preemptive().basic(WEB_CLIENT_ID, clientSecret);
-        }
+        request = clientSecret == null
+                ? request.formParam("client_id", WEB_CLIENT_ID)
+                : request.auth().preemptive().basic(WEB_CLIENT_ID, clientSecret);
         return request.formParam("grant_type", "authorization_code")
                 .formParam("code", code)
                 .formParam("redirect_uri", WEB_REDIRECT_URI)
