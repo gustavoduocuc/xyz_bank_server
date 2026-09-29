@@ -1,17 +1,19 @@
 package cl.duoc.xyzbank.authserver.shared.integration;
 
+import cl.duoc.xyzbank.authserver.sessions.infrastructure.adapters.RotationRecordingAuthorizationService;
 import cl.duoc.xyzbank.authserver.testsupport.AbstractAuthServerIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationConsentService;
-import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.client.JdbcRegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 @SpringBootTest
@@ -35,7 +37,10 @@ class AuthorizationStoreIsNotInMemoryIT extends AbstractAuthServerIT {
     @Test
     @DisplayName("keeps authorizations, consents and clients in the database")
     void keepsAuthorizationsConsentsAndClientsInTheDatabase() {
-        assertInstanceOf(JdbcOAuth2AuthorizationService.class, authorizationService);
+        // The JDBC store, wrapped so refresh-token rotations are also recorded (reuse detection);
+        // AuthorizationPersistenceE2ETest proves it survives restarts
+        assertInstanceOf(RotationRecordingAuthorizationService.class, authorizationService);
+        assertFalse(authorizationService instanceof InMemoryOAuth2AuthorizationService);
         assertInstanceOf(JdbcOAuth2AuthorizationConsentService.class, authorizationConsentService);
         assertInstanceOf(JdbcRegisteredClientRepository.class, registeredClientRepository);
     }
