@@ -1,5 +1,16 @@
 package cl.duoc.xyzbank.coreservice.auth.e2e;
 
+import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
+import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
+import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
+import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
+import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
+import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
+import cl.duoc.xyzbank.coredomain.cards.domain.entities.AtmSession;
+import cl.duoc.xyzbank.coredomain.cards.domain.entities.Card;
+import cl.duoc.xyzbank.coredomain.cards.domain.repositories.AtmSessionRepository;
+import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
+import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import cl.duoc.xyzbank.testsupport.TestAccessTokens;
@@ -11,12 +22,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Stream;
 
 import static io.restassured.RestAssured.given;
@@ -39,13 +53,30 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
      * 6. An expired, foreign-signed, wrong-issuer or wrong-audience token is rejected with 401
      * 7. A token whose client does not match its channel is rejected with 401
      * 8. An interests-service token without interests:write cannot credit interest (403)
+     * 9. The bff-atm token with an active ATM session reaches that session's customer's account
+     * 10. An unknown, expired or missing ATM session is rejected with 401
+     * 11. An ATM session cannot reach another customer's account (404)
+     * 12. PIN verification refuses a call without a token (401) and another channel's token (403)
      */
 
     private static final String ANY_ACCOUNT = UUID.randomUUID().toString();
     private static final String ANY_CUSTOMER = UUID.randomUUID().toString();
+    private static final int PIN_VERIFICATION_TLS_PORT = 8453;
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private CustomerRepository customerRepository;
+
+    @Autowired
+    private AccountRepository accountRepository;
+
+    @Autowired
+    private CardRepository cardRepository;
+
+    @Autowired
+    private AtmSessionRepository atmSessionRepository;
 
     @BeforeEach
     void configureRestAssured() {
@@ -130,6 +161,86 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
                 .body("{}")
                 .post("/internal/accounts/{id}/interest-credits", ANY_ACCOUNT)
                 .then().statusCode(403);
+    }
+
+    @Test
+    @DisplayName("lets the bff-atm token with an active ATM session reach that session's customer's account")
+    void letsTheBffAtmTokenWithAnActiveAtmSessionReachItsCustomersAccount() {
+        Id customer = aCustomer();
+        Id account = anAccountOf(customer);
+        AtmSession session = anAtmSessionOf(customer, Instant.now());
+
+        atm(session.getId().getValue())
+                .get("/internal/accounts/{id}/balance", account.getValue())
+                .then().statusCode(200);
+    }
+
+    @Test
+    @DisplayName("rejects an unknown, expired or missing ATM session with 401")
+    void rejectsAnUnknownExpiredOrMissingAtmSessionWith401() {
+        Id customer = aCustomer();
+        Id account = anAccountOf(customer);
+        AtmSession expired = anAtmSessionOf(customer, Instant.now().minusSeconds(121));
+
+        atm(UUID.randomUUID().toString()).get("/internal/accounts/{id}/balance", account.getValue())
+                .then().statusCode(401);
+        atm(expired.getId().getValue()).get("/internal/accounts/{id}/balance", account.getValue())
+                .then().statusCode(401);
+        bearer(TestAccessTokens.atm()).get("/internal/accounts/{id}/balance", account.getValue())
+                .then().statusCode(401);
+    }
+
+    @Test
+    @DisplayName("keeps an ATM session from reaching another customer's account")
+    void keepsAnAtmSessionFromReachingAnotherCustomersAccount() {
+        Id otherCustomersAccount = anAccountOf(aCustomer());
+        AtmSession session = anAtmSessionOf(aCustomer(), Instant.now());
+
+        atm(session.getId().getValue())
+                .get("/internal/accounts/{id}/balance", otherCustomersAccount.getValue())
+                .then().statusCode(404);
+    }
+
+    @Test
+    @DisplayName("refuses PIN verification without a token or with another channel's token")
+    void refusesPinVerificationWithoutATokenOrWithAnotherChannelsToken() {
+        String body = "{\"cardNumber\":\"77777777-7777-7777-7777-777777777777\",\"pin\":\"1234\"}";
+
+        // PIN verification is served only on core-service's TLS connector
+        overPinConnector(given()).contentType(ContentType.JSON).body(body)
+                .post("/internal/auth/atm/pin-verifications").then().statusCode(401);
+        overPinConnector(bearer(TestAccessTokens.web(ANY_CUSTOMER))).contentType(ContentType.JSON).body(body)
+                .post("/internal/auth/atm/pin-verifications").then().statusCode(403);
+    }
+
+    private static RequestSpecification overPinConnector(RequestSpecification request) {
+        return request.baseUri("https://localhost").port(PIN_VERIFICATION_TLS_PORT).relaxedHTTPSValidation();
+    }
+
+    private static RequestSpecification atm(String atmSessionId) {
+        return bearer(TestAccessTokens.atm()).header("X-Atm-Session", atmSessionId);
+    }
+
+    private Id aCustomer() {
+        Id customerId = Id.generate();
+        customerRepository.save(Customer.create(customerId, "ATM Customer", customerId.getValue() + "@xyzbank.cl"));
+        return customerId;
+    }
+
+    private Id anAccountOf(Id customerId) {
+        Account account = Account.create(
+                Id.generate(), AccountNumber.create(String.format("%010d", ThreadLocalRandom.current().nextLong(10_000_000_000L))),
+                customerId, Money.create(new BigDecimal("500.00"), "USD"));
+        accountRepository.save(account);
+        return account.getId();
+    }
+
+    private AtmSession anAtmSessionOf(Id customerId, Instant openedAt) {
+        Id cardId = Id.generate();
+        cardRepository.save(Card.create(cardId, customerId, "{noop}pin", 0, false, 0L));
+        AtmSession session = AtmSession.open(customerId, cardId, openedAt);
+        atmSessionRepository.save(session);
+        return session;
     }
 
     private static RequestSpecification bearer(String token) {
