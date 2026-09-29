@@ -9,9 +9,8 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.interests.domain.entities.AnnualInterestSummary;
 import cl.duoc.xyzbank.coredomain.interests.domain.repositories.InterestSummaryRepository;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
+import cl.duoc.xyzbank.testsupport.TestAccessTokens;
 import io.restassured.RestAssured;
 import io.restassured.specification.RequestSpecification;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +27,7 @@ import static org.hamcrest.Matchers.equalTo;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The Interest controller")
-class InterestControllerE2ETest extends AbstractPostgresIT {
+class InterestControllerE2ETest extends AbstractCoreServiceIT {
 
     /*
      * Cases:
@@ -51,9 +50,6 @@ class InterestControllerE2ETest extends AbstractPostgresIT {
     @Autowired
     private InterestSummaryRepository interestSummaryRepository;
 
-    @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
-
     private Id ownerId;
 
     @BeforeEach
@@ -65,8 +61,7 @@ class InterestControllerE2ETest extends AbstractPostgresIT {
 
     private RequestSpecification asOwner() {
         return given()
-                .header("X-Service-Credential", "dev-service-credential-web")
-                .header("Authorization", "Bearer " + tokenAdapter.issue(ownerId.getValue(), Channel.WEB, null));
+                .header("Authorization", "Bearer " + TestAccessTokens.web(ownerId.getValue()));
     }
 
     private Id anExistingAccount() {

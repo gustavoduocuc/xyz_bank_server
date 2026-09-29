@@ -10,9 +10,8 @@ import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coredomain.transactions.domain.entities.Transaction;
 import cl.duoc.xyzbank.coredomain.transactions.domain.repositories.TransactionRepository;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionType;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
+import cl.duoc.xyzbank.testsupport.TestAccessTokens;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
@@ -34,7 +33,7 @@ import static org.hamcrest.Matchers.nullValue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The Transaction controller")
-class TransactionControllerE2ETest extends AbstractPostgresIT {
+class TransactionControllerE2ETest extends AbstractCoreServiceIT {
 
     /*
      * Cases:
@@ -64,9 +63,6 @@ class TransactionControllerE2ETest extends AbstractPostgresIT {
     @Autowired
     private TransactionRepository transactionRepository;
 
-    @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
-
     private Id ownerId;
 
     @BeforeEach
@@ -78,8 +74,7 @@ class TransactionControllerE2ETest extends AbstractPostgresIT {
 
     private RequestSpecification asOwner() {
         return given()
-                .header("X-Service-Credential", "dev-service-credential-web")
-                .header("Authorization", "Bearer " + tokenAdapter.issue(ownerId.getValue(), Channel.WEB, null));
+                .header("Authorization", "Bearer " + TestAccessTokens.web(ownerId.getValue()));
     }
 
     @Test
