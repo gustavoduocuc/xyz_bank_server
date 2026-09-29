@@ -3,8 +3,21 @@
 # a TLS server certificate for bff-web, bff-mobile, bff-atm, and core-service's
 # PIN-verification-only connector, plus the ATM terminal's mTLS client certificate.
 #
+# Output goes to dev/certs/, which is NOT committed: every developer generates their own
+# CA locally (run this once before the first `docker compose up`). Tests use the fixtures
+# committed under each module's src/test/resources; pass --update-test-fixtures to also
+# refresh those from the newly generated material.
+#
 # Dev/test use only. Never use these certificates or this CA in a real deployment.
 set -euo pipefail
+
+UPDATE_TEST_FIXTURES=false
+for arg in "$@"; do
+  case "${arg}" in
+    --update-test-fixtures) UPDATE_TEST_FIXTURES=true ;;
+    *) echo "Unknown option: ${arg} (supported: --update-test-fixtures)" >&2; exit 1 ;;
+  esac
+done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CERTS_DIR="${ROOT_DIR}/dev/certs"
@@ -106,22 +119,28 @@ for name in bff-web bff-mobile bff-atm core-service atm-terminal; do
     | grep -E "Owner:|Issuer:|Alias name:"
 done
 
-echo "== Copying keystores/truststore into each module's test resources =="
-copy_module_tls() {
-  local module_dir="$1" leaf_name="$2"
-  local target="${ROOT_DIR}/${module_dir}/src/test/resources/tls"
-  mkdir -p "${target}"
-  cp "${CERTS_DIR}/${leaf_name}/keystore.p12" "${target}/keystore.p12"
-  cp "${CERTS_DIR}/truststore.p12" "${target}/truststore.p12"
-}
+if [ "${UPDATE_TEST_FIXTURES}" = "true" ]; then
+  echo "== Copying keystores/truststore into each module's test resources =="
+  copy_module_tls() {
+    local module_dir="$1" leaf_name="$2"
+    local target="${ROOT_DIR}/${module_dir}/src/test/resources/tls"
+    mkdir -p "${target}"
+    cp "${CERTS_DIR}/${leaf_name}/keystore.p12" "${target}/keystore.p12"
+    cp "${CERTS_DIR}/truststore.p12" "${target}/truststore.p12"
+  }
 
-copy_module_tls "bff/bff-web" "bff-web"
-copy_module_tls "bff/bff-mobile" "bff-mobile"
-copy_module_tls "bff/bff-atm" "bff-atm"
-cp "${CERTS_DIR}/atm-terminal/keystore.p12" "${ROOT_DIR}/bff/bff-atm/src/test/resources/tls/terminal-keystore.p12"
-copy_module_tls "platform/core-service" "core-service"
+  copy_module_tls "bff/bff-web" "bff-web"
+  copy_module_tls "bff/bff-mobile" "bff-mobile"
+  copy_module_tls "bff/bff-atm" "bff-atm"
+  cp "${CERTS_DIR}/atm-terminal/keystore.p12" "${ROOT_DIR}/bff/bff-atm/src/test/resources/tls/terminal-keystore.p12"
+  copy_module_tls "platform/core-service" "core-service"
+fi
 
 echo "== Issuing auth-server's TLS certificate and token signing keystore from the new dev CA =="
-"${ROOT_DIR}/scripts/generate-dev-auth-server-keys.sh"
+if [ "${UPDATE_TEST_FIXTURES}" = "true" ]; then
+  "${ROOT_DIR}/scripts/generate-dev-auth-server-keys.sh" --update-test-fixtures
+else
+  "${ROOT_DIR}/scripts/generate-dev-auth-server-keys.sh"
+fi
 
 echo "== Done. Dev CA and certificates are under ${CERTS_DIR} (dev/test use only). =="
