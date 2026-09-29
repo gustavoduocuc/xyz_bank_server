@@ -66,7 +66,7 @@ class ClientRegistrationE2ETest extends AbstractAuthServerIT {
     @DisplayName("rejects an unknown client without redirecting anywhere")
     void rejectsAnUnknownClientWithoutRedirectingAnywhere() {
         Response response = flow.authorize(
-                authorizationRequest("bff-atm", "https://localhost:8083/callback", "openid", newCodeVerifier()),
+                authorizationRequest("bff-unknown", "https://localhost:8083/callback", "openid", newCodeVerifier()),
                 DEMO_USERNAME, DEMO_PASSWORD);
 
         assertEquals(400, response.statusCode(), response.asString());
