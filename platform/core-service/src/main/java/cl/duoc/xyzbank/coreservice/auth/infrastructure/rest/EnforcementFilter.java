@@ -6,12 +6,13 @@ import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coredomain.transactions.domain.entities.Transaction;
 import cl.duoc.xyzbank.coredomain.transactions.domain.repositories.TransactionRepository;
+import cl.duoc.xyzbank.coreservice.auth.application.dto.VerifiedAccessToken;
+import cl.duoc.xyzbank.coreservice.auth.application.ports.AccessTokenVerifier;
+import cl.duoc.xyzbank.coreservice.auth.application.ports.AtmSessionLookup;
+import cl.duoc.xyzbank.coreservice.auth.application.ports.InvalidAccessTokenException;
 import cl.duoc.xyzbank.coreservice.auth.infrastructure.rest.DomainEndpointOwnership.IdentifierType;
 import cl.duoc.xyzbank.coreservice.auth.infrastructure.rest.DomainEndpointOwnership.OwnershipCheck;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerContext;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerIdentityException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -27,40 +28,44 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * Authenticates the calling service and, for domain endpoints, checks the caller's scope
- * and resource ownership. Gated by security.enforcement.enabled: while disabled, every
- * request passes through unchanged, matching core-service's pre-channel-auth behavior, so
- * this change can roll out without an intermediate state where core-service rejects a BFF
- * that hasn't been updated yet.
+ * Enforces channel-auth on core-service's internal API. Every request must carry an access token
+ * issued by auth-server for core-service (verified against its JWKS; no static service
+ * credential). PIN verification (pre-auth) accepts only the ATM service token; every domain
+ * endpoint needs one of its required scopes and, for customer resources, ownership by the
+ * customer the request acts for: the token's subject for web and mobile, the customer of the
+ * referenced core-service ATM session for ATM, none for the interests service.
+ *
+ * <p>Gated by security.enforcement.enabled: while disabled, every request passes through
+ * unchanged.
  */
 public class EnforcementFilter extends OncePerRequestFilter {
 
-    private static final String SERVICE_CREDENTIAL_HEADER = "X-Service-Credential";
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final String ATM_SESSION_HEADER = "X-Atm-Session";
+    private static final String ATM_PRE_AUTH_PREFIX = "/internal/auth/atm/";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final boolean enabled;
-    private final Map<String, String> serviceCredentials;
-    private final JwtCallerContextAdapter tokenAdapter;
+    private final AccessTokenVerifier verifier;
+    private final AtmSessionLookup atmSessions;
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
 
     public EnforcementFilter(
             boolean enabled,
-            Map<String, String> serviceCredentials,
-            JwtCallerContextAdapter tokenAdapter,
+            AccessTokenVerifier verifier,
+            AtmSessionLookup atmSessions,
             AccountRepository accountRepository,
             TransactionRepository transactionRepository) {
         this.enabled = enabled;
-        this.serviceCredentials = serviceCredentials;
-        this.tokenAdapter = tokenAdapter;
+        this.verifier = verifier;
+        this.atmSessions = atmSessions;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
     }
@@ -73,8 +78,17 @@ public class EnforcementFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
-        if (!isKnownServiceCredential(request.getHeader(SERVICE_CREDENTIAL_HEADER))) {
-            reject(response, HttpStatus.UNAUTHORIZED, "A valid service credential is required");
+        Optional<VerifiedAccessToken> token = verifiedToken(request);
+        if (token.isEmpty()) {
+            reject(response, HttpStatus.UNAUTHORIZED, "A valid access token is required");
+            return;
+        }
+        if (request.getRequestURI().startsWith(ATM_PRE_AUTH_PREFIX)) {
+            if (token.get().channel() != Channel.ATM) {
+                reject(response, HttpStatus.FORBIDDEN, "Only the ATM channel may verify PINs");
+                return;
+            }
+            filterChain.doFilter(request, response);
             return;
         }
         Optional<Set<String>> requiredScopes =
@@ -83,41 +97,46 @@ public class EnforcementFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
-        Optional<CallerContext> callerContext = resolveCallerContext(request, response);
-        if (callerContext.isEmpty()) {
-            return;
-        }
-        if (Collections.disjoint(callerContext.get().scopes(), requiredScopes.get())) {
+        if (Collections.disjoint(token.get().scopes(), requiredScopes.get())) {
             reject(response, HttpStatus.FORBIDDEN, "The token's scope does not permit this operation");
             return;
         }
-        if (!ownsRequestedResource(request, callerContext.get(), response)) {
+        if (token.get().channel() == Channel.INTERESTS) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        Optional<String> customerId = actingCustomer(request, token.get());
+        if (customerId.isEmpty()) {
+            reject(response, HttpStatus.UNAUTHORIZED, "No customer is identified for this request");
+            return;
+        }
+        if (!ownsRequestedResource(request, customerId.get(), response)) {
             return;
         }
         filterChain.doFilter(request, response);
     }
 
-    private Optional<CallerContext> resolveCallerContext(HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
-        String bearerToken = extractBearerToken(request);
-        if (bearerToken == null) {
-            reject(response, HttpStatus.UNAUTHORIZED, "A valid user token is required");
+    private Optional<VerifiedAccessToken> verifiedToken(HttpServletRequest request) {
+        String header = request.getHeader(AUTHORIZATION_HEADER);
+        if (header == null || !header.startsWith(BEARER_PREFIX)) {
             return Optional.empty();
         }
         try {
-            return Optional.of(tokenAdapter.resolve(bearerToken));
-        } catch (CallerIdentityException exception) {
-            reject(response, HttpStatus.UNAUTHORIZED, "A valid user token is required");
+            return Optional.of(verifier.verify(header.substring(BEARER_PREFIX.length())));
+        } catch (InvalidAccessTokenException exception) {
             return Optional.empty();
         }
     }
 
-    private boolean ownsRequestedResource(
-            HttpServletRequest request, CallerContext callerContext, HttpServletResponse response)
-            throws IOException {
-        if (callerContext.channel() == Channel.INTERESTS) {
-            return true;
+    private Optional<String> actingCustomer(HttpServletRequest request, VerifiedAccessToken token) {
+        if (token.channel() == Channel.ATM) {
+            return Optional.ofNullable(request.getHeader(ATM_SESSION_HEADER)).flatMap(atmSessions::activeCustomerOf);
         }
+        return Optional.ofNullable(token.subject());
+    }
+
+    private boolean ownsRequestedResource(HttpServletRequest request, String customerId, HttpServletResponse response)
+            throws IOException {
         Optional<OwnershipCheck> ownershipCheck =
                 DomainEndpointOwnership.ownershipCheckFor(request.getMethod(), request.getRequestURI());
         if (ownershipCheck.isEmpty()) {
@@ -137,7 +156,7 @@ public class EnforcementFilter extends OncePerRequestFilter {
         Optional<String> ownerCustomerId = resolveOwnerCustomerId(ownershipCheck.get().type(), identifier);
         // A well-formed but unknown identifier is indistinguishable, from the caller's
         // perspective, from one it doesn't own: both are rejected as not-found here.
-        if (ownerCustomerId.isEmpty() || !ownerCustomerId.get().equals(callerContext.customerId())) {
+        if (ownerCustomerId.isEmpty() || !ownerCustomerId.get().equals(customerId)) {
             rejectNotFound(request, response);
             return false;
         }
@@ -155,18 +174,6 @@ public class EnforcementFilter extends OncePerRequestFilter {
                     .map(Account::getCustomerId)
                     .map(Id::getValue);
         };
-    }
-
-    private String extractBearerToken(HttpServletRequest request) {
-        String header = request.getHeader(AUTHORIZATION_HEADER);
-        if (header == null || !header.startsWith(BEARER_PREFIX)) {
-            return null;
-        }
-        return header.substring(BEARER_PREFIX.length());
-    }
-
-    private boolean isKnownServiceCredential(String presented) {
-        return presented != null && serviceCredentials.containsValue(presented);
     }
 
     private void reject(HttpServletResponse response, HttpStatus status, String detail) throws IOException {
