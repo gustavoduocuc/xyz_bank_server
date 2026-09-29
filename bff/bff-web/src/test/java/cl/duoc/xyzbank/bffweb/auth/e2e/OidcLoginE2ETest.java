@@ -49,6 +49,8 @@ class OidcLoginE2ETest {
      *    channel's scope set -- nothing the authorization server would refuse to a web client
      * 5. A correctly signed ID token from an unexpected issuer fails the login: no cookie, and
      *    core-service is never called
+     * 6. Replaying an already-processed callback sets no new cookies and answers 401, calling
+     *    core-service's refresh-token endpoint only for the first callback
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -219,6 +221,38 @@ class OidcLoginE2ETest {
         assertEquals(401, callbackResponse.statusCode());
         assertNoSessionOrRefreshCookieSet(callbackResponse);
         CORE_SERVICE.verify(0, com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
+                urlPathEqualTo("/internal/auth/web/refresh-tokens")));
+    }
+
+    @Test
+    @DisplayName("sets no new session when an already-processed callback is replayed")
+    void setsNoNewSessionWhenAnAlreadyProcessedCallbackIsReplayed() {
+        String code = "auth-code-4";
+        CORE_SERVICE.stubFor(post(urlPathEqualTo("/internal/auth/web/refresh-tokens"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"refreshToken\":\"opaque-refresh-2\",\"expiry\":\"2099-01-01T00:00:00Z\"}")));
+        Response authorizationResponse =
+                given().redirects().follow(false).when().get("/oauth2/authorization/oidc");
+        String location = authorizationResponse.getHeader("Location");
+        String state = URLDecoder.decode(extractQueryParam(location, "state"), StandardCharsets.UTF_8);
+        String jsessionId = authorizationResponse.getCookie("JSESSIONID");
+        OIDC_PROVIDER.stubSuccessfulTokenExchange(code, "customer-42", extractQueryParam(location, "nonce"));
+        given().cookie("JSESSIONID", jsessionId).queryParam("code", code).queryParam("state", state)
+                .redirects().follow(false).when().get("/login/oauth2/code/oidc");
+
+        Response replay = given()
+                .cookie("JSESSIONID", jsessionId)
+                .queryParam("code", code)
+                .queryParam("state", state)
+                .redirects().follow(false)
+                .when()
+                .get("/login/oauth2/code/oidc");
+
+        assertEquals(401, replay.statusCode());
+        assertNoSessionOrRefreshCookieSet(replay);
+        CORE_SERVICE.verify(1, com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
                 urlPathEqualTo("/internal/auth/web/refresh-tokens")));
     }
 
