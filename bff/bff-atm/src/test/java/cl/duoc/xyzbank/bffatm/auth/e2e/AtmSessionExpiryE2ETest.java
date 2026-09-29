@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.bffatm.auth.e2e;
 
+import cl.duoc.xyzbank.bffatm.testsupport.AuthServerStub;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerIdentityException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -51,13 +52,17 @@ class AtmSessionExpiryE2ETest {
             .keystorePassword("xyzbank-dev")
             .keyManagerPassword("xyzbank-dev"));
 
+    private static final AuthServerStub AUTH_SERVER = new AuthServerStub();
+
     static {
         CORE_SERVICE.start();
+        AUTH_SERVER.start();
     }
 
     @DynamicPropertySource
     static void coreServicePinVerificationBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("core-service.pin-verification-base-url", () -> "https://localhost:" + CORE_SERVICE.httpsPort());
+        AUTH_SERVER.register(registry);
     }
 
     @TestConfiguration
@@ -116,6 +121,7 @@ class AtmSessionExpiryE2ETest {
     @AfterAll
     static void stopCoreServiceStub() {
         CORE_SERVICE.stop();
+        AUTH_SERVER.stop();
     }
 
     private String issueSession() {

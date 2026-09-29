@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.bffatm.auth.e2e;
 
+import cl.duoc.xyzbank.bffatm.testsupport.AuthServerStub;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerContext;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
@@ -56,6 +57,8 @@ class PinVerificationControllerE2ETest {
     private static final String PIN = "1234";
     private static final String WRONG_PIN = "9999";
 
+    private static final AuthServerStub AUTH_SERVER = new AuthServerStub();
+
     private ListAppender<ILoggingEvent> logAppender;
 
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig()
@@ -67,11 +70,13 @@ class PinVerificationControllerE2ETest {
 
     static {
         CORE_SERVICE.start();
+        AUTH_SERVER.start();
     }
 
     @DynamicPropertySource
     static void coreServicePinVerificationBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("core-service.pin-verification-base-url", () -> "https://localhost:" + CORE_SERVICE.httpsPort());
+        AUTH_SERVER.register(registry);
     }
 
     @LocalServerPort
@@ -103,6 +108,7 @@ class PinVerificationControllerE2ETest {
     @AfterAll
     static void stopCoreServiceStub() {
         CORE_SERVICE.stop();
+        AUTH_SERVER.stop();
     }
 
     private void assertPinNeverLeaked(Response response) {

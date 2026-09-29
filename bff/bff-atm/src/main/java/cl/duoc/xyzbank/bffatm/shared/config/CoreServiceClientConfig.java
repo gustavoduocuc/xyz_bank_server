@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.bffatm.shared.config;
 
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.BearerTokenClientInterceptor;
+import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.ClientCredentialsTokenInterceptor;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.CorrelationIdClientInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -18,10 +19,20 @@ import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.time.Clock;
 import java.time.Duration;
 
 @Configuration
 public class CoreServiceClientConfig {
+
+    @Bean
+    public ClientCredentialsTokenInterceptor clientCredentialsTokenInterceptor(
+            @Value("${auth-server.token-uri}") String tokenUri,
+            @Value("${auth-server.client-id}") String clientId,
+            @Value("${auth-server.client-secret}") String clientSecret) {
+        return new ClientCredentialsTokenInterceptor(
+                RestClient.create(), tokenUri, clientId, clientSecret, Clock.systemUTC());
+    }
 
     @Bean
     @Primary
@@ -29,18 +40,18 @@ public class CoreServiceClientConfig {
             @Value("${core-service.base-url}") String baseUrl,
             @Value("${core-service.connect-timeout-ms}") int connectTimeoutMs,
             @Value("${core-service.read-timeout-ms}") int readTimeoutMs,
-            @Value("${core-service.service-credential}") String serviceCredential,
             CorrelationIdClientInterceptor correlationIdClientInterceptor,
-            BearerTokenClientInterceptor bearerTokenClientInterceptor) {
+            BearerTokenClientInterceptor bearerTokenClientInterceptor,
+            ClientCredentialsTokenInterceptor clientCredentialsTokenInterceptor) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(connectTimeoutMs);
         requestFactory.setReadTimeout(readTimeoutMs);
         return RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
-                .defaultHeader("X-Service-Credential", serviceCredential)
                 .requestInterceptor(correlationIdClientInterceptor)
                 .requestInterceptor(bearerTokenClientInterceptor)
+                .requestInterceptor(clientCredentialsTokenInterceptor)
                 .build();
     }
 
@@ -55,11 +66,11 @@ public class CoreServiceClientConfig {
             @Value("${core-service.pin-verification-base-url}") String baseUrl,
             @Value("${core-service.connect-timeout-ms}") int connectTimeoutMs,
             @Value("${core-service.read-timeout-ms}") int readTimeoutMs,
-            @Value("${core-service.service-credential}") String serviceCredential,
             @Value("${server.ssl.trust-store}") String trustStorePath,
             @Value("${server.ssl.trust-store-password}") String trustStorePassword,
             ResourceLoader resourceLoader,
-            CorrelationIdClientInterceptor correlationIdClientInterceptor)
+            CorrelationIdClientInterceptor correlationIdClientInterceptor,
+            ClientCredentialsTokenInterceptor clientCredentialsTokenInterceptor)
             throws GeneralSecurityException, IOException {
         SSLContext sslContext = trustingSslContext(resourceLoader, trustStorePath, trustStorePassword);
         HttpClient httpClient = HttpClient.newBuilder()
@@ -71,8 +82,8 @@ public class CoreServiceClientConfig {
         return RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
-                .defaultHeader("X-Service-Credential", serviceCredential)
                 .requestInterceptor(correlationIdClientInterceptor)
+                .requestInterceptor(clientCredentialsTokenInterceptor)
                 .build();
     }
 
