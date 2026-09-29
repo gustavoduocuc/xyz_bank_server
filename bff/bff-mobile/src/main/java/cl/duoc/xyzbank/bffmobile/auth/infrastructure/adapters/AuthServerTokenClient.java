@@ -5,27 +5,48 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.Map;
 
 /**
- * Calls the authorization server's token endpoint as bff-mobile's confidential client.
- * A mobile refresh must name the device the login was bound to; the authorization server
- * refuses a different device, a revoked device, and a reused refresh token the same way.
+ * Calls the authorization server as bff-mobile's confidential client. A mobile refresh must
+ * name the device the login was bound to. Device revocation proves the customer with that
+ * device's current access token and authenticates the client with its secret.
  */
 public class AuthServerTokenClient {
 
     private final RestClient restClient;
     private final String tokenUri;
+    private final String revocationBaseUri;
     private final String clientId;
     private final String clientSecret;
 
-    public AuthServerTokenClient(RestClient restClient, String tokenUri, String clientId, String clientSecret) {
+    public AuthServerTokenClient(
+            RestClient restClient,
+            String tokenUri,
+            String revocationBaseUri,
+            String clientId,
+            String clientSecret) {
         this.restClient = restClient;
         this.tokenUri = tokenUri;
+        this.revocationBaseUri = revocationBaseUri;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
+    }
+
+    public void revokeDevice(String deviceId, String accessToken) {
+        URI uri = UriComponentsBuilder.fromUriString(revocationBaseUri)
+                .path("/devices/{deviceId}/revocations")
+                .queryParam("access_token", accessToken)
+                .build(deviceId);
+        restClient.post()
+                .uri(uri)
+                .headers(headers -> headers.setBasicAuth(clientId, clientSecret))
+                .retrieve()
+                .toBodilessEntity();
     }
 
     public IssuedTokens refresh(String refreshToken, String deviceId) {
