@@ -21,9 +21,10 @@ public class SessionTokensConfig {
     public AccessTokenCallerContextAdapter accessTokenCallerContextAdapter(
             @Value("${spring.security.oauth2.client.provider.oidc.jwk-set-uri}") String jwkSetUri,
             @Value("${oidc.expected-issuer}") String issuer,
-            @Value("${spring.security.oauth2.client.registration.oidc.client-id}") String clientId) {
+            @Value("${spring.security.oauth2.client.registration.oidc.client-id}") String clientId,
+            AuthServerHttpClients authServer) {
         return new AccessTokenCallerContextAdapter(
-                AccessTokenCallerContextAdapter.decoderFor(jwkSetUri, issuer), clientId);
+                AccessTokenCallerContextAdapter.decoderFor(jwkSetUri, issuer, authServer.restOperations()), clientId);
     }
 
     @Bean

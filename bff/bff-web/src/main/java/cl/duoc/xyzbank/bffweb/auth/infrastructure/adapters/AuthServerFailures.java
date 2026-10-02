@@ -4,6 +4,7 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.io.IOException;
@@ -25,7 +26,7 @@ public final class AuthServerFailures {
     public static boolean isUnavailable(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof IOException || cause instanceof CallNotPermittedException
-                    || cause instanceof org.springframework.web.client.ResourceAccessException) {
+                    || cause instanceof ResourceAccessException) {
                 return true;
             }
             if (cause instanceof RestClientResponseException response && response.getStatusCode().is5xxServerError()) {
