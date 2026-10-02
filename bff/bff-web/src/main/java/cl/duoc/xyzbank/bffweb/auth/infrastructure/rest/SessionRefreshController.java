@@ -15,7 +15,10 @@ import java.time.Duration;
  * Rotates the customer's session by exchanging the refresh_token cookie at the authorization
  * server (bff-web-auth spec: the refresh token rotates on every use and detects reuse). A
  * refused grant — including reuse of a rotated-out token — clears the cookies, because the
- * authorization server has revoked the whole login. Reachable without a valid session cookie.
+ * authorization server has revoked the whole login. A refresh that could not complete is not a
+ * refusal: AuthServerTokenClient raises DependencyUnavailableException, answered with the 503
+ * ProblemDetail before any cookie is written, so the session is kept. Reachable without a valid
+ * session cookie.
  */
 @RestController
 public class SessionRefreshController {
