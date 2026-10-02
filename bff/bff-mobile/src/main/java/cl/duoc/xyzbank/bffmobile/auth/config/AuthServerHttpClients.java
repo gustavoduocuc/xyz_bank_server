@@ -1,6 +1,6 @@
-package cl.duoc.xyzbank.bffweb.auth.config;
+package cl.duoc.xyzbank.bffmobile.auth.config;
 
-import cl.duoc.xyzbank.bffweb.shared.infrastructure.rest.CircuitBreakerClientInterceptor;
+import cl.duoc.xyzbank.bffmobile.shared.infrastructure.rest.CircuitBreakerClientInterceptor;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.converter.FormHttpMessageConverter;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -15,10 +15,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Every client bff-web talks to the authorization server with: the same connect/read timeouts
- * and the same "authServer" circuit breaker, so login, refresh and the JWK set fetch all fail
- * fast together and none of them is ever retried (add-resilience4j-to-bffs design.md Decision 7).
- * Deliberately not RestClient beans themselves: bff-web resolves its other RestClients by name.
+ * Every client bff-mobile talks to the authorization server with: the same connect/read
+ * timeouts and the same "authServer" circuit breaker, so login, refresh, device revocation and
+ * the JWK set fetch all fail fast together and none of them is ever retried
+ * (add-resilience4j-to-bffs design.md Decision 7). Deliberately not RestClient beans themselves:
+ * bff-mobile resolves its other RestClients by name.
  */
 public class AuthServerHttpClients {
 
@@ -31,7 +32,7 @@ public class AuthServerHttpClients {
         this.circuitBreaker = circuitBreaker;
     }
 
-    /** For bff-web's own token endpoint calls (refresh). */
+    /** For bff-mobile's own calls: refresh and device revocation. */
     public RestClient restClient() {
         return RestClient.builder()
                 .requestFactory(requestFactory)
