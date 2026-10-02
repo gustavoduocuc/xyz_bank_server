@@ -12,15 +12,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
+import java.time.Duration;
 import java.util.List;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "auth-server.read-timeout-ms=500")
 @DisplayName("bff-mobile's session refresh endpoint")
 class SessionRefreshE2ETest {
 
@@ -30,6 +34,11 @@ class SessionRefreshE2ETest {
      *    naming that device_id, and returns the same body shape as login
      * 2. A device-id mismatch is rejected with 401
      * 3. Reuse of a rotated refresh token is rejected with 401
+     * 4. A refresh the authorization server does not answer within the read timeout is sent
+     *    exactly once (with its device_id) and answers the 503 ProblemDetail with no new tokens,
+     *    and nothing revokes the device (bff-resilience spec, "Session refresh is never retried
+     *    automatically and a timeout does not end the session")
+     * 5. With the authorization server unreachable the refresh is sent once and answers 503
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -111,5 +120,46 @@ class SessionRefreshE2ETest {
                 .post("/session/refresh")
                 .then()
                 .statusCode(401);
+    }
+
+    @Test
+    @DisplayName("sends a timed-out refresh exactly once and returns no new tokens")
+    void sendsATimedOutRefreshExactlyOnceAndReturnsNoNewTokens() {
+        OIDC_PROVIDER.stubSlowRefreshGrant(
+                "slow-refresh-token", "device-1", SUBJECT, "rotated-too-late", Duration.ofMillis(1_500));
+
+        refreshWith("slow-refresh-token")
+                .then()
+                .statusCode(503)
+                .contentType("application/problem+json")
+                .body("sessionToken", nullValue())
+                .body("refreshToken", nullValue());
+
+        List<LoggedRequest> tokenRequests = OIDC_PROVIDER.tokenRequests();
+        assertEquals(1, tokenRequests.size());
+        assertTrue(tokenRequests.getFirst().getBodyAsString().contains("device_id=device-1"));
+        assertTrue(OIDC_PROVIDER.revocationRequests("device-1").isEmpty());
+    }
+
+    @Test
+    @DisplayName("sends a refresh once and answers 503 when the authorization server is unreachable")
+    void sendsARefreshOnceAndAnswers503WhenTheAuthorizationServerIsUnreachable() {
+        OIDC_PROVIDER.stubUnreachableTokenEndpoint();
+
+        refreshWith("old-refresh-token")
+                .then()
+                .statusCode(503)
+                .contentType("application/problem+json")
+                .body("sessionToken", nullValue());
+
+        assertEquals(1, OIDC_PROVIDER.tokenRequests().size());
+    }
+
+    private static io.restassured.response.Response refreshWith(String refreshToken) {
+        return given()
+                .contentType("application/json")
+                .body("{\"deviceId\":\"device-1\",\"refreshToken\":\"" + refreshToken + "\"}")
+                .when()
+                .post("/session/refresh");
     }
 }
