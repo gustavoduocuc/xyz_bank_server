@@ -1,9 +1,12 @@
 package cl.duoc.xyzbank.bffmobile.auth.infrastructure.adapters;
 
+import cl.duoc.xyzbank.bffmobile.shared.application.DependencyUnavailableException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.springframework.http.MediaType;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -14,7 +17,10 @@ import java.util.Map;
 /**
  * Calls the authorization server as bff-mobile's confidential client. A mobile refresh must
  * name the device the login was bound to. Device revocation proves the customer with that
- * device's current access token and authenticates the client with its secret.
+ * device's current access token and authenticates the client with its secret. A call that could
+ * not complete (unreachable, timed out, 5xx, open circuit) is never repeated and surfaces as
+ * {@link DependencyUnavailableException}: a refresh that timed out leaves the login alone
+ * (bff-resilience spec).
  */
 public class AuthServerTokenClient {
 
@@ -42,11 +48,21 @@ public class AuthServerTokenClient {
                 .path("/devices/{deviceId}/revocations")
                 .queryParam("access_token", accessToken)
                 .build(deviceId);
-        restClient.post()
-                .uri(uri)
-                .headers(headers -> headers.setBasicAuth(clientId, clientSecret))
-                .retrieve()
-                .toBodilessEntity();
+        try {
+            restClient.post()
+                    .uri(uri)
+                    .headers(headers -> headers.setBasicAuth(clientId, clientSecret))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().is4xxClientError()) {
+                throw exception;
+            }
+            throw DependencyUnavailableException.of("Authorization server", exception);
+        } catch (RestClientException | CallNotPermittedException exception) {
+            // Sent once only: the customer repeats the revocation if it could not complete
+            throw DependencyUnavailableException.of("Authorization server", exception);
+        }
     }
 
     public IssuedTokens refresh(String refreshToken, String deviceId) {
@@ -65,7 +81,14 @@ public class AuthServerTokenClient {
                     .retrieve()
                     .body(Map.class);
         } catch (RestClientResponseException exception) {
-            throw new RefreshTokenRejectedException("The authorization server refused the refresh token", exception);
+            if (exception.getStatusCode().is4xxClientError()) {
+                throw new RefreshTokenRejectedException("The authorization server refused the refresh token", exception);
+            }
+            throw DependencyUnavailableException.of("Authorization server", exception);
+        } catch (RestClientException | CallNotPermittedException exception) {
+            // Unreachable, timed out or its circuit is open. Never retried: the server may have
+            // rotated the token already, and presenting it again would count as reuse
+            throw DependencyUnavailableException.of("Authorization server", exception);
         }
         if (body == null || body.get("access_token") == null || body.get("refresh_token") == null) {
             throw new IllegalStateException("The authorization server answered the refresh without tokens");
