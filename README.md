@@ -71,7 +71,7 @@ flowchart LR
   Migration --> MySQL
 ```
 
-`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core en las llamadas HTTP (resumen, saldo y, con la flag de Kafka apagada, el crédito). Kafka es un broker único en KRaft, sin ZooKeeper. Los tópicos `interests.calculated`, `interests.credit-results` y `transactions.confirmed` los crea `kafka-init` al arrancar. Cada movimiento de dinero confirmado en `core-service` (retiro ATM síncrono o crédito de interés) publica `TransactionConfirmed` vía outbox a `transactions.confirmed` (clave `accountId`). La flecha HTTP de intereses a core sigue siendo el camino del GET y del crédito síncrono. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
+`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core en las llamadas HTTP (resumen, saldo y, con la flag de Kafka apagada, el crédito). Los tres BFFs también protegen sus llamadas a `core-service`, `interests-service` y `auth-server` con circuit breaker, timeout y reintentos solo donde es seguro (ver [Tolerancia a fallos de los BFFs](#tolerancia-a-fallos-de-los-bffs)). Kafka es un broker único en KRaft, sin ZooKeeper. Los tópicos `interests.calculated`, `interests.credit-results` y `transactions.confirmed` los crea `kafka-init` al arrancar. Cada movimiento de dinero confirmado en `core-service` (retiro ATM síncrono o crédito de interés) publica `TransactionConfirmed` vía outbox a `transactions.confirmed` (clave `accountId`). La flecha HTTP de intereses a core sigue siendo el camino del GET y del crédito síncrono. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
 
 ## Arranque local
 
@@ -337,6 +337,29 @@ curl -sS --cacert dev/certs/ca.crt https://localhost:9000/.well-known/openid-con
 curl -sS --cacert dev/certs/ca.crt https://localhost:8081/v3/api-docs
 ```
 
+### Tolerancia a fallos de los BFFs
+
+Cada BFF tiene un circuit breaker por dependencia (`coreService`, `authServer` y, en `bff-web`, `interestsService`) y timeouts de conexión y lectura en todas sus llamadas. Solo cuentan como fallo los errores de conexión, los timeouts y las respuestas 5xx; un 4xx nunca abre el circuito. Cuando una llamada no puede completarse, el BFF responde el `503` ProblemDetail de siempre; nunca devuelve saldos ni datos en caché.
+
+Solo se reintentan operaciones idempotentes, y nunca ante un 4xx ni con el circuito abierto:
+
+| Se reintenta (máx.) | Nunca se reintenta |
+|---|---|
+| Lecturas `GET` a `core-service` e `interests-service` (3) | Verificación de PIN (un intento extra puede bloquear la tarjeta) |
+| Retiro ATM, con la misma `Idempotency-Key` (2) | Renovación con refresh token (un reenvío cuenta como reutilización y revoca la sesión) |
+| Token `client_credentials` de `bff-atm` e `interests-service` (3) | Canje del código de login y revocación de dispositivo |
+
+Si `auth-server` no responde durante una renovación de sesión, el BFF responde `503` y no toca las cookies ni la sesión. El estado de los circuitos se lee en el puerto de administración de cada BFF, publicado solo en `127.0.0.1` (en el puerto público no existe; ahí `/actuator/health` sigue respondiendo solo el estado general):
+
+```bash
+curl -sS http://127.0.0.1:9081/actuator/circuitbreakers   # bff-web
+curl -sS http://127.0.0.1:9082/actuator/circuitbreakers   # bff-mobile
+curl -sS http://127.0.0.1:9083/actuator/circuitbreakers   # bff-atm
+curl -sS http://127.0.0.1:9081/actuator/circuitbreakerevents/coreService
+```
+
+Parámetros y su justificación: `docs/architecture.md` (Fault tolerance) y el `application.yml` de cada BFF.
+
 Contratos en el repo: [`docs/contracts/`](docs/contracts/). Arquitectura: [`docs/architecture.md`](docs/architecture.md). ADR de BFFs: [`docs/adr/001-bff-strategy.md`](docs/adr/001-bff-strategy.md). ADR de la saga de intereses: [`docs/adr/002-event-architecture.md`](docs/adr/002-event-architecture.md).
 
 ## Tests
@@ -357,6 +380,8 @@ Baja el stack (`docker compose down`) antes de correr `mvn verify`: los tests de
 
 - **Puertos 3306 o 5432 ocupados.** Otro MySQL/Postgres local está usando el puerto. Para este stack esos puertos deben estar libres, o para el stack con `docker compose down` (eso no apaga bases de otros proyectos).
 - **Puertos 8084, 8888, 8761, 9000 o 9092 ocupados.** Otro proceso está usando el puerto de `interests-service`, `config-server`, `eureka-server`, `auth-server` o Kafka. Libéralos o baja el stack con `docker compose down`.
+- **Puertos 9081, 9082 o 9083 ocupados.** Son los puertos de administración (actuator) de `bff-web`, `bff-mobile` y `bff-atm`, publicados en `127.0.0.1`. Libéralos o baja el stack con `docker compose down`.
+- **Un BFF responde `503` sin llamar a `core-service`.** Su circuito `coreService` está abierto tras varios fallos seguidos. Revisa `curl -sS http://127.0.0.1:908x/actuator/circuitbreakers`: tras 15 s pasa solo a `HALF_OPEN` y vuelve a `CLOSED` cuando las llamadas de prueba salen bien. La health del BFF sigue en UP mientras tanto, a propósito.
 - **El seed de demo desapareció o el dashboard da 404.** Flyway no reinserta filas de una versión ya aplicada. Reset: `docker compose down -v` y vuelve a `up --build`.
 - **La migración falló y core-service no arranca.** Compose espera `service_completed_successfully`. Revisa `docker compose logs data-migration`.
 - **PostgreSQL cae con el stack ya arriba.** `GET http://localhost:8080/actuator/health` deja de reportar UP (Actuator incluye el datasource). Los BFFs no tienen base propia: su health sigue UP aunque Postgres esté caído.
