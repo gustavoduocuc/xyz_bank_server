@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.method.HandlerMethod;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,7 +45,7 @@ class CallerContextInterceptorTest {
     private final CallerContextInterceptor interceptor = new CallerContextInterceptor(
             new AccessTokenCallerContextAdapter(
                     AccessTokenCallerContextAdapter.decoderFor(
-                            "http://localhost:9999/mock-oidc/jwks", MockOidcProvider.ISSUER),
+                            "http://localhost:9999/mock-oidc/jwks", MockOidcProvider.ISSUER, new RestTemplate()),
                     MockOidcProvider.CLIENT_ID));
 
     private HandlerMethod aHandlerMethod() throws NoSuchMethodException {

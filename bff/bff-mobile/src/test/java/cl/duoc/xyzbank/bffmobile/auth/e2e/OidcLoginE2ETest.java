@@ -51,6 +51,9 @@ class OidcLoginE2ETest {
      *    body, and core-service is never called
      * 6. Replaying an already-processed callback returns no second session, exchanging the
      *    authorization code only once
+     * 7. A callback while the authorization server's token endpoint is unreachable answers the
+     *    503 ProblemDetail with no tokens, and sends the (single-use) code exchange only once
+     *    (bff-resilience spec, "An unavailable auth-server yields 503")
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -237,6 +240,31 @@ class OidcLoginE2ETest {
 
         assertEquals(401, replay.statusCode());
         assertNoTokensIn(replay);
+        assertEquals(1, OIDC_PROVIDER.tokenRequests().size());
+    }
+
+    @Test
+    @DisplayName("answers 503 with no tokens when the authorization server cannot be reached")
+    void answers503WithNoTokensWhenTheAuthorizationServerCannotBeReached() {
+        OIDC_PROVIDER.stubUnreachableTokenEndpoint();
+        Response authorizationResponse = given()
+                .redirects().follow(false)
+                .when()
+                .get("/oauth2/authorization/oidc?deviceId=device-7");
+        String location = authorizationResponse.getHeader("Location");
+        String state = URLDecoder.decode(extractQueryParam(location, "state"), StandardCharsets.UTF_8);
+
+        Response callbackResponse = given()
+                .cookie("JSESSIONID", authorizationResponse.getCookie("JSESSIONID"))
+                .queryParam("code", "auth-code-7")
+                .queryParam("state", state)
+                .redirects().follow(false)
+                .when()
+                .get("/login/oauth2/code/oidc");
+
+        assertEquals(503, callbackResponse.statusCode());
+        assertEquals("application/problem+json", callbackResponse.getContentType());
+        assertNoTokensIn(callbackResponse);
         assertEquals(1, OIDC_PROVIDER.tokenRequests().size());
     }
 
