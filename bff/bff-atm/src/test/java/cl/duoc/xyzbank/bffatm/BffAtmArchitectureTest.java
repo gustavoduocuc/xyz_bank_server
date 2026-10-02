@@ -51,7 +51,11 @@ class BffAtmArchitectureTest {
             .orShould()
             .haveSimpleName("OpenApiDocumentController")
             .orShould()
-            .haveSimpleName("PinVerificationController");
+            .haveSimpleName("PinVerificationController")
+            // Not a new endpoint: answers the /actuator/health that actuator served on this port
+            // before it moved to the management port (add-resilience4j-to-bffs Decision 8)
+            .orShould()
+            .haveSimpleName("PublicHealthController");
 
     @ArchTest
     static final ArchRule useCasesControllersAndAdaptersDoNotReadServletIdentityHeaders = noClasses()
