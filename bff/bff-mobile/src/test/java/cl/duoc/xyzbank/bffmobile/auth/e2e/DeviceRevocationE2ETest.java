@@ -28,6 +28,9 @@ class DeviceRevocationE2ETest {
      *    secret and the device's own access token, and returns 204
      * 2. A second device belonging to the same customer is unaffected by another's revocation
      * 3. A device may not revoke a device other than itself
+     * 4. With the authorization server unreachable the revocation is sent exactly once and the
+     *    device gets the 503 ProblemDetail (bff-resilience spec, "An unavailable auth-server
+     *    yields 503")
      */
 
     private static final MockOidcProvider AUTHORIZATION_SERVER = new MockOidcProvider();
@@ -118,5 +121,20 @@ class DeviceRevocationE2ETest {
                 .contentType("application/problem+json");
 
         assertEquals(0, AUTHORIZATION_SERVER.revocationRequests("device-2").size());
+    }
+
+    @Test
+    @DisplayName("sends a revocation once and answers 503 when the authorization server is unreachable")
+    void sendsARevocationOnceAndAnswers503WhenTheAuthorizationServerIsUnreachable() {
+        AUTHORIZATION_SERVER.stubUnreachableDeviceRevocation("device-1");
+
+        asDevice("device-1")
+                .when()
+                .post("/devices/{deviceId}/revocations", "device-1")
+                .then()
+                .statusCode(503)
+                .contentType("application/problem+json");
+
+        assertEquals(1, AUTHORIZATION_SERVER.revocationRequests("device-1").size());
     }
 }
