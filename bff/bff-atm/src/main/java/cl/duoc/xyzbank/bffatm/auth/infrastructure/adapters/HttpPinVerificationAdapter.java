@@ -3,6 +3,7 @@ package cl.duoc.xyzbank.bffatm.auth.infrastructure.adapters;
 import cl.duoc.xyzbank.bffatm.auth.application.dto.VerifiedPin;
 import cl.duoc.xyzbank.bffatm.auth.application.ports.PinVerificationPort;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.adapters.CoreServiceCalls;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -23,7 +24,12 @@ public class HttpPinVerificationAdapter implements PinVerificationPort {
         this.corePinVerificationClient = corePinVerificationClient;
     }
 
+    /**
+     * Breaker only, deliberately no @Retry: a repeated attempt could count as one more wrong PIN
+     * and lock the card. Shares the core-service breaker so terminals fail fast during an outage.
+     */
     @Override
+    @CircuitBreaker(name = "coreService")
     public VerifiedPin verify(String cardNumber, String pin) {
         CorePinVerificationResponse response = CoreServiceCalls.fetch(() -> corePinVerificationClient
                 .post()
