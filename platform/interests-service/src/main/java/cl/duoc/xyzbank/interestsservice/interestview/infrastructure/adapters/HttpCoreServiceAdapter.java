@@ -8,6 +8,7 @@ import cl.duoc.xyzbank.interestsservice.interestview.application.dto.InterestSum
 import cl.duoc.xyzbank.interestsservice.interestview.application.ports.CoreServicePort;
 import cl.duoc.xyzbank.interestsservice.shared.domain.CoreServiceUnavailableException;
 import cl.duoc.xyzbank.interestsservice.shared.domain.DomainException;
+import cl.duoc.xyzbank.interestsservice.shared.domain.ServiceTokenUnavailableException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
@@ -192,6 +193,9 @@ public class HttpCoreServiceAdapter implements CoreServicePort {
         if (throwable instanceof DomainException domainException) {
             throw domainException;
         }
+        if (throwable instanceof ServiceTokenUnavailableException tokenUnavailable) {
+            throw tokenUnavailable;
+        }
         if (throwable instanceof CoreServiceUnavailableException unavailableException) {
             throw unavailableException;
         }
@@ -224,6 +228,9 @@ public class HttpCoreServiceAdapter implements CoreServicePort {
     private AccountBalanceResponse mapBalanceFailure(String accountId, Throwable throwable) {
         if (throwable instanceof DomainException domainException) {
             throw domainException;
+        }
+        if (throwable instanceof ServiceTokenUnavailableException tokenUnavailable) {
+            throw tokenUnavailable;
         }
         if (throwable instanceof CoreServiceUnavailableException unavailableException) {
             throw unavailableException;

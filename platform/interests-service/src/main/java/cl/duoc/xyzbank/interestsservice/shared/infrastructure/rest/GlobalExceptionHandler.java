@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.interestsservice.shared.infrastructure.rest;
 
 import cl.duoc.xyzbank.interestsservice.shared.domain.CoreServiceUnavailableException;
 import cl.duoc.xyzbank.interestsservice.shared.domain.DomainException;
+import cl.duoc.xyzbank.interestsservice.shared.domain.ServiceTokenUnavailableException;
 import cl.duoc.xyzbank.interestsservice.shared.infrastructure.security.InsufficientScopeException;
 import cl.duoc.xyzbank.interestsservice.shared.infrastructure.security.InvalidAccessTokenException;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,14 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleInsufficientScope(InsufficientScopeException exception) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.getMessage());
         problem.setTitle(HttpStatus.FORBIDDEN.getReasonPhrase());
+        return problem;
+    }
+
+    @ExceptionHandler(ServiceTokenUnavailableException.class)
+    public ProblemDetail handleServiceTokenUnavailable(ServiceTokenUnavailableException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.SERVICE_UNAVAILABLE, "The authorization server is temporarily unavailable. Please try again later.");
+        problem.setTitle(HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase());
         return problem;
     }
 
