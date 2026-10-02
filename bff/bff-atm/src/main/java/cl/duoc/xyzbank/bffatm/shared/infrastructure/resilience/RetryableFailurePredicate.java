@@ -1,7 +1,7 @@
 package cl.duoc.xyzbank.bffatm.shared.infrastructure.resilience;
 
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.adapters.CoreServiceCallException;
-import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.util.Set;
@@ -21,7 +21,8 @@ public class RetryableFailurePredicate implements Predicate<Throwable> {
         return switch (throwable) {
             case CoreServiceCallException failure -> TRANSIENT_STATUSES.contains(failure.getStatus());
             case RestClientResponseException response -> TRANSIENT_STATUSES.contains(response.getStatusCode().value());
-            case ResourceAccessException unreachable -> true;
+            // Unreachable, timed out, or the answer was cut off mid-read (as CoreServiceCalls sees it)
+            case RestClientException unreachable -> true;
             default -> false;
         };
     }
