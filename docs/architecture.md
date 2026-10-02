@@ -77,6 +77,24 @@ After login the BFF keeps the auth-server access token as the session and relays
 
 What stays constant regardless of channel: one BFF per channel, `core-service` as the only database owner for banking entities, MySQL reserved for migration reports, and the existing BFF payload contracts. What each channel's credential proves and how it's validated is documented in `docs/contracts/*/openapi.yaml`. Kafka coordinates the interest credit when the feature flag is on. It does not own account state.
 
+## Fault tolerance (BFFs)
+
+Each BFF bounds every outbound call with a connect and read timeout set on the HTTP client (`core-service` reads 1 s / 2 s, bff-atm's core calls and every `auth-server` or `interests-service` call 1 s / 3 s). Resilience4j `TimeLimiter` is not used: it abandons a blocking call without stopping it, which would let a retried withdrawal overlap the original.
+
+There is one circuit breaker per downstream per BFF: `coreService`, `authServer`, and `interestsService` in bff-web. A breaker counts only connection failures, timeouts, answers cut off mid-read, and 5xx. A 4xx never opens it. The core and interests breakers use a 20-call window, a 10-call minimum and a 50 % failure rate; `authServer` uses a 10-call window and a 5-call minimum. Each waits 15 s open before half-opening. An open breaker answers the existing 503 ProblemDetail. It never serves cached data, and it never turns health DOWN.
+
+Retries apply only to idempotent operations, only after unreachable, timed out, cut off, 502, 503 or 504, never after a 4xx, a 500 or an open circuit:
+
+| Retried (attempts, backoff) | Never retried, and why |
+|---|---|
+| `GET` reads to `core-service` / `interests-service` (3, ~200 ms then ~400 ms, jittered) | PIN verification: an extra attempt can count as another wrong PIN and lock the card |
+| ATM withdrawal, same `Idempotency-Key` and body (2, 300 ms) | Refresh grant: a resend after a completed rotation is reuse, and `auth-server` revokes the login |
+| `client_credentials` token, `bff-atm` and `interests-service` (3, ~300 ms then ~600 ms) | Authorization-code exchange (single-use) and device revocation |
+
+A withdrawal is debited at most once however many attempts arrive: `core-service` replays a known `Idempotency-Key`, and the key is unique in `transactions`, so an attempt that overlaps a still-running original gets a replay or a 409. When `auth-server` is unavailable, every BFF path answers 503 rather than 401/422 and issues or clears no session. That covers login, refresh, device revocation, signing-key fetch and service token. bff-atm's and interests-service's token outages count against `authServer` only, never against `core-service`'s breaker.
+
+Actuator (health, `circuitbreakers`, `circuitbreakerevents`) is served on each BFF's internal plain-HTTP management port (9081 / 9082 / 9083), published on loopback only. The customer-facing port keeps answering `/actuator/health` with the overall status only. The compose healthchecks use the management ports.
+
 ## Interest flows
 
 ### Query — annual interest summary

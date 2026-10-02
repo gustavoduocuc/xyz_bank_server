@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.bffweb.auth.infrastructure.adapters;
 
 import cl.duoc.xyzbank.bffweb.shared.application.CallerContextResolver;
+import cl.duoc.xyzbank.bffweb.shared.application.DependencyUnavailableException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerContext;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerIdentityException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
@@ -11,6 +12,7 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
 import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.web.client.RestOperations;
 
 import java.util.Collection;
 import java.util.List;
@@ -36,8 +38,9 @@ public class AccessTokenCallerContextAdapter implements CallerContextResolver {
         this.webClientId = webClientId;
     }
 
-    public static JwtDecoder decoderFor(String jwkSetUri, String issuer) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+    /** restOperations carries the auth-server timeouts and breaker for the JWK set fetch. */
+    public static JwtDecoder decoderFor(String jwkSetUri, String issuer, RestOperations restOperations) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).restOperations(restOperations).build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 new JwtTimestampValidator(), new JwtIssuerValidator(issuer)));
         return decoder;
@@ -49,6 +52,10 @@ public class AccessTokenCallerContextAdapter implements CallerContextResolver {
         try {
             jwt = decoder.decode(sessionToken);
         } catch (JwtException | IllegalArgumentException exception) {
+            if (AuthServerFailures.isUnavailable(exception)) {
+                // The keys could not be fetched: nothing was judged about the token itself
+                throw DependencyUnavailableException.of("Authorization server", exception);
+            }
             throw CallerIdentityException.invalid("Invalid session token");
         }
         if (!webClientId.equals(jwt.getClaimAsString("azp"))) {

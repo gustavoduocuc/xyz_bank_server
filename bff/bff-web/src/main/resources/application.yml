@@ -34,28 +34,111 @@ oidc:
   # The "iss" every ID token must carry; defaults to the test suite's mock provider
   expected-issuer: ${OIDC_ISSUER:http://localhost:9999/mock-oidc}
 
+# Timeouts: add-resilience4j-to-bffs design.md Decision 2. A connect to a live container takes
+# ms, so 1 s fails fast when it is gone; core-service reads are indexed lookups, and 2 s keeps
+# the worst case with retries (3 x 2 s + backoff) under ~7 s; interests-service calls core-service
+# itself (two hops), so it keeps 3 s
 core-service:
   base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
-  connect-timeout-ms: 3000
-  read-timeout-ms: 3000
+  connect-timeout-ms: 1000
+  read-timeout-ms: 2000
 
 interests-service:
   base-url: ${INTERESTS_SERVICE_BASE_URL:http://localhost:8084}
-  connect-timeout-ms: 3000
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000
+
+# The authorization server's token and JWK set endpoints (login, refresh); token issuance signs
+# and writes to Postgres, 3 s bounds the login callback
+auth-server:
+  connect-timeout-ms: 1000
   read-timeout-ms: 3000
 
 features:
   interests:
     use-interests-service: ${FEATURE_USE_INTERESTS_SERVICE:true}
 
+# Fault tolerance of bff-web's outbound calls (bff-resilience spec; parameters justified in
+# add-resilience4j-to-bffs design.md Decisions 3 and 4)
+resilience4j:
+  circuitbreaker:
+    configs:
+      downstream:
+        slidingWindowType: COUNT_BASED
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # An open breaker must never turn health DOWN (one outage would cascade through compose)
+        registerHealthIndicator: false
+        # Unreachable, timed out, cut off or 5xx; a 4xx is an answer, not a failure
+        recordFailurePredicate: cl.duoc.xyzbank.bffweb.shared.infrastructure.resilience.DownstreamFailurePredicate
+        # Another dependency's outage belongs to that dependency's breaker
+        ignoreExceptions:
+          - cl.duoc.xyzbank.bffweb.shared.application.DependencyUnavailableException
+    instances:
+      coreService:
+        baseConfig: downstream
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        permittedNumberOfCallsInHalfOpenState: 3
+      interestsService:
+        baseConfig: downstream
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        permittedNumberOfCallsInHalfOpenState: 3
+      authServer:
+        baseConfig: downstream
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 2
+  retry:
+    # No shared retry baseConfig: in 2.2.0 an instance that inherits a backoff and sets its own
+    # wait fails with "intervalFunction was configured twice". Reads retry only after unreachable,
+    # timed out, cut off, 502, 503 or 504; never a 4xx, a 500 or an open circuit. Nothing that
+    # talks to auth-server is retried (refresh rotation, single-use codes).
+    instances:
+      # ~200 ms then ~400 ms (+/-50 %) between the three attempts
+      coreServiceRead:
+        maxAttempts: 3
+        waitDuration: 200ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        enableRandomizedWait: true
+        randomizedWaitFactor: 0.5
+        retryExceptionPredicate: cl.duoc.xyzbank.bffweb.shared.infrastructure.resilience.RetryableFailurePredicate
+        ignoreExceptions: &notRetried
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+          - cl.duoc.xyzbank.bffweb.shared.application.DependencyUnavailableException
+      interestsServiceRead:
+        maxAttempts: 3
+        waitDuration: 200ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        enableRandomizedWait: true
+        randomizedWaitFactor: 0.5
+        retryExceptionPredicate: cl.duoc.xyzbank.bffweb.shared.infrastructure.resilience.RetryableFailurePredicate
+        ignoreExceptions: *notRetried
+
+# Actuator lives on an internal, plain-HTTP management port (published on loopback only by the
+# local stack), so circuit-breaker state never reaches the customer-facing port. The customer-
+# facing port keeps answering /actuator/health through PublicHealthController
+# (add-resilience4j-to-bffs design.md Decision 8)
 management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:9081}
+    ssl:
+      enabled: false
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,circuitbreakers,circuitbreakerevents
   endpoint:
     health:
       show-details: never
+  health:
+    # An open breaker must not turn health DOWN
+    circuitbreakers:
+      enabled: false
 
 logging:
   pattern:

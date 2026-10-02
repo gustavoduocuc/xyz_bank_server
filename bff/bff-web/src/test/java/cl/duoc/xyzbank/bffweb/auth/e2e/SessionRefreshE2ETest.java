@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 
@@ -21,7 +22,9 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "auth-server.read-timeout-ms=500")
 @DisplayName("bff-web's session refresh endpoint")
 class SessionRefreshE2ETest {
 
@@ -33,6 +36,12 @@ class SessionRefreshE2ETest {
      * 2. A rejected or reused refresh token (invalid_grant) clears both cookies and answers 401
      * 3. No refresh_token cookie at all is rejected without calling the authorization server
      * 4. A missing or mismatched CSRF token is rejected before the authorization server is called
+     * 5. A refresh the authorization server does not answer within the read timeout is sent
+     *    exactly once and answers the 503 ProblemDetail without touching either cookie, so the
+     *    BFF never ends the login (bff-resilience spec, "Session refresh is never retried
+     *    automatically and a timeout does not end the session")
+     * 6. With the authorization server unreachable the refresh is sent once and answers the 503
+     *    ProblemDetail, cookies untouched
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -160,5 +169,44 @@ class SessionRefreshE2ETest {
                 .statusCode(403);
 
         assertTrue(OIDC_PROVIDER.tokenRequests().isEmpty());
+    }
+
+    @Test
+    @DisplayName("sends a timed-out refresh exactly once and keeps both cookies")
+    void sendsATimedOutRefreshExactlyOnceAndKeepsBothCookies() {
+        OIDC_PROVIDER.stubSlowRefreshGrant("slow-refresh-token", SUBJECT, "rotated-too-late", Duration.ofMillis(1_500));
+
+        Response response = refreshWith("slow-refresh-token");
+
+        assertServiceUnavailableKeepingTheSession(response);
+        assertEquals(1, OIDC_PROVIDER.tokenRequests().size());
+    }
+
+    @Test
+    @DisplayName("sends a refresh once and keeps both cookies when the authorization server is unreachable")
+    void sendsARefreshOnceAndKeepsBothCookiesWhenTheAuthorizationServerIsUnreachable() {
+        OIDC_PROVIDER.stubUnreachableTokenEndpoint();
+
+        Response response = refreshWith("old-refresh-token");
+
+        assertServiceUnavailableKeepingTheSession(response);
+        assertEquals(1, OIDC_PROVIDER.tokenRequests().size());
+    }
+
+    private static Response refreshWith(String refreshToken) {
+        return given()
+                .cookie("refresh_token", refreshToken)
+                .cookie("XSRF-TOKEN", "csrf-token-5")
+                .header("X-XSRF-TOKEN", "csrf-token-5")
+                .when()
+                .post("/session/refresh");
+    }
+
+    private static void assertServiceUnavailableKeepingTheSession(Response response) {
+        response.then().statusCode(503).contentType("application/problem+json");
+        List<String> setCookieHeaders = response.getHeaders().getValues("Set-Cookie");
+        assertTrue(setCookieHeaders.stream().noneMatch(header -> header.startsWith("session=")
+                        || header.startsWith("refresh_token=")),
+                "the session cookies must be left untouched, got: " + setCookieHeaders);
     }
 }

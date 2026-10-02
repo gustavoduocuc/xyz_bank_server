@@ -9,6 +9,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.retry.Retry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -76,7 +78,8 @@ class ClientCredentialsTokenInterceptorIT {
             }
         };
         ClientCredentialsTokenInterceptor interceptor = new ClientCredentialsTokenInterceptor(
-                RestClient.create(), server.baseUrl() + TOKEN_PATH, CLIENT_ID, CLIENT_SECRET, clock);
+                RestClient.create(), server.baseUrl() + TOKEN_PATH, CLIENT_ID, CLIENT_SECRET, clock,
+                Retry.ofDefaults("authServerToken"), CircuitBreaker.ofDefaults("authServer"));
         coreClient = RestClient.builder().baseUrl(server.baseUrl()).requestInterceptor(interceptor).build();
     }
 

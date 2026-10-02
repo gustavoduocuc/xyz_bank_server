@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.bffmobile.auth.testsupport;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.http.Fault;
 import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -10,6 +11,7 @@ import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
@@ -127,6 +129,41 @@ public final class MockOidcProvider {
                         .withStatus(400)
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"error\":\"invalid_grant\"}")));
+    }
+
+    /**
+     * Like {@link #stubRefreshGrant}, but the answer arrives only after delay: the authorization
+     * server completes the rotation while bff-mobile may already have given up waiting.
+     */
+    public void stubSlowRefreshGrant(
+            String refreshToken, String deviceId, String subject, String newRefreshToken, Duration delay) {
+        server.stubFor(post(urlPathEqualTo(TOKEN_PATH))
+                .withRequestBody(containing("grant_type=refresh_token"))
+                .withRequestBody(containing("refresh_token=" + refreshToken))
+                .withRequestBody(containing("device_id=" + deviceId))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(tokenResponse(mobileAccessTokenFor(subject, deviceId), newRefreshToken, null))
+                        .withFixedDelay((int) delay.toMillis())));
+    }
+
+    /** Every token endpoint call has its connection reset, as when the authorization server is down. */
+    public void stubUnreachableTokenEndpoint() {
+        server.stubFor(post(urlPathEqualTo(TOKEN_PATH))
+                .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+    }
+
+    /** Revoking deviceId has its connection reset, as when the authorization server is down. */
+    public void stubUnreachableDeviceRevocation(String deviceId) {
+        server.stubFor(post(urlPathEqualTo("/devices/" + deviceId + "/revocations"))
+                .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+    }
+
+    /** The JWK set endpoint has its connection reset, so no signing key can be fetched. */
+    public void stubUnreachableJwks() {
+        server.stubFor(get(urlPathEqualTo("/mock-oidc/jwks"))
+                .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
     }
 
     /** Stubs auth-server's device revocation for deviceId to succeed. */
