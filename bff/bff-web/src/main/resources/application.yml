@@ -48,6 +48,12 @@ interests-service:
   connect-timeout-ms: 1000
   read-timeout-ms: 3000
 
+# The authorization server's token and JWK set endpoints (login, refresh); token issuance signs
+# and writes to Postgres, 3 s bounds the login callback
+auth-server:
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000
+
 features:
   interests:
     use-interests-service: ${FEATURE_USE_INTERESTS_SERVICE:true}
