@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
-import org.springframework.web.client.RestClient;
 
 /**
  * The authorization server's tokens are bff-web's session. Refresh reuses the same token
@@ -32,12 +31,13 @@ public class SessionTokensConfig {
         return new RequestScopedAuthorizedClientRepository();
     }
 
-    /** A plain RestClient on purpose: the core-service client would add a bearer token. */
+    /** The auth-server client, not the core-service one, which would add a bearer token. */
     @Bean
     public AuthServerTokenClient authServerTokenClient(
             @Value("${spring.security.oauth2.client.provider.oidc.token-uri}") String tokenUri,
             @Value("${spring.security.oauth2.client.registration.oidc.client-id}") String clientId,
-            @Value("${spring.security.oauth2.client.registration.oidc.client-secret}") String clientSecret) {
-        return new AuthServerTokenClient(RestClient.create(), tokenUri, clientId, clientSecret);
+            @Value("${spring.security.oauth2.client.registration.oidc.client-secret}") String clientSecret,
+            AuthServerHttpClients authServer) {
+        return new AuthServerTokenClient(authServer.restClient(), tokenUri, clientId, clientSecret);
     }
 }
