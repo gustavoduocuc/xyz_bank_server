@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.web.client.RestClient;
 
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.retry.Retry;
 import java.time.Clock;
 import java.util.List;
 
@@ -73,7 +75,9 @@ class CorePinVerificationClientIT {
                                 authServer.tokenUri(),
                                 AuthServerStub.CLIENT_ID,
                                 AuthServerStub.CLIENT_SECRET,
-                                Clock.systemUTC()));
+                                Clock.systemUTC(),
+                                Retry.ofDefaults("authServerToken"),
+                                CircuitBreaker.ofDefaults("authServer")));
 
         client.post().uri("/internal/auth/atm/pin-verifications").retrieve().toBodilessEntity();
 
