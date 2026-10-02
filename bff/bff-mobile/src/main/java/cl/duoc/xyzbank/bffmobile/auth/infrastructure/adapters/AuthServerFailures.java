@@ -25,18 +25,22 @@ public final class AuthServerFailures {
 
     public static boolean isUnavailable(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof IOException || cause instanceof CallNotPermittedException
-                    || cause instanceof ResourceAccessException) {
-                return true;
-            }
-            if (cause instanceof RestClientResponseException response && response.getStatusCode().is5xxServerError()) {
-                return true;
-            }
-            if (isUnavailableError(cause)) {
+            if (isUnreachable(cause) || isServerError(cause) || isUnavailableError(cause)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** Could not connect, timed out, or the breaker refused the call. */
+    private static boolean isUnreachable(Throwable cause) {
+        return cause instanceof IOException
+                || cause instanceof ResourceAccessException
+                || cause instanceof CallNotPermittedException;
+    }
+
+    private static boolean isServerError(Throwable cause) {
+        return cause instanceof RestClientResponseException response && response.getStatusCode().is5xxServerError();
     }
 
     private static boolean isUnavailableError(Throwable cause) {
