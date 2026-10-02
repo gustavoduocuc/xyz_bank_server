@@ -28,6 +28,9 @@ auth-server:
   token-uri: ${AUTH_TOKEN_URI:http://localhost:9000/oauth2/token}
   client-id: ${BFF_ATM_CLIENT_ID:bff-atm}
   client-secret: ${BFF_ATM_CLIENT_SECRET:bff-atm-dev-secret}
+  # design.md Decision 2: token issuance signs and writes to Postgres; 3 s bounds it
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000
 
 channel-auth:
   jwt:

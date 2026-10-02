@@ -4,6 +4,8 @@ import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.AtmSessionClientInterce
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.BearerTokenClientInterceptor;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.ClientCredentialsTokenInterceptor;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.CorrelationIdClientInterceptor;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.github.resilience4j.retry.RetryRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,9 +32,18 @@ public class CoreServiceClientConfig {
     public ClientCredentialsTokenInterceptor clientCredentialsTokenInterceptor(
             @Value("${auth-server.token-uri}") String tokenUri,
             @Value("${auth-server.client-id}") String clientId,
-            @Value("${auth-server.client-secret}") String clientSecret) {
+            @Value("${auth-server.client-secret}") String clientSecret,
+            @Value("${auth-server.connect-timeout-ms}") int connectTimeoutMs,
+            @Value("${auth-server.read-timeout-ms}") int readTimeoutMs,
+            RetryRegistry retries,
+            CircuitBreakerRegistry circuitBreakers) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(connectTimeoutMs);
+        requestFactory.setReadTimeout(readTimeoutMs);
         return new ClientCredentialsTokenInterceptor(
-                RestClient.create(), tokenUri, clientId, clientSecret, Clock.systemUTC());
+                RestClient.builder().requestFactory(requestFactory).build(),
+                tokenUri, clientId, clientSecret, Clock.systemUTC(),
+                retries.retry("authServerToken"), circuitBreakers.circuitBreaker("authServer"));
     }
 
     @Bean
