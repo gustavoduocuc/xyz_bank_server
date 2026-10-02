@@ -119,14 +119,26 @@ resilience4j:
         retryExceptionPredicate: cl.duoc.xyzbank.bffweb.shared.infrastructure.resilience.RetryableFailurePredicate
         ignoreExceptions: *notRetried
 
+# Actuator lives on an internal, plain-HTTP management port (published on loopback only by the
+# local stack), so circuit-breaker state never reaches the customer-facing port. The customer-
+# facing port keeps answering /actuator/health through PublicHealthController
+# (add-resilience4j-to-bffs design.md Decision 8)
 management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:9081}
+    ssl:
+      enabled: false
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,circuitbreakers,circuitbreakerevents
   endpoint:
     health:
       show-details: never
+  health:
+    # An open breaker must not turn health DOWN
+    circuitbreakers:
+      enabled: false
 
 logging:
   pattern:
