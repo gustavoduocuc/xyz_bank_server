@@ -14,6 +14,9 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
+
+import java.net.SocketException;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,7 +30,8 @@ class ResiliencePredicatesTest {
      *    CoreServiceCallException
      * 2. A 500 is a breaker failure but is not retried
      * 3. 502, 503 and 504 are both a breaker failure and retryable
-     * 4. A connection failure or timeout is both a breaker failure and retryable
+     * 4. A connection failure, a timeout, or an answer cut off mid-read (connection reset) is
+     *    both a breaker failure and retryable
      * 5. An open circuit is not retried
      * 6. Another dependency being unavailable is neither (it has its own breaker)
      */
@@ -79,6 +83,16 @@ class ResiliencePredicatesTest {
 
         assertTrue(isFailure.test(timeout));
         assertTrue(isRetryable.test(timeout));
+    }
+
+    @Test
+    @DisplayName("records and retries an answer cut off by a connection reset")
+    void recordsAndRetriesAnAnswerCutOffByAConnectionReset() {
+        RestClientException reset = new RestClientException(
+                "Error while extracting response", new SocketException("Connection reset"));
+
+        assertTrue(isFailure.test(reset));
+        assertTrue(isRetryable.test(reset));
     }
 
     @Test
