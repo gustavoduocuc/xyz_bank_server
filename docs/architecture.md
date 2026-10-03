@@ -6,7 +6,7 @@ XYZ Bank exposes three channel-specific backends for frontend (BFFs) in front of
 
 Each channel proves who the caller is with a real credential instead of a trusted header: OAuth2/OIDC session cookie for web, a device-bound JWT for mobile, and mTLS plus a PIN-verified session for ATM. Every client-facing edge is TLS; BFF→platform edges stay plain HTTP except the one call that carries a raw PIN, which is TLS-only by design.
 
-`bff-web` routes interest-summary traffic to `interests-service` (feature flag on by default). Mobile and ATM keep talking to `core-service` directly. `interests-service` loads config from `config-server`, registers with Eureka, discovers `core-service` by service id (LoadBalancer), and wraps outbound HTTP calls to core with a Resilience4j circuit breaker. The annual interest summary GET stays synchronous and forwards the user bearer. Interest credit stays on that HTTP path while `FEATURE_INTEREST_CREDIT_VIA_KAFKA` is `false` (the default): `interests-service` authenticates to `core-service` with its own client-credentials access token (scope `interests:write`). With the flag `true`, the same calculation is published as `InterestCalculated` and `core-service` credits the account, then publishes the result. Decision record: [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
+`bff-web` routes interest-summary traffic to `interests-service` (feature flag on by default). Mobile and ATM keep talking to `core-service` directly. `interests-service` loads config from `config-server`, registers with Eureka, discovers `core-service` by service id (LoadBalancer), and wraps outbound HTTP calls to core with a Resilience4j circuit breaker. The annual interest summary GET stays synchronous and forwards the user bearer. Interest credit travels by the Kafka saga by default in Compose (`FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`): the calculation is published as `InterestCalculated` and `core-service` credits the account, then publishes the result. With the flag `false` the credit is the synchronous HTTP path instead, where `interests-service` authenticates to `core-service` with its own client-credentials access token (scope `interests:write`). Decision record: [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
 
 ```mermaid
 flowchart LR
@@ -116,9 +116,9 @@ sequenceDiagram
   Interests-->>Web: summary
 ```
 
-### Command — apply annual interest (HTTP, default)
+### Command — apply annual interest (HTTP)
 
-`FEATURE_INTEREST_CREDIT_VIA_KAFKA=false`. This is the path Compose starts with, and the path the current end-to-end tests exercise.
+`FEATURE_INTEREST_CREDIT_VIA_KAFKA=false`. This is the fallback: Compose starts with the saga, and a service run outside Compose also defaults to this path. The HTTP-path tests exercise it.
 
 ```mermaid
 sequenceDiagram
@@ -144,9 +144,9 @@ sequenceDiagram
 
 Optimistic locking on `accounts.version` and the unique `(account_id, year)` on summaries prevent double application; repeating the same `Idempotency-Key` replays the original credit. Outbound calls from `interests-service` to `core-service` use Resilience4j circuit breaker/retry so repeated core failures open the breaker and fail fast. With the Kafka flag on, `creditInterest` is not called, so that breaker no longer covers the credit. `fetchInterestSummary` and `fetchAccountBalance` stay on it.
 
-### Command — apply annual interest (Kafka saga)
+### Command — apply annual interest (Kafka saga, default in Compose)
 
-`FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`. The POST returns the calculated summary as soon as `InterestCalculated` is published. The calculation stays `PENDING` in the in-memory repository until `interests.credit-results` closes it. The HTTP credit endpoint remains available for the flag-off path.
+`FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`, the default of `docker compose up`. A `200` from the POST therefore means the calculation was published, not that the account was credited. The POST returns the calculated summary as soon as `InterestCalculated` is published. The calculation stays `PENDING` in the in-memory repository until `interests.credit-results` closes it. The HTTP credit endpoint remains available for the flag-off path.
 
 ```mermaid
 sequenceDiagram
@@ -170,7 +170,15 @@ sequenceDiagram
   Note over Interests: close calculation APPLIED or REJECTED, idempotent by eventId
 ```
 
-The partition key is `accountId`. Delivery is at-least-once. `eventId` is `interest:{accountId}:{year}`. The HTTP idempotency key on the synchronous path stays `interest-{accountId}-{year}`. A duplicate `eventId` does not credit the balance twice. A failed credit transaction leaves no outbox row. A business rejection (`VALIDATION`, `NOT_FOUND`, or `CONFLICT`) publishes `InterestCreditRejected` with `reason`, does not change the balance, and commits the consumer offset so the single partition is not blocked. With the Kafka flag off, an HTTP credit does not write interest-result outbox rows. `core-service` is the only service with an outbox, because it is the only service with a local database transaction around the credit. See [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
+The partition key is `accountId`, and each topic has 3 partitions with one consumer thread per partition (see [Failed messages](#failed-messages-and-ordering)). Delivery is at-least-once. An `InterestCalculated` whose event id was already processed is acknowledged without a second result, even if its amount was recalculated from a higher balance. `eventId` is `interest:{accountId}:{year}`. The HTTP idempotency key on the synchronous path stays `interest-{accountId}-{year}`. A duplicate `eventId` does not credit the balance twice. A failed credit transaction leaves no outbox row. A business rejection (`VALIDATION`, `NOT_FOUND`, or `CONFLICT`) publishes `InterestCreditRejected` with `reason`, does not change the balance, and commits the consumer offset so the single partition is not blocked. With the Kafka flag off, an HTTP credit does not write interest-result outbox rows. `core-service` is the only service with an outbox, because it is the only service with a local database transaction around the credit. See [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
+
+### Failed messages and ordering
+
+**Partitions and concurrency.** `interests.calculated`, `interests.credit-results` and `transactions.confirmed` have 3 partitions (`kafka-init` creates them, and raises existing topics that have fewer). Every producer keys by `accountId`, so one account's records stay on one partition in order, while different accounts run in parallel on the 3 listener threads each service starts. Raising the partition count of a topic that still holds unconsumed records re-maps keys; drain such a topic first.
+
+**Retries, then a dead-letter topic.** When a consumer (`core-service` on `interests.calculated`, `interests-service` on `interests.credit-results`) fails to process a record, it retries 3 times with 1 s, 2 s and 4 s delays and then publishes the record to `<topic>.DLT` with its key, payload and the failure in headers, commits the offset and moves on. A permanently bad record therefore frees its partition after about 7 s, and the records behind it are processed normally. The retries block the partition rather than going through retry topics, because retry topics would let later records of the same account overtake the failing one. Redelivery is safe: crediting is idempotent on the event id. A business rejection (unknown account, year already credited) is not a failure: it is reported as `InterestCreditRejected`. If publishing to the DLT itself fails, the record is redelivered rather than dropped. Nothing replays a DLT automatically; an operator inspects it with Kafka tooling, and a dead-lettered `InterestCalculated` leaves its calculation `PENDING` and the account uncredited. `transactions.confirmed.DLT` exists for future consumers; nothing consumes that topic yet.
+
+**Order from the outbox.** The relay publishes outbox rows in the order they were written (`outbox_events.seq`, Flyway `V13`), not by date and id, so the events of one account reach `interests.credit-results` and `transactions.confirmed` in the order they were confirmed. If a send fails, the account's later events wait for the next run so they cannot overtake it, and other accounts keep flowing.
 
 ### Event — TransactionConfirmed (every confirmed money movement)
 

@@ -294,7 +294,7 @@
                 { "key": "year", "value": "{{applyYear}}" }
               ]
             },
-            "description": "Applies annual interest via interests-service → core interest-credits. Requires the bearer from POST interests-service client token (scope interests:write). Default applyYear=2026 avoids clashing with the seeded 2025 summary."
+            "description": "Applies annual interest via interests-service. By default (Kafka saga) it returns the calculated summary once InterestCalculated is published and core-service credits the account asynchronously; with FEATURE_INTEREST_CREDIT_VIA_KAFKA=false it credits synchronously through core interest-credits. Requires the bearer from POST interests-service client token (scope interests:write). Default applyYear=2026 avoids clashing with the seeded 2025 summary."
           }
         },
         {
@@ -306,10 +306,10 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('replay matches first apply (no double credit)', function () {",
+                  "pm.test('repeat is accepted for the same account and year', function () {",
                   "  const body = pm.response.json();",
-                  "  pm.expect(String(body.interestAmount)).to.eql(pm.collectionVariables.get('lastAppliedInterestAmount'));",
-                  "  pm.expect(String(body.closingBalance)).to.eql(pm.collectionVariables.get('lastAppliedClosingBalance'));",
+                  "  pm.expect(body.accountId).to.eql(pm.collectionVariables.get('accountId'));",
+                  "  pm.expect(String(body.year)).to.eql(pm.collectionVariables.get('applyYear'));",
                   "});"
                 ]
               }
@@ -329,7 +329,7 @@
                 { "key": "year", "value": "{{applyYear}}" }
               ]
             },
-            "description": "Retry the same applyYear with the same interests-service token. Same Idempotency-Key must replay without a second balance bump. Run immediately after POST apply annual interest."
+            "description": "Retry the same applyYear with the same interests-service token. With the Kafka saga (the default) the amounts in the response are recalculated from the current balance, so they may differ from the first apply; what must hold is that the account is credited only once for that year (checked end to end by scripts/verify-interest-saga.sh). Run immediately after POST apply annual interest."
           }
         }
       ]
