@@ -71,7 +71,7 @@ flowchart LR
   Migration --> MySQL
 ```
 
-`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core en las llamadas HTTP (resumen, saldo y, con la flag de Kafka apagada, el crédito). Los tres BFFs también protegen sus llamadas a `core-service`, `interests-service` y `auth-server` con circuit breaker, timeout y reintentos solo donde es seguro (ver [Tolerancia a fallos de los BFFs](#tolerancia-a-fallos-de-los-bffs)). Kafka es un broker único en KRaft, sin ZooKeeper. Los tópicos `interests.calculated`, `interests.credit-results` y `transactions.confirmed` los crea `kafka-init` al arrancar. Cada movimiento de dinero confirmado en `core-service` (retiro ATM síncrono o crédito de interés) publica `TransactionConfirmed` vía outbox a `transactions.confirmed` (clave `accountId`). La flecha HTTP de intereses a core sigue siendo el camino del GET y del crédito síncrono. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
+`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core en las llamadas HTTP (resumen, saldo y, con la saga de Kafka apagada, el crédito). Por defecto el crédito de intereses viaja por la saga de Kafka (3 particiones por tópico, reintentos acotados y dead-letter topics). Los tres BFFs también protegen sus llamadas a `core-service`, `interests-service` y `auth-server` con circuit breaker, timeout y reintentos solo donde es seguro (ver [Tolerancia a fallos de los BFFs](#tolerancia-a-fallos-de-los-bffs)). Kafka es un broker único en KRaft, sin ZooKeeper. Los tópicos `interests.calculated`, `interests.credit-results` y `transactions.confirmed` los crea `kafka-init` al arrancar. Cada movimiento de dinero confirmado en `core-service` (retiro ATM síncrono o crédito de interés) publica `TransactionConfirmed` vía outbox a `transactions.confirmed` (clave `accountId`). La flecha HTTP de intereses a core sigue siendo el camino del GET y del crédito síncrono. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
 
 ## Arranque local
 
@@ -106,7 +106,7 @@ Eso levanta:
 | bff-atm | 8083 | Saldo y retiro |
 | auth-server | 9000 | Servidor OAuth 2.0 / OIDC (login web y mobile), solo HTTPS |
 
-El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`, `bff-mobile`, `bff-atm` e `interests-service` esperan a que `auth-server` esté sano.
+El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos y sus tres `.DLT` con 3 particiones cada uno. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`, `bff-mobile`, `bff-atm` e `interests-service` esperan a que `auth-server` esté sano.
 
 ### Servidor de autorización (`auth-server`)
 
@@ -138,12 +138,32 @@ Enrutamiento de intereses en `bff-web`:
 |---|---|---|
 | `FEATURE_USE_INTERESTS_SERVICE` | `true` | `true`: `bff-web` llama a `interests-service`. `false`: llama a `core-service` en `/internal/accounts/{id}/interest-summary`. |
 | `INTERESTS_SERVICE_BASE_URL` | `http://interests-service:8084` | Base URL de `interests-service`. |
-| `FEATURE_INTEREST_CREDIT_VIA_KAFKA` | `false` | `false`: `interests-service` acredita por HTTP. `true`: publica `InterestCalculated` en `interests.calculated` y no llama a `creditInterest`. El GET de resumen no cambia. |
+| `FEATURE_INTEREST_CREDIT_VIA_KAFKA` | `true` (Compose) / `false` (default de cada servicio fuera de Compose) | `true`: `interests-service` publica `InterestCalculated` en `interests.calculated` y `core-service` acredita de forma asíncrona (saga). `false`: `interests-service` acredita por HTTP síncrono (`creditInterest`). El GET de resumen no cambia. |
+| `KAFKA_TOPIC_PARTITIONS` | `3` | Particiones de cada tópico de la saga y de sus `.DLT`. |
+| `KAFKA_LISTENER_CONCURRENCY` | `3` | Hilos consumidores por listener; uno por partición. |
 | `FEATURE_TRANSACTION_CONFIRMED_EVENTS` | `true` (Compose) / `false` (app default) | `true`: `core-service` escribe `TransactionConfirmed` en el outbox y el relay lo publica en `transactions.confirmed`. Independiente de la saga de intereses. |
 
 Para forzar el path legacy del resumen: `FEATURE_USE_INTERESTS_SERVICE=false docker compose up -d bff-web`.
 
-Para acreditar por la saga: `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true docker compose up -d core-service interests-service`. Eso enciende el listener, el outbox y el relay de `core-service` y el productor/consumidor de `interests-service`. Con la flag en `false` el crédito HTTP no escribe outbox de intereses; `FEATURE_TRANSACTION_CONFIRMED_EVENTS` sigue pudiendo publicar movimientos confirmados.
+La saga es el comportamiento por defecto de `docker compose up`: el listener, el outbox y el relay de `core-service` y el productor/consumidor de `interests-service` están encendidos. Para volver al crédito HTTP síncrono: `FEATURE_INTEREST_CREDIT_VIA_KAFKA=false docker compose up -d --force-recreate core-service interests-service`. Con la flag en `false` el crédito HTTP no escribe outbox de intereses; `FEATURE_TRANSACTION_CONFIRMED_EVENTS` sigue pudiendo publicar movimientos confirmados.
+
+Con la saga encendida, `POST /accounts/{id}/interest-applications` responde con el resumen calculado en cuanto publica `InterestCalculated`; el crédito ocurre después en `core-service`, así que un `200` ya no significa que la cuenta esté acreditada. El resultado (`InterestCreditApplied` / `InterestCreditRejected`) viaja por `interests.credit-results`.
+
+### Mensajería: particiones, reintentos y dead-letter topics
+
+Los tópicos `interests.calculated`, `interests.credit-results` y `transactions.confirmed` tienen 3 particiones, con `accountId` como clave: los eventos de una misma cuenta van a una partición y se procesan en orden; cuentas distintas se procesan en paralelo (3 hilos por listener). `kafka-init` crea los tópicos y sube a 3 los que ya existan con menos.
+
+Un mensaje que falla se reintenta 3 veces (1 s, 2 s, 4 s) y después se publica en `<tópico>.DLT` (`interests.calculated.DLT`, `interests.credit-results.DLT`; `transactions.confirmed.DLT` existe pero hoy nadie consume ese tópico) y la partición sigue con el siguiente mensaje. Un rechazo de negocio no es un fallo: sale como `InterestCreditRejected`. Para ver qué cayó en un DLT:
+
+```bash
+docker exec xyz-bank-kafka /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 --topic interests.calculated.DLT \
+  --from-beginning --timeout-ms 5000 --property print.key=true --property print.headers=true
+```
+
+Las cabeceras `kafka_dlt-exception-*` traen la causa y `kafka_dlt-original-*` el origen. No hay reproceso automático: reinyectar un mensaje es manual. Un `InterestCalculated` que cae en el DLT deja su cálculo en `PENDING` y la cuenta sin acreditar.
+
+Para comprobar la saga de punta a punta contra el stack levantado (cálculo, crédito, resultado, mensaje inválido al DLT sin bloquear la partición): `./scripts/verify-interest-saga.sh`.
 
 Para apagar: `docker compose down`. Para resetear volúmenes (incluido el seed de demo): `docker compose down -v`.
 
@@ -380,6 +400,7 @@ Baja el stack (`docker compose down`) antes de correr `mvn verify`: los tests de
 
 - **Puertos 3306 o 5432 ocupados.** Otro MySQL/Postgres local está usando el puerto. Para este stack esos puertos deben estar libres, o para el stack con `docker compose down` (eso no apaga bases de otros proyectos).
 - **Puertos 8084, 8888, 8761, 9000 o 9092 ocupados.** Otro proceso está usando el puerto de `interests-service`, `config-server`, `eureka-server`, `auth-server` o Kafka. Libéralos o baja el stack con `docker compose down`.
+- **Aplicaste interés y la cuenta no se acredita (el `POST` respondió `200`).** Con la saga el crédito es asíncrono. Mira `docker compose logs core-service`, y si el mensaje falló mira `interests.calculated.DLT` (ver [Mensajería](#mensajería-particiones-reintentos-y-dead-letter-topics)). `./scripts/verify-interest-saga.sh` comprueba todo el recorrido.
 - **Puertos 9081, 9082 o 9083 ocupados.** Son los puertos de administración (actuator) de `bff-web`, `bff-mobile` y `bff-atm`, publicados en `127.0.0.1`. Libéralos o baja el stack con `docker compose down`.
 - **Un BFF responde `503` sin llamar a `core-service`.** Su circuito `coreService` está abierto tras varios fallos seguidos. Revisa `curl -sS http://127.0.0.1:908x/actuator/circuitbreakers`: tras 15 s pasa solo a `HALF_OPEN` y vuelve a `CLOSED` cuando las llamadas de prueba salen bien. La health del BFF sigue en UP mientras tanto, a propósito.
 - **El seed de demo desapareció o el dashboard da 404.** Flyway no reinserta filas de una versión ya aplicada. Reset: `docker compose down -v` y vuelve a `up --build`.
