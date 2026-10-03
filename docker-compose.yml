@@ -182,9 +182,21 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic interests.calculated --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic interests.credit-results --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic transactions.confirmed --partitions 1 --replication-factor 1
+        # Every saga topic and its dead-letter topic has 3 partitions (records are keyed by account
+        # id, so one account stays on one partition). A topic that already exists with fewer is
+        # raised: --alter can only increase, and fails on an equal count, hence the check.
+        set -euo pipefail
+        kafka_topics=/opt/kafka/bin/kafka-topics.sh
+        partitions=3
+        for topic in interests.calculated interests.credit-results transactions.confirmed; do
+          for name in "$$topic" "$$topic.DLT"; do
+            $$kafka_topics --bootstrap-server kafka:9092 --create --if-not-exists --topic "$$name" --partitions $$partitions --replication-factor 1
+            current=$$($$kafka_topics --bootstrap-server kafka:9092 --describe --topic "$$name" | grep -o 'PartitionCount: *[0-9]*' | grep -o '[0-9]*$$')
+            if [ "$$current" -lt "$$partitions" ]; then
+              $$kafka_topics --bootstrap-server kafka:9092 --alter --topic "$$name" --partitions $$partitions
+            fi
+          done
+        done
 
   interests-service:
     build:
