@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -163,7 +164,8 @@ class InterestCalculatedDeadLetterIT extends AbstractKafkaPostgresIT {
         assertEquals(
                 new BigDecimal("1035.00"),
                 accountRepository.findById(account.getId()).orElseThrow().getBalance().getAmount());
-        assertTrue(FlakyRegistrationConfig.FAIL_ONCE.isEmpty(), "the transient failure never happened");
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertTrue(
+                FlakyRegistrationConfig.FAIL_ONCE.isEmpty(), "the transient failure never happened"));
         assertTrue(KafkaTestSupport.recordsWithKeyAfter(
                 KAFKA.getBootstrapServers(), DEAD_LETTER, accountId, Duration.ofSeconds(2)).isEmpty());
     }
