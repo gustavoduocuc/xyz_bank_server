@@ -49,6 +49,12 @@ interests:
     credit-results-topic: interests.credit-results
     # One partition per consumer thread; records are keyed by account id, so one account stays on one partition
     partitions: ${KAFKA_TOPIC_PARTITIONS:3}
+    # A failing record is retried (blocking, to keep per-account order) and then dead-lettered:
+    # 1 s, 2 s, 4 s (~7 s) is long enough for a transient failure and short enough to free the partition
+    retry:
+      max-retries: 3
+      initial-interval-ms: 1000
+      multiplier: 2.0
 
 eureka:
   client:
