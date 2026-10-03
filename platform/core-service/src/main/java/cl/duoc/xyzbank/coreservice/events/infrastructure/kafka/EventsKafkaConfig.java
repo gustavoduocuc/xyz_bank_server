@@ -17,6 +17,8 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
         "${interests.kafka.enabled:false} || ${app.events.transaction-confirmed.enabled:false}")
 public class EventsKafkaConfig {
 
+    private static final String DEAD_LETTER_SUFFIX = ".DLT";
+
     @Bean(name = "taskScheduler")
     public ThreadPoolTaskScheduler taskScheduler() {
         CustomizableThreadFactory threadFactory = new CustomizableThreadFactory("outbox-relay-");
@@ -42,6 +44,6 @@ public class EventsKafkaConfig {
     public NewTopic transactionsConfirmedDeadLetterTopic(
             @Value("${app.events.transaction-confirmed.topic}") String topic,
             @Value("${interests.kafka.partitions:3}") int partitions) {
-        return TopicBuilder.name(topic + ".DLT").partitions(partitions).replicas(1).build();
+        return TopicBuilder.name(topic + DEAD_LETTER_SUFFIX).partitions(partitions).replicas(1).build();
     }
 }
