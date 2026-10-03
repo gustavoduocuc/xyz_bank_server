@@ -74,8 +74,8 @@ wait_for_record() {
   while (( SECONDS < deadline )); do
     # Read into a variable first: with pipefail, grep -q closing the pipe early would fail the pipeline
     records="$(kafka kafka-console-consumer.sh --topic "$topic" --from-beginning --timeout-ms 5000 \
-      --property print.key=true --property print.headers=true 2>/dev/null || true)"
-    if grep -q -- "$pattern" <<<"$records"; then
+      --property print.key=true 2>/dev/null || true)"
+    if grep -aq -- "$pattern" <<<"$records"; then
       return 0
     fi
   done

@@ -98,6 +98,12 @@ public class CreditInterestUseCase {
     }
 
     public void executeFromEvent(CreditInterestRequest request, String eventId) {
+        if (processedInterestEvents.findIdempotencyKey(eventId).isPresent()) {
+            // A redelivery or a repeated application: the event already has its result. Its amount
+            // may differ (interests-service recalculates from the current balance), so it must
+            // neither be re-validated nor produce a second result row for the same event id
+            return;
+        }
         try {
             execute(request, eventId);
         } catch (DomainException exception) {

@@ -52,6 +52,8 @@ class InterestCalculatedDeadLetterIT extends AbstractKafkaPostgresIT {
      *    nothing on the dead-letter topic
      * 3. A first attempt that fails after the credit is committed is retried; the account is
      *    credited once and nothing is dead-lettered
+     * 4. The same event arriving again with a recalculated amount (a repeated application after
+     *    the balance rose) is acknowledged: credited once, one result row, nothing dead-lettered
      */
 
     private static final String CALCULATED = "interests.calculated";
@@ -164,6 +166,28 @@ class InterestCalculatedDeadLetterIT extends AbstractKafkaPostgresIT {
         assertTrue(FlakyRegistrationConfig.FAIL_ONCE.isEmpty(), "the transient failure never happened");
         assertTrue(KafkaTestSupport.recordsWithKeyAfter(
                 KAFKA.getBootstrapServers(), DEAD_LETTER, accountId, Duration.ofSeconds(2)).isEmpty());
+    }
+
+    @Test
+    @DisplayName("acknowledges a repeated application whose amount was recalculated, crediting once")
+    void acknowledgesARepeatedApplicationWhoseAmountWasRecalculatedCreditingOnce() throws Exception {
+        Account account = aSavedAccount("9080706104");
+        String accountId = account.getId().getValue();
+        String eventId = "interest:" + accountId + ":2025";
+        KafkaTestSupport.send(KAFKA.getBootstrapServers(), CALCULATED, accountId,
+                anInterestCalculated(accountId, eventId, "35.00"));
+        KafkaTestSupport.recordsWithKey(KAFKA.getBootstrapServers(), RESULTS, accountId, 1);
+
+        KafkaTestSupport.send(KAFKA.getBootstrapServers(), CALCULATED, accountId,
+                anInterestCalculated(accountId, eventId, "36.23"));
+
+        assertTrue(KafkaTestSupport.recordsWithKeyAfter(
+                KAFKA.getBootstrapServers(), DEAD_LETTER, accountId, Duration.ofSeconds(3)).isEmpty());
+        assertEquals(
+                new BigDecimal("1035.00"),
+                accountRepository.findById(account.getId()).orElseThrow().getBalance().getAmount());
+        assertEquals(1, KafkaTestSupport.recordsWithKeyAfter(
+                KAFKA.getBootstrapServers(), RESULTS, accountId, Duration.ofSeconds(2)).size());
     }
 
     private static String header(ConsumerRecord<String, String> record, String name) {
