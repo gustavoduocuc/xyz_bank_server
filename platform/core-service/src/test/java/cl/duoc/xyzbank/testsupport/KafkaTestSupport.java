@@ -3,7 +3,11 @@ package cl.duoc.xyzbank.testsupport;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,6 +31,18 @@ public final class KafkaTestSupport {
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         return new KafkaConsumer<>(properties);
+    }
+
+    public static void send(String bootstrapServers, String topic, String key, String payload) {
+        Properties properties = new Properties();
+        properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        try (KafkaProducer<String, String> producer = new KafkaProducer<>(properties)) {
+            producer.send(new ProducerRecord<>(topic, key, payload)).get();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not publish to " + topic, exception);
+        }
     }
 
     /**
