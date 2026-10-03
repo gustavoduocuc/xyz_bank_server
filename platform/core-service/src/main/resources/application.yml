@@ -47,6 +47,8 @@ interests:
     enabled: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:false}
     calculated-topic: interests.calculated
     credit-results-topic: interests.credit-results
+    # One partition per consumer thread; records are keyed by account id, so one account stays on one partition
+    partitions: ${KAFKA_TOPIC_PARTITIONS:3}
 
 eureka:
   client:
