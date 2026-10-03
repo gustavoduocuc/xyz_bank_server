@@ -16,14 +16,34 @@ import org.springframework.util.backoff.FixedBackOff;
 @ConditionalOnProperty(name = "interests.kafka.enabled", havingValue = "true")
 public class KafkaInterestsConfig {
 
+    static final String DEAD_LETTER_SUFFIX = ".DLT";
+
     @Bean
-    public NewTopic interestsCalculatedTopic(@Value("${interests.kafka.calculated-topic}") String topic) {
-        return TopicBuilder.name(topic).partitions(1).replicas(1).build();
+    public NewTopic interestsCalculatedTopic(
+            @Value("${interests.kafka.calculated-topic}") String topic,
+            @Value("${interests.kafka.partitions:3}") int partitions) {
+        return TopicBuilder.name(topic).partitions(partitions).replicas(1).build();
     }
 
     @Bean
-    public NewTopic interestsCreditResultsTopic(@Value("${interests.kafka.credit-results-topic}") String topic) {
-        return TopicBuilder.name(topic).partitions(1).replicas(1).build();
+    public NewTopic interestsCalculatedDeadLetterTopic(
+            @Value("${interests.kafka.calculated-topic}") String topic,
+            @Value("${interests.kafka.partitions:3}") int partitions) {
+        return TopicBuilder.name(topic + DEAD_LETTER_SUFFIX).partitions(partitions).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic interestsCreditResultsTopic(
+            @Value("${interests.kafka.credit-results-topic}") String topic,
+            @Value("${interests.kafka.partitions:3}") int partitions) {
+        return TopicBuilder.name(topic).partitions(partitions).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic interestsCreditResultsDeadLetterTopic(
+            @Value("${interests.kafka.credit-results-topic}") String topic,
+            @Value("${interests.kafka.partitions:3}") int partitions) {
+        return TopicBuilder.name(topic + DEAD_LETTER_SUFFIX).partitions(partitions).replicas(1).build();
     }
 
     @Bean
