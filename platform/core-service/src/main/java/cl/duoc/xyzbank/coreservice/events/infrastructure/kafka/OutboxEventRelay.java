@@ -81,7 +81,7 @@ public class OutboxEventRelay {
                        occurred_on, reason, movement_type
                 FROM outbox_events
                 WHERE published = FALSE
-                ORDER BY occurred_on NULLS LAST, id
+                ORDER BY seq
                 """,
                 (row, rowNumber) -> mapPending(row)).stream()
                 .filter(Objects::nonNull)
