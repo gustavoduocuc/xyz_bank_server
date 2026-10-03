@@ -22,6 +22,8 @@ spring:
     listener:
       auto-startup: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:false}
       ack-mode: record
+      # One consumer thread per partition: accounts are processed in parallel, one account in order
+      concurrency: ${KAFKA_LISTENER_CONCURRENCY:3}
     consumer:
       group-id: core-service-interests
       auto-offset-reset: earliest
