@@ -38,6 +38,7 @@ class TheRunAllMigrationsRunnerTest {
         registry.add("spring.sql.init.schema-locations", () -> "classpath:db/schema.sql");
         registry.add("migration.run-all", () -> "false");
         registry.add("spring.batch.job.enabled", () -> "false");
+        registry.add("migration.batch.skip-limit", () -> "2000");
         registry.add("migration.data.daily-transactions", () -> "file:data/semana_3/transacciones.csv");
         registry.add("migration.data.monthly-interests", () -> "file:data/semana_3/intereses.csv");
         registry.add("migration.data.annual-accounts", () -> "file:data/semana_3/cuentas_anuales.csv");
