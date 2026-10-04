@@ -14,3 +14,6 @@ target/
 .m9/
 # Dev TLS/JWT key material: generated locally by scripts/generate-dev-tls-certs.sh, never committed
 dev/certs/
+
+# Local secrets: copy .env.example to .env
+.env

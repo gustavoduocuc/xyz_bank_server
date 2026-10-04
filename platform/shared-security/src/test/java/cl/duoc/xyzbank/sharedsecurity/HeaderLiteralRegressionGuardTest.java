@@ -67,12 +67,12 @@ class HeaderLiteralRegressionGuardTest {
     private Path findRepoRoot() {
         Path candidate = Path.of("").toAbsolutePath();
         while (candidate != null) {
-            if (Files.exists(candidate.resolve("docker-compose.yml"))) {
+            if (Files.exists(candidate.resolve("docker-compose.yaml"))) {
                 return candidate;
             }
             candidate = candidate.getParent();
         }
-        throw new IllegalStateException("Could not locate the repository root (no docker-compose.yml found above " + Path.of("").toAbsolutePath() + ")");
+        throw new IllegalStateException("Could not locate the repository root (no docker-compose.yaml found above " + Path.of("").toAbsolutePath() + ")");
     }
 
     private List<String> readReactorModules(Path repoRoot) throws IOException {
