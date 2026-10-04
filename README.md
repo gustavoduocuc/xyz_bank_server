@@ -82,25 +82,28 @@ Desde la raíz del repositorio:
 #    y la clave de firma de tokens en dev/certs/ (no versionado, ver más abajo)
 ./scripts/generate-dev-tls-certs.sh
 
-# 2. Levanta el stack
+# 2. Crea tu .env (no versionado) a partir del ejemplo; contiene todos los secretos del stack
+cp .env.example .env
+
+# 3. Levanta el stack
 docker compose up --build
 ```
 
-`docker-compose.yml` monta los keystores de `dev/certs/` en los contenedores. Si te saltas el paso 1, los servicios con TLS (`auth-server`, los BFFs y `core-service`) no arrancan; ver [Troubleshooting](#troubleshooting). El paso 1 requiere `keytool`, que viene con el JDK 21 de los prerrequisitos.
+`docker-compose.yaml` es la definición desplegable (solo `bff-web`, `bff-mobile`, `bff-atm` y `auth-server` publican puertos) y `docker-compose.override.yml`, que `docker compose up` carga solo en una máquina de desarrollo, vuelve a publicar los puertos de depuración y monta los keystores de `dev/certs/` en los contenedores. Sin `.env`, Compose se detiene nombrando la variable que falta. Si te saltas el paso 1, los servicios con TLS (`auth-server`, los BFFs y `core-service`) no arrancan; ver [Troubleshooting](#troubleshooting). El paso 1 requiere `keytool`, que viene con el JDK 21 de los prerrequisitos.
 
-Eso levanta:
+Eso levanta (los puertos marcados «override» solo los publica `docker-compose.override.yml`; en un despliegue con `docker-compose.yaml` solo quedan 8081, 8082, 8083 y 9000):
 
 | Servicio | Puerto | Rol |
 |---|---|---|
-| MySQL 8.4 | 3306 | Reportes de la migración CSV |
-| PostgreSQL 16 | 5432 | Datos de `core-service` |
+| MySQL 8.4 | 3306 (override) | Reportes de la migración CSV |
+| PostgreSQL 16 | 5432 (override) | Datos de `core-service` |
 | PostgreSQL 16 (`auth-postgres`) | (interno) | Estado de `auth-server`: autorizaciones y clientes registrados. Sin puerto publicado |
 | data-migration | (one-shot) | Procesa los CSV y sale con código 0 |
-| config-server | 8888 | Configuración nativa (`config-repo/`) |
-| eureka-server | 8761 | Service discovery |
-| Kafka (KRaft) | 9092 | Broker de la saga de intereses |
-| core-service | 8080 | API interna de dominio |
-| interests-service | 8084 | Cálculo/acreditación de intereses anuales |
+| config-server | 8888 (override) | Configuración nativa (`config-repo/`) |
+| eureka-server | 8761 (override) | Service discovery |
+| Kafka (KRaft) | 9092 (override) | Broker de la saga de intereses |
+| core-service | 8080 (override) | API interna de dominio |
+| interests-service | 8084 (override) | Cálculo/acreditación de intereses anuales |
 | bff-web | 8081 | Dashboard, historial e intereses |
 | bff-mobile | 8082 | Resumen aplanado de cuenta |
 | bff-atm | 8083 | Saldo y retiro |
@@ -118,17 +121,22 @@ El estado de `auth-server` (autorizaciones, consentimientos, clientes registrado
 docker compose exec auth-postgres psql -U auth_server -d auth_server -c 'select client_id from oauth2_registered_client'
 ```
 
-El issuer es siempre `https://localhost:9000`. El navegador llega a `auth-server` por `localhost`, pero los contenedores de los BFFs lo alcanzan por la red de Docker como `auth-server`: por eso cada BFF recibe una `authorization-uri` pública (`https://localhost:9000/oauth2/authorize`) y `token-uri`/`jwk-set-uri` internas (`https://auth-server:9000/...`), y valida el `iss` del ID token contra `OIDC_ISSUER`. Si cambias el puerto publicado, cambia `AUTH_ISSUER` y las variables `OIDC_*` juntas. Detalle en [`docs/architecture.md`](docs/architecture.md).
+El issuer es el valor de `AUTH_PUBLIC_ISSUER` en `.env` (`https://localhost:9000` en `.env.example`) y lo usan igual `auth-server`, `core-service`, `interests-service` y los BFFs; cambiar solo esa variable (y que su host figure en el certificado de `auth-server`) mueve el issuer sin tocar código. Los redirect URIs registrados salen de `BFF_WEB_PUBLIC_URL` y `BFF_MOBILE_PUBLIC_URL`. El navegador llega a `auth-server` por `localhost`, pero los contenedores de los BFFs lo alcanzan por la red de Docker como `auth-server`: por eso cada BFF recibe una `authorization-uri` pública (`https://localhost:9000/oauth2/authorize`) y `token-uri`/`jwk-set-uri` internas (`https://auth-server:9000/...`), y valida el `iss` del ID token contra `OIDC_ISSUER`. Si cambias el puerto publicado, cambia `AUTH_PUBLIC_ISSUER` (y las `BFF_*_PUBLIC_URL` si corresponde) en `.env`. Detalle en [`docs/architecture.md`](docs/architecture.md).
 
-| Variable | Default en Compose | Uso |
+| Variable (en `.env`) | Valor en `.env.example` | Uso |
 |---|---|---|
 | `AUTH_DEMO_PASSWORD` | `demo-password` | Contraseña del usuario demo `demo` |
-| `BFF_WEB_CLIENT_SECRET` | `bff-web-dev-secret` | Secreto de `bff-web` (`auth-server` y `bff-web`) |
-| `BFF_MOBILE_CLIENT_SECRET` | `bff-mobile-dev-secret` | Secreto de `bff-mobile` (`auth-server` y `bff-mobile`) |
-| `BFF_ATM_CLIENT_SECRET` | `bff-atm-dev-secret` | Secreto de `bff-atm` (`auth-server` y `bff-atm`) |
-| `BFF_ATM_SESSION_SECRET` | `dev-channel-auth-jwt-signing-secret-please-rotate-in-prod` | Firma HS256 de la sesión de terminal; solo `bff-atm` |
-| `INTERESTS_SERVICE_CLIENT_SECRET` | `interests-service-dev-secret` | Secreto de `interests-service` (`auth-server` e `interests-service`) |
-| `AUTH_DB_USERNAME` / `AUTH_DB_PASSWORD` | `auth_server` / `auth_server` | Credenciales de `auth-postgres`, que solo usa `auth-server` |
+| `BFF_WEB_CLIENT_SECRET` | valor de desarrollo | Secreto de `bff-web` (`auth-server` y `bff-web`) |
+| `BFF_MOBILE_CLIENT_SECRET` | valor de desarrollo | Secreto de `bff-mobile` (`auth-server` y `bff-mobile`) |
+| `BFF_ATM_CLIENT_SECRET` | valor de desarrollo | Secreto de `bff-atm` (`auth-server` y `bff-atm`) |
+| `BFF_ATM_SESSION_SECRET` | valor de desarrollo | Firma HS256 de la sesión de terminal; solo `bff-atm` |
+| `INTERESTS_SERVICE_CLIENT_SECRET` | valor de desarrollo | Secreto de `interests-service` (`auth-server` e `interests-service`) |
+| `AUTH_DB_USERNAME` / `AUTH_DB_PASSWORD` | `auth_server` / valor de desarrollo | Credenciales de `auth-postgres`, que solo usa `auth-server` |
+| `AUTH_PUBLIC_ISSUER`, `BFF_WEB_PUBLIC_URL`, `BFF_MOBILE_PUBLIC_URL` | `https://localhost:9000`, `:8081`, `:8082` | URLs públicas (issuer y redirect URIs) |
+| `TLS_KEYSTORE_PASSWORD`, `TLS_TRUSTSTORE_PASSWORD`, `AUTH_SIGNING_KEYSTORE_PASSWORD` | `xyzbank-dev` | Contraseñas de los keystores (coinciden con `scripts/generate-dev-tls-certs.sh`) |
+| `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, `CORE_DB_PASSWORD` | valores de desarrollo | Contraseñas de MySQL y de la base de `core-service` |
+
+Ninguna de estas variables tiene valor por defecto en el compose: todos los valores de `.env.example` son solo de desarrollo y hay que reemplazarlos fuera de tu máquina.
 
 `auth-server` y los certificados/llaves de desarrollo: `./scripts/generate-dev-auth-server-keys.sh` reemite el certificado TLS de `auth-server` (válido para `localhost` y `auth-server`) y su keystore de firma usando la CA existente, sin regenerarla.
 
@@ -396,18 +404,36 @@ Los ITs de PostgreSQL/MySQL usan Testcontainers. Sin Docker se omiten (`disabled
 
 Baja el stack (`docker compose down`) antes de correr `mvn verify`: los tests de `core-service` levantan su conector de verificación de PIN en el puerto fijo 8453, el mismo que publica el contenedor `core-service`.
 
+## Despliegue en Cloud
+
+Las imágenes se construyen con `docker compose build`, se llaman `xyz-bank/<servicio>:${TAG:-latest}` (por ejemplo `TAG=1.4.0 docker compose build`) y se publican con `docker compose push` o retaguándolas en tu registry. Son multi-stage, con base solo JRE y corren como el usuario no root 10001; `config-server` lleva `config-repo/` dentro (un cambio ahí exige reconstruir su imagen) y ninguna imagen contiene certificados ni `.env`.
+
+En un entorno desplegado se usa solo la definición base: `docker compose -f docker-compose.yaml up -d`, con las variables de `.env.example` definidas en `.env` o en el almacén de secretos de la plataforma (con valores reales). Solo `bff-web`, `bff-mobile`, `bff-atm` y `auth-server` publican puertos; la red `internal` no tiene salida y las bases de datos, Kafka, `core-service`, `interests-service`, `config-server` y `eureka-server` quedan dentro. `AUTH_PUBLIC_ISSUER`, `BFF_WEB_PUBLIC_URL` y `BFF_MOBILE_PUBLIC_URL` pasan a ser el dominio público.
+
+**Certificados.** La plataforma debe entregar, de solo lectura y legibles por el uid 10001, estos archivos en cada contenedor (las contraseñas van en `.env`):
+
+| Archivo en el contenedor | Servicios | Secreto |
+|---|---|---|
+| `/certs/keystore.p12` | `bff-web`, `bff-mobile`, `bff-atm`, `core-service` (conector de PIN) y `auth-server`; un archivo distinto por servicio | Sí |
+| `/certs/truststore.p12` | `core-service`, `interests-service` y los tres BFFs | No (solo el certificado de la CA) |
+| `/certs/signing.p12` | solo `auth-server` | Sí, crítico: se crea una vez, se conserva y se respalda; si falta, `auth-server` no arranca |
+
+El mecanismo preferido son los secretos de la plataforma (Swarm/Compose `secrets:` con `target: /certs/...`, secretos de ECS o un `Secret` de Kubernetes); si no hay, un volumen persistente que un operador llena una vez. El certificado de `auth-server` debe nombrar el dominio público y `auth-server` (el nombre interno que usan los BFFs): con la CA de desarrollo, `./scripts/generate-dev-tls-certs.sh --public-host <dominio>` lo emite así. En un despliegue real lo recomendado es un certificado de confianza pública en el balanceador delante del puerto 9000 y una CA privada, contenida en `truststore.p12`, para el nombre interno. El certificado del terminal ATM se emite al dispositivo y nunca se monta en el stack. Detalle y alternativas descartadas en `openspec/changes/prepare-docker-for-cloud/design.md` (Decisión 5).
+
 ## Troubleshooting
 
+- **`docker compose` falla con `required variable ... is missing a value`.** Falta tu `.env`: `cp .env.example .env`.
+- **Un servicio no puede leer un keystore (`Permission denied`).** Los contenedores corren como uid 10001; `./scripts/generate-dev-tls-certs.sh` deja `dev/certs/` legible para todos. Si copiaste los archivos a mano, `chmod -R a+rX dev/certs`.
 - **Puertos 3306 o 5432 ocupados.** Otro MySQL/Postgres local está usando el puerto. Para este stack esos puertos deben estar libres, o para el stack con `docker compose down` (eso no apaga bases de otros proyectos).
 - **Puertos 8084, 8888, 8761, 9000 o 9092 ocupados.** Otro proceso está usando el puerto de `interests-service`, `config-server`, `eureka-server`, `auth-server` o Kafka. Libéralos o baja el stack con `docker compose down`.
 - **Aplicaste interés y la cuenta no se acredita (el `POST` respondió `200`).** Con la saga el crédito es asíncrono. Mira `docker compose logs core-service`, y si el mensaje falló mira `interests.calculated.DLT` (ver [Mensajería](#mensajería-particiones-reintentos-y-dead-letter-topics)). `./scripts/verify-interest-saga.sh` comprueba todo el recorrido.
-- **Puertos 9081, 9082 o 9083 ocupados.** Son los puertos de administración (actuator) de `bff-web`, `bff-mobile` y `bff-atm`, publicados en `127.0.0.1`. Libéralos o baja el stack con `docker compose down`.
+- **Puertos 9081, 9082 o 9083 ocupados.** Son los puertos de administración (actuator) de `bff-web`, `bff-mobile` y `bff-atm`, publicados en `127.0.0.1` solo por `docker-compose.override.yml`. Libéralos o baja el stack con `docker compose down`.
 - **Un BFF responde `503` sin llamar a `core-service`.** Su circuito `coreService` está abierto tras varios fallos seguidos. Revisa `curl -sS http://127.0.0.1:908x/actuator/circuitbreakers`: tras 15 s pasa solo a `HALF_OPEN` y vuelve a `CLOSED` cuando las llamadas de prueba salen bien. La health del BFF sigue en UP mientras tanto, a propósito.
 - **El seed de demo desapareció o el dashboard da 404.** Flyway no reinserta filas de una versión ya aplicada. Reset: `docker compose down -v` y vuelve a `up --build`.
 - **La migración falló y core-service no arranca.** Compose espera `service_completed_successfully`. Revisa `docker compose logs data-migration`.
 - **PostgreSQL cae con el stack ya arriba.** `GET http://localhost:8080/actuator/health` deja de reportar UP (Actuator incluye el datasource). Los BFFs no tienen base propia: su health sigue UP aunque Postgres esté caído.
 - **Testcontainers skipped.** Arranca Docker Desktop y vuelve a `mvn verify`.
-- **Solo quieres experimentar el job CSV.** Sigue usando [`data-migration/docker-compose.yml`](data-migration/docker-compose.yml) (MySQL aislado). El camino soportado de plataforma completa es el Compose de la raíz.
+- **Solo quieres experimentar el job CSV.** Sigue usando [`data-migration/docker-compose.yml`](data-migration/docker-compose.yml) (MySQL aislado). El camino soportado de plataforma completa es el Compose de la raíz (`docker-compose.yaml`).
 - **`curl` falla el handshake TLS contra `bff-atm` con un certificado de cliente (`error:...SSL routines:ST_CONNECT:tlsv1 alert protocol version` o similar).** El `curl`/LibreSSL que trae macOS de fábrica tiene problemas negociando TLS con certificados de cliente P12 contra este stack. Instala una build de `curl` enlazada con OpenSSL (p. ej. `brew install curl`) o usa `openssl s_client` para depurar la conexión.
 - **`auth-server`, un BFF o `core-service` no arranca con un error al cargar su keystore (p. ej. `Unable to create key store: Could not load store from 'file:/certs/keystore.p12'`).** Faltan los certificados de desarrollo: `dev/certs/` no está en el repositorio. Si `docker compose up` corrió sin ellos, Docker creó carpetas vacías en su lugar (p. ej. `dev/certs/auth-server/keystore.p12/`). Genéralos (el script borra y recrea `dev/certs/`) y recrea los contenedores: `./scripts/generate-dev-tls-certs.sh && docker compose up -d --force-recreate`.
 - **`./scripts/generate-dev-auth-server-keys.sh` falla con `Dev CA not found`.** Ese script reutiliza una CA existente. En una máquina nueva ejecuta `./scripts/generate-dev-tls-certs.sh`, que genera la CA y también el material de `auth-server`.
