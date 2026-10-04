@@ -12,16 +12,23 @@
 set -euo pipefail
 
 UPDATE_TEST_FIXTURES=false
-for arg in "$@"; do
-  case "${arg}" in
+PUBLIC_HOST=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --update-test-fixtures) UPDATE_TEST_FIXTURES=true ;;
-    *) echo "Unknown option: ${arg} (supported: --update-test-fixtures)" >&2; exit 1 ;;
+    --public-host)
+      [ $# -ge 2 ] || { echo "--public-host needs a host name" >&2; exit 1; }
+      PUBLIC_HOST="$2"; shift ;;
+    *) echo "Unknown option: $1 (supported: --update-test-fixtures, --public-host <name>)" >&2; exit 1 ;;
   esac
+  shift
 done
+# Extra subject alternative name for the host name browsers use in a non-local environment
+EXTRA_SAN="${PUBLIC_HOST:+,dns:${PUBLIC_HOST}}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CERTS_DIR="${ROOT_DIR}/dev/certs"
-PASS="xyzbank-dev"
+PASS="${CERT_PASSWORD:-xyzbank-dev}"
 VALIDITY_DAYS=3650
 
 rm -rf "${CERTS_DIR}"
@@ -89,22 +96,22 @@ issue_leaf_cert() {
 
 issue_leaf_cert "bff-web" "bff-web" \
   "CN=bff-web,OU=dev,O=xyzbank" \
-  "dns:bff-web,dns:localhost,ip:127.0.0.1" \
+  "dns:bff-web,dns:localhost,ip:127.0.0.1${EXTRA_SAN}" \
   false
 
 issue_leaf_cert "bff-mobile" "bff-mobile" \
   "CN=bff-mobile,OU=dev,O=xyzbank" \
-  "dns:bff-mobile,dns:localhost,ip:127.0.0.1" \
+  "dns:bff-mobile,dns:localhost,ip:127.0.0.1${EXTRA_SAN}" \
   false
 
 issue_leaf_cert "bff-atm" "bff-atm" \
   "CN=bff-atm,OU=dev,O=xyzbank" \
-  "dns:bff-atm,dns:localhost,ip:127.0.0.1" \
+  "dns:bff-atm,dns:localhost,ip:127.0.0.1${EXTRA_SAN}" \
   false
 
 issue_leaf_cert "core-service" "core-service" \
   "CN=core-service,OU=dev,O=xyzbank" \
-  "dns:core-service,dns:localhost,ip:127.0.0.1" \
+  "dns:core-service,dns:localhost,ip:127.0.0.1${EXTRA_SAN}" \
   false
 
 issue_leaf_cert "atm-terminal" "atm-terminal-001" \
@@ -137,10 +144,12 @@ if [ "${UPDATE_TEST_FIXTURES}" = "true" ]; then
 fi
 
 echo "== Issuing auth-server's TLS certificate and token signing keystore from the new dev CA =="
-if [ "${UPDATE_TEST_FIXTURES}" = "true" ]; then
-  "${ROOT_DIR}/scripts/generate-dev-auth-server-keys.sh" --update-test-fixtures
-else
-  "${ROOT_DIR}/scripts/generate-dev-auth-server-keys.sh"
-fi
+auth_args=()
+[ "${UPDATE_TEST_FIXTURES}" = "true" ] && auth_args+=(--update-test-fixtures)
+[ -n "${PUBLIC_HOST}" ] && auth_args+=(--public-host "${PUBLIC_HOST}")
+CERT_PASSWORD="${PASS}" "${ROOT_DIR}/scripts/generate-dev-auth-server-keys.sh" ${auth_args[@]+"${auth_args[@]}"}
+
+# The service containers run as uid 10001, not as the host user that owns these files
+chmod -R a+rX "${CERTS_DIR}"
 
 echo "== Done. Dev CA and certificates are under ${CERTS_DIR} (dev/test use only). =="
