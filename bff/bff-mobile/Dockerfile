@@ -9,8 +9,9 @@ COPY docs/contracts docs/contracts
 RUN --mount=type=cache,target=/root/.m2 mvn -pl bff/bff-mobile -am package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 WORKDIR /app
-RUN apk add --no-cache wget
-COPY --from=build /src/bff/bff-mobile/target/bff-mobile-0.0.1-SNAPSHOT-exec.jar app.jar
+COPY --from=build --chown=app:app /src/bff/bff-mobile/target/bff-mobile-0.0.1-SNAPSHOT-exec.jar app.jar
+USER 10001:10001
 EXPOSE 8082
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

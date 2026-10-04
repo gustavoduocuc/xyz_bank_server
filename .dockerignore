@@ -8,3 +8,7 @@ openspec
 docs/collections
 **/node_modules
 *.log
+dev
+.env
+.env.*
+!.env.example
