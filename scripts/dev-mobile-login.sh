@@ -13,8 +13,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEVICE_ID="${1:-demo-phone-1}"
 USERNAME="${AUTH_DEMO_USERNAME:-demo}"
 PASSWORD="${AUTH_DEMO_PASSWORD:-demo-password}"
-BFF_MOBILE="https://localhost:8082"
-AUTH_SERVER="https://localhost:9000"
+BFF_MOBILE="${BFF_MOBILE_PUBLIC_URL:-https://localhost:8082}"
+AUTH_SERVER="${AUTH_PUBLIC_ISSUER:-https://localhost:9000}"
 
 JAR="$(mktemp)"
 trap 'rm -f "${JAR}"' EXIT

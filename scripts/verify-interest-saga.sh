@@ -7,7 +7,7 @@
 # Usage: scripts/verify-interest-saga.sh [--help]
 # Environment (all optional):
 #   ACCOUNT_ID                      account to credit            (default: the seeded demo account)
-#   INTERESTS_SERVICE_CLIENT_SECRET client secret of interests-service (default: dev secret)
+#   INTERESTS_SERVICE_CLIENT_SECRET client secret of interests-service (default: the value in .env)
 #   KAFKA_CONTAINER                 broker container name        (default: xyz-bank-kafka)
 set -euo pipefail
 
@@ -19,7 +19,11 @@ fi
 cd "$(dirname "$0")/.."
 
 ACCOUNT_ID="${ACCOUNT_ID:-22222222-2222-2222-2222-222222222222}"
-CLIENT_SECRET="${INTERESTS_SERVICE_CLIENT_SECRET:-interests-service-dev-secret}"
+# The stack reads its secrets from .env; use the same one unless the caller set it explicitly
+if [[ -z "${INTERESTS_SERVICE_CLIENT_SECRET:-}" && -f .env ]]; then
+  INTERESTS_SERVICE_CLIENT_SECRET="$(sed -n 's/^INTERESTS_SERVICE_CLIENT_SECRET=//p' .env | tail -1)"
+fi
+CLIENT_SECRET="${INTERESTS_SERVICE_CLIENT_SECRET:?set INTERESTS_SERVICE_CLIENT_SECRET or create .env from .env.example}"
 KAFKA_CONTAINER="${KAFKA_CONTAINER:-xyz-bank-kafka}"
 CA_CERT="dev/certs/ca.crt"
 INTERESTS_URL="http://localhost:8084"

@@ -13,7 +13,7 @@ POSTGRES_USER="core_service"
 DEMO_CARD_ID="77777777-7777-7777-7777-777777777777"
 
 echo "== Resetting the demo card's failure count and lock state =="
-docker compose -f "${ROOT_DIR}/docker-compose.yml" exec -T "${POSTGRES_SERVICE}" \
+docker compose -f "${ROOT_DIR}/docker-compose.yaml" exec -T "${POSTGRES_SERVICE}" \
   psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c \
   "UPDATE cards SET consecutive_failures = 0, locked = FALSE, version = version + 1 WHERE id = '${DEMO_CARD_ID}';"
 

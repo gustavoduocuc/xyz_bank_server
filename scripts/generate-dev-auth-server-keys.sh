@@ -14,17 +14,23 @@
 set -euo pipefail
 
 UPDATE_TEST_FIXTURES=false
-for arg in "$@"; do
-  case "${arg}" in
+PUBLIC_HOST=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --update-test-fixtures) UPDATE_TEST_FIXTURES=true ;;
-    *) echo "Unknown option: ${arg} (supported: --update-test-fixtures)" >&2; exit 1 ;;
+    --public-host)
+      [ $# -ge 2 ] || { echo "--public-host needs a host name" >&2; exit 1; }
+      PUBLIC_HOST="$2"; shift ;;
+    *) echo "Unknown option: $1 (supported: --update-test-fixtures, --public-host <name>)" >&2; exit 1 ;;
   esac
+  shift
 done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CERTS_DIR="${ROOT_DIR}/dev/certs"
 AUTH_DIR="${CERTS_DIR}/auth-server"
-PASS="xyzbank-dev"
+PASS="${CERT_PASSWORD:-xyzbank-dev}"
+SAN="dns:auth-server,dns:localhost,ip:127.0.0.1${PUBLIC_HOST:+,dns:${PUBLIC_HOST}}"
 VALIDITY_DAYS=3650
 TLS_ALIAS="auth-server"
 SIGNING_ALIAS="auth-server-signing"
@@ -44,12 +50,12 @@ keytool -genkeypair \
   -keystore "${AUTH_DIR}/keystore.p12" -storetype PKCS12 -storepass "${PASS}" -keypass "${PASS}" \
   -dname "CN=auth-server,OU=dev,O=xyzbank" \
   -ext ku:c=digitalSignature,keyEncipherment -ext eku:c=serverAuth \
-  -ext "san=dns:auth-server,dns:localhost,ip:127.0.0.1"
+  -ext "san=${SAN}"
 
 keytool -certreq \
   -alias "${TLS_ALIAS}" -keystore "${AUTH_DIR}/keystore.p12" -storepass "${PASS}" \
   -file "${AUTH_DIR}/auth-server.csr" \
-  -ext "san=dns:auth-server,dns:localhost,ip:127.0.0.1"
+  -ext "san=${SAN}"
 
 echo "== Signing auth-server's TLS certificate with the dev CA =="
 keytool -gencert \
@@ -57,7 +63,7 @@ keytool -gencert \
   -infile "${AUTH_DIR}/auth-server.csr" -outfile "${AUTH_DIR}/auth-server.crt" \
   -validity "${VALIDITY_DAYS}" -rfc \
   -ext ku:c=digitalSignature,keyEncipherment -ext eku:c=serverAuth \
-  -ext "san=dns:auth-server,dns:localhost,ip:127.0.0.1"
+  -ext "san=${SAN}"
 
 keytool -importcert -noprompt \
   -alias ca -file "${CERTS_DIR}/ca.crt" \
@@ -96,3 +102,5 @@ if [ "${UPDATE_TEST_FIXTURES}" = "true" ]; then
 fi
 
 echo "== Done. auth-server key material is under ${AUTH_DIR} (dev/test use only). =="
+
+chmod -R a+rX "${CERTS_DIR}"
