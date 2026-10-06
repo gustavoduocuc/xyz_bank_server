@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.interestsservice.interestview.e2e;
 
+import cl.duoc.xyzbank.interestsservice.testsupport.TestAccessTokens;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.restassured.RestAssured;
@@ -25,6 +26,9 @@ import static org.hamcrest.Matchers.equalTo;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("Interest Controller E2E")
 class InterestControllerE2ETest {
+
+    // A token as auth-server issues it; interests-service now validates the bearer it receives
+    private static final String WEB_TOKEN = TestAccessTokens.web("customer-1");
 
     /*
      * Cases:
@@ -78,7 +82,7 @@ class InterestControllerE2ETest {
             coreServiceMock.stubFor(get(urlPathEqualTo("/internal/accounts/account-123/interest-summary"))
                     .withQueryParam("year", com.github.tomakehurst.wiremock.client.WireMock.equalTo("2025"))
                     .withHeader("Authorization", com.github.tomakehurst.wiremock.client.WireMock.equalTo(
-                            "Bearer user-jwt"))
+                            "Bearer " + WEB_TOKEN))
                     .willReturn(aResponse()
                             .withStatus(200)
                             .withHeader("Content-Type", "application/json")
@@ -95,7 +99,7 @@ class InterestControllerE2ETest {
                                 """)));
 
             given()
-                    .header("Authorization", "Bearer user-jwt")
+                    .header("Authorization", "Bearer " + WEB_TOKEN)
                     .queryParam("year", "2025")
                     .when()
                     .get("/accounts/{accountId}/interest-summary", "account-123")
@@ -122,7 +126,7 @@ class InterestControllerE2ETest {
                                 """)));
 
             given()
-                    .header("Authorization", "Bearer user-jwt")
+                    .header("Authorization", "Bearer " + WEB_TOKEN)
                     .queryParam("year", "2025")
                     .when()
                     .get("/accounts/{accountId}/interest-summary", "unknown")
@@ -135,6 +139,7 @@ class InterestControllerE2ETest {
         @DisplayName("returns 422 for invalid year parameter")
         void returns422ForInvalidYear() {
             given()
+                    .header("Authorization", "Bearer " + WEB_TOKEN)
                     .queryParam("year", "invalid")
                     .when()
                     .get("/accounts/{accountId}/interest-summary", "account-123")

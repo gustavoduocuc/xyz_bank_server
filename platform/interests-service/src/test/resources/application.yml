@@ -13,14 +13,22 @@ core-service:
   base-url: http://localhost:9999
   connect-timeout-ms: 3000
   read-timeout-ms: 3000
-  service-credential: dev-service-credential-interests
 
 interests:
   annual-rate: 0.035
 
-channel-auth:
-  jwt:
-    secret: dev-channel-auth-jwt-signing-secret-please-rotate-in-prod
+auth:
+  issuer: https://localhost:9000
+  jwk-set-uri: http://localhost:9997/oauth2/jwks
+  audience: interests-service
+  channel-clients:
+    WEB: bff-web
+    MOBILE: bff-mobile
+    ATM: bff-atm
+    INTERESTS: interests-service
+  token-uri: http://localhost:9997/oauth2/token
+  client-id: interests-service
+  client-secret: interests-service-test-secret
 
 eureka:
   client:
@@ -39,6 +47,19 @@ resilience4j:
         automaticTransitionFromOpenToHalfOpenEnabled: true
         ignoreExceptions:
           - cl.duoc.xyzbank.interestsservice.shared.domain.DomainException
+          - cl.duoc.xyzbank.interestsservice.shared.domain.ServiceTokenUnavailableException
+      # interests-service's own client_credentials request (add-resilience4j-to-bffs design.md
+      # Decision 3): unreachable, timed out or 5xx only; a 4xx never opens it
+      authServer:
+        registerHealthIndicator: false
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        permittedNumberOfCallsInHalfOpenState: 2
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordFailurePredicate: cl.duoc.xyzbank.interestsservice.shared.infrastructure.resilience.DownstreamFailurePredicate
   retry:
     instances:
       coreServiceInterests:
@@ -46,6 +67,19 @@ resilience4j:
         waitDuration: 100ms
         ignoreExceptions:
           - cl.duoc.xyzbank.interestsservice.shared.domain.DomainException
+          - cl.duoc.xyzbank.interestsservice.shared.domain.ServiceTokenUnavailableException
+      # Requesting a token has no side effect, so it may be repeated: ~300 ms then ~600 ms
+      # (+/-50 %), only after unreachable, timed out, 502, 503 or 504 (Decision 4)
+      authServerToken:
+        maxAttempts: 3
+        waitDuration: 300ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        enableRandomizedWait: true
+        randomizedWaitFactor: 0.5
+        retryExceptionPredicate: cl.duoc.xyzbank.interestsservice.shared.infrastructure.resilience.RetryableFailurePredicate
+        ignoreExceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
   timelimiter:
     instances:
       coreServiceInterests:

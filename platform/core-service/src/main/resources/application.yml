@@ -22,6 +22,8 @@ spring:
     listener:
       auto-startup: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:false}
       ack-mode: record
+      # One consumer thread per partition: accounts are processed in parallel, one account in order
+      concurrency: ${KAFKA_LISTENER_CONCURRENCY:3}
     consumer:
       group-id: core-service-interests
       auto-offset-reset: earliest
@@ -47,6 +49,14 @@ interests:
     enabled: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:false}
     calculated-topic: interests.calculated
     credit-results-topic: interests.credit-results
+    # One partition per consumer thread; records are keyed by account id, so one account stays on one partition
+    partitions: ${KAFKA_TOPIC_PARTITIONS:3}
+    # A failing record is retried (blocking, to keep per-account order) and then dead-lettered:
+    # 1 s, 2 s, 4 s (~7 s) is long enough for a transient failure and short enough to free the partition
+    retry:
+      max-retries: 3
+      initial-interval-ms: 1000
+      multiplier: 2.0
 
 eureka:
   client:
@@ -66,15 +76,18 @@ security:
     keystore-type: PKCS12
   enforcement:
     enabled: true
-  service-credentials:
-    web: ${SERVICE_CREDENTIAL_WEB:dev-service-credential-web}
-    mobile: ${SERVICE_CREDENTIAL_MOBILE:dev-service-credential-mobile}
-    atm: ${SERVICE_CREDENTIAL_ATM:dev-service-credential-atm}
-    interests: ${SERVICE_CREDENTIAL_INTERESTS:dev-service-credential-interests}
 
-channel-auth:
-  jwt:
-    secret: ${CHANNEL_AUTH_JWT_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
+# Access tokens are issued by auth-server and verified here with its public keys only
+# (adopt-oauth2-tokens-between-services design.md Decision 4): core-service holds no signing secret.
+auth:
+  issuer: ${AUTH_ISSUER:https://localhost:9000}
+  jwk-set-uri: ${AUTH_JWK_SET_URI:https://localhost:9000/oauth2/jwks}
+  audience: core-service
+  channel-clients:
+    WEB: bff-web
+    MOBILE: bff-mobile
+    ATM: bff-atm
+    INTERESTS: interests-service
 
 management:
   endpoints:

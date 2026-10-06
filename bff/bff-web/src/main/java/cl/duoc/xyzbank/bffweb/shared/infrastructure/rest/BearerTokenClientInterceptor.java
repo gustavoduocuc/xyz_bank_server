@@ -10,10 +10,9 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 
 /**
- * Forwards the resolved user token (stashed in MDC by CallerContextInterceptor) as the
- * Authorization header on every outgoing core-service call, alongside the static
- * X-Service-Credential header CoreServiceClientConfig already sets -- mirrors
- * CorrelationIdClientInterceptor's pattern.
+ * Forwards the resolved access token (stashed in MDC by CallerContextInterceptor) as the
+ * Authorization header on every outgoing call. That token is the only credential the
+ * downstream service sees.
  */
 @Component
 public class BearerTokenClientInterceptor implements ClientHttpRequestInterceptor {

@@ -3,12 +3,32 @@
 # a TLS server certificate for bff-web, bff-mobile, bff-atm, and core-service's
 # PIN-verification-only connector, plus the ATM terminal's mTLS client certificate.
 #
+# Output goes to dev/certs/, which is NOT committed: every developer generates their own
+# CA locally (run this once before the first `docker compose up`). Tests use the fixtures
+# committed under each module's src/test/resources; pass --update-test-fixtures to also
+# refresh those from the newly generated material.
+#
 # Dev/test use only. Never use these certificates or this CA in a real deployment.
 set -euo pipefail
 
+UPDATE_TEST_FIXTURES=false
+PUBLIC_HOST=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --update-test-fixtures) UPDATE_TEST_FIXTURES=true ;;
+    --public-host)
+      [ $# -ge 2 ] || { echo "--public-host needs a host name" >&2; exit 1; }
+      PUBLIC_HOST="$2"; shift ;;
+    *) echo "Unknown option: $1 (supported: --update-test-fixtures, --public-host <name>)" >&2; exit 1 ;;
+  esac
+  shift
+done
+# Extra subject alternative name for the host name browsers use in a non-local environment
+EXTRA_SAN="${PUBLIC_HOST:+,dns:${PUBLIC_HOST}}"
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CERTS_DIR="${ROOT_DIR}/dev/certs"
-PASS="xyzbank-dev"
+PASS="${CERT_PASSWORD:-xyzbank-dev}"
 VALIDITY_DAYS=3650
 
 rm -rf "${CERTS_DIR}"
@@ -76,22 +96,22 @@ issue_leaf_cert() {
 
 issue_leaf_cert "bff-web" "bff-web" \
   "CN=bff-web,OU=dev,O=xyzbank" \
-  "dns:bff-web,dns:localhost,ip:127.0.0.1" \
+  "dns:bff-web,dns:localhost,ip:127.0.0.1${EXTRA_SAN}" \
   false
 
 issue_leaf_cert "bff-mobile" "bff-mobile" \
   "CN=bff-mobile,OU=dev,O=xyzbank" \
-  "dns:bff-mobile,dns:localhost,ip:127.0.0.1" \
+  "dns:bff-mobile,dns:localhost,ip:127.0.0.1${EXTRA_SAN}" \
   false
 
 issue_leaf_cert "bff-atm" "bff-atm" \
   "CN=bff-atm,OU=dev,O=xyzbank" \
-  "dns:bff-atm,dns:localhost,ip:127.0.0.1" \
+  "dns:bff-atm,dns:localhost,ip:127.0.0.1${EXTRA_SAN}" \
   false
 
 issue_leaf_cert "core-service" "core-service" \
   "CN=core-service,OU=dev,O=xyzbank" \
-  "dns:core-service,dns:localhost,ip:127.0.0.1" \
+  "dns:core-service,dns:localhost,ip:127.0.0.1${EXTRA_SAN}" \
   false
 
 issue_leaf_cert "atm-terminal" "atm-terminal-001" \
@@ -106,19 +126,30 @@ for name in bff-web bff-mobile bff-atm core-service atm-terminal; do
     | grep -E "Owner:|Issuer:|Alias name:"
 done
 
-echo "== Copying keystores/truststore into each module's test resources =="
-copy_module_tls() {
-  local module_dir="$1" leaf_name="$2"
-  local target="${ROOT_DIR}/${module_dir}/src/test/resources/tls"
-  mkdir -p "${target}"
-  cp "${CERTS_DIR}/${leaf_name}/keystore.p12" "${target}/keystore.p12"
-  cp "${CERTS_DIR}/truststore.p12" "${target}/truststore.p12"
-}
+if [ "${UPDATE_TEST_FIXTURES}" = "true" ]; then
+  echo "== Copying keystores/truststore into each module's test resources =="
+  copy_module_tls() {
+    local module_dir="$1" leaf_name="$2"
+    local target="${ROOT_DIR}/${module_dir}/src/test/resources/tls"
+    mkdir -p "${target}"
+    cp "${CERTS_DIR}/${leaf_name}/keystore.p12" "${target}/keystore.p12"
+    cp "${CERTS_DIR}/truststore.p12" "${target}/truststore.p12"
+  }
 
-copy_module_tls "bff/bff-web" "bff-web"
-copy_module_tls "bff/bff-mobile" "bff-mobile"
-copy_module_tls "bff/bff-atm" "bff-atm"
-cp "${CERTS_DIR}/atm-terminal/keystore.p12" "${ROOT_DIR}/bff/bff-atm/src/test/resources/tls/terminal-keystore.p12"
-copy_module_tls "platform/core-service" "core-service"
+  copy_module_tls "bff/bff-web" "bff-web"
+  copy_module_tls "bff/bff-mobile" "bff-mobile"
+  copy_module_tls "bff/bff-atm" "bff-atm"
+  cp "${CERTS_DIR}/atm-terminal/keystore.p12" "${ROOT_DIR}/bff/bff-atm/src/test/resources/tls/terminal-keystore.p12"
+  copy_module_tls "platform/core-service" "core-service"
+fi
+
+echo "== Issuing auth-server's TLS certificate and token signing keystore from the new dev CA =="
+auth_args=()
+[ "${UPDATE_TEST_FIXTURES}" = "true" ] && auth_args+=(--update-test-fixtures)
+[ -n "${PUBLIC_HOST}" ] && auth_args+=(--public-host "${PUBLIC_HOST}")
+CERT_PASSWORD="${PASS}" "${ROOT_DIR}/scripts/generate-dev-auth-server-keys.sh" ${auth_args[@]+"${auth_args[@]}"}
+
+# The service containers run as uid 10001, not as the host user that owns these files
+chmod -R a+rX "${CERTS_DIR}"
 
 echo "== Done. Dev CA and certificates are under ${CERTS_DIR} (dev/test use only). =="

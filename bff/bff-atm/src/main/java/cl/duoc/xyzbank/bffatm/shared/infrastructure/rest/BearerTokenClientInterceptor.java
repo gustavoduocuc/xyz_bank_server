@@ -10,10 +10,9 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 
 /**
- * Forwards the resolved user token (stashed in MDC by CallerContextInterceptor) as the
- * Authorization header on every outgoing core-service call, alongside the static
- * X-Service-Credential header CoreServiceClientConfig already sets -- mirrors
- * CorrelationIdClientInterceptor's pattern.
+ * Forwards the resolved terminal session (stashed in MDC by CallerContextInterceptor) as the
+ * Authorization header. ClientCredentialsTokenInterceptor runs after this one and replaces
+ * that header with bff-atm's own client token, which is the credential core-service sees.
  */
 @Component
 public class BearerTokenClientInterceptor implements ClientHttpRequestInterceptor {

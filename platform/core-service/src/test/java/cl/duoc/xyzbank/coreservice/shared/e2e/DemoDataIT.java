@@ -2,7 +2,7 @@ package cl.duoc.xyzbank.coreservice.shared.e2e;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @DisplayName("The core-service demo fixture")
-class DemoDataIT extends AbstractPostgresIT {
+class DemoDataIT extends AbstractCoreServiceIT {
 
     /*
      * Cases:

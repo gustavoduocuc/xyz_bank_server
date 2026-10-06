@@ -3,6 +3,8 @@ package cl.duoc.xyzbank.bffatm.balanceinquiry.infrastructure.adapters;
 import cl.duoc.xyzbank.bffatm.balanceinquiry.application.dto.BalanceResponse;
 import cl.duoc.xyzbank.bffatm.balanceinquiry.application.ports.AccountsPort;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.adapters.CoreServiceCalls;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -17,7 +19,10 @@ public class HttpAccountsAdapter implements AccountsPort {
         this.coreServiceClient = coreServiceClient;
     }
 
+    /** A read, so it may be retried (bff-resilience spec); the breaker sees every attempt. */
     @Override
+    @CircuitBreaker(name = "coreService")
+    @Retry(name = "coreServiceRead")
     public BalanceResponse fetchBalance(String accountId) {
         BalanceWire wire = CoreServiceCalls.fetch(() -> coreServiceClient.get()
                 .uri("/internal/accounts/{accountId}/balance", accountId)

@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.bffatm.balanceinquiry.e2e;
 
+import cl.duoc.xyzbank.bffatm.testsupport.AuthServerStub;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -32,14 +33,17 @@ class BalanceInquiryControllerE2ETest {
     private static final String TERMINAL_ID = "atm-terminal-001";
 
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
+    private static final AuthServerStub AUTH_SERVER = new AuthServerStub();
 
     static {
         CORE_SERVICE.start();
+        AUTH_SERVER.start();
     }
 
     @DynamicPropertySource
     static void coreServiceBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("core-service.base-url", CORE_SERVICE::baseUrl);
+        AUTH_SERVER.register(registry);
     }
 
     @LocalServerPort
@@ -63,6 +67,7 @@ class BalanceInquiryControllerE2ETest {
     @AfterAll
     static void stopCoreServiceStub() {
         CORE_SERVICE.stop();
+        AUTH_SERVER.stop();
     }
 
     private RequestSpecification asAtm() {
@@ -100,8 +105,8 @@ class BalanceInquiryControllerE2ETest {
     }
 
     @Test
-    @DisplayName("carries the service credential on every outbound core-service call")
-    void carriesTheServiceCredentialOnEveryOutboundCoreServiceCall() {
+    @DisplayName("sends no static service credential on outbound core-service calls")
+    void sendsNoStaticServiceCredentialOnOutboundCoreServiceCalls() {
         CORE_SERVICE.stubFor(get(urlEqualTo("/internal/accounts/account-1/balance"))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -115,12 +120,12 @@ class BalanceInquiryControllerE2ETest {
                 .statusCode(200);
 
         CORE_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/accounts/account-1/balance"))
-                .withHeader("X-Service-Credential", WireMock.equalTo("dev-service-credential-atm")));
+                .withoutHeader("X-Service-Credential"));
     }
 
     @Test
-    @DisplayName("forwards the caller's session token as a bearer token on every outbound core-service call")
-    void forwardsTheCallersSessionTokenAsABearerTokenOnEveryOutboundCoreServiceCall() {
+    @DisplayName("calls core-service with its own client token")
+    void callsCoreServiceWithItsOwnClientToken() {
         CORE_SERVICE.stubFor(get(urlEqualTo("/internal/accounts/account-1/balance"))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -136,7 +141,30 @@ class BalanceInquiryControllerE2ETest {
                 .statusCode(200);
 
         CORE_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/accounts/account-1/balance"))
-                .withHeader("Authorization", WireMock.equalTo("Bearer " + token)));
+                .withHeader("Authorization", WireMock.equalTo("Bearer " + AuthServerStub.ACCESS_TOKEN)));
+    }
+
+    @Test
+    @DisplayName("sends the pin verification's atm session id on the balance call")
+    void sendsTheAtmSessionIdOnTheBalanceCall() {
+        CORE_SERVICE.stubFor(get(urlEqualTo("/internal/accounts/account-1/balance"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"accountId\":\"account-1\",\"balance\":250.00,\"currency\":\"USD\"}")));
+        String token = tokenAdapter.issue("customer-1", Channel.ATM, TERMINAL_ID, "atm-session-1");
+
+        given()
+                .header("Authorization", "Bearer " + token)
+                .when()
+                .get("/accounts/{accountId}/balance", "account-1")
+                .then()
+                .statusCode(200)
+                .body("balance", equalTo(250.00f))
+                .body("currency", equalTo("USD"));
+
+        CORE_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/accounts/account-1/balance"))
+                .withHeader("X-Atm-Session", WireMock.equalTo("atm-session-1")));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.bffatm.withdrawal.e2e;
 
+import cl.duoc.xyzbank.bffatm.testsupport.AuthServerStub;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -35,14 +36,17 @@ class WithdrawalControllerE2ETest {
     private static final String TERMINAL_ID = "atm-terminal-001";
 
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
+    private static final AuthServerStub AUTH_SERVER = new AuthServerStub();
 
     static {
         CORE_SERVICE.start();
+        AUTH_SERVER.start();
     }
 
     @DynamicPropertySource
     static void coreServiceBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("core-service.base-url", CORE_SERVICE::baseUrl);
+        AUTH_SERVER.register(registry);
     }
 
     @LocalServerPort
@@ -66,6 +70,7 @@ class WithdrawalControllerE2ETest {
     @AfterAll
     static void stopCoreServiceStub() {
         CORE_SERVICE.stop();
+        AUTH_SERVER.stop();
     }
 
     private RequestSpecification asAtm() {
@@ -154,8 +159,8 @@ class WithdrawalControllerE2ETest {
     }
 
     @Test
-    @DisplayName("carries the service credential on every outbound core-service call")
-    void carriesTheServiceCredentialOnEveryOutboundCoreServiceCall() {
+    @DisplayName("sends no static service credential on outbound core-service calls")
+    void sendsNoStaticServiceCredentialOnOutboundCoreServiceCalls() {
         CORE_SERVICE.stubFor(post(urlEqualTo("/internal/accounts/account-1/withdrawals"))
                 .willReturn(aResponse()
                         .withStatus(201)
@@ -173,12 +178,12 @@ class WithdrawalControllerE2ETest {
                 .statusCode(201);
 
         CORE_SERVICE.verify(postRequestedFor(urlEqualTo("/internal/accounts/account-1/withdrawals"))
-                .withHeader("X-Service-Credential", WireMock.equalTo("dev-service-credential-atm")));
+                .withoutHeader("X-Service-Credential"));
     }
 
     @Test
-    @DisplayName("forwards the caller's session token as a bearer token on every outbound core-service call")
-    void forwardsTheCallersSessionTokenAsABearerTokenOnEveryOutboundCoreServiceCall() {
+    @DisplayName("calls core-service with its own client token")
+    void callsCoreServiceWithItsOwnClientToken() {
         CORE_SERVICE.stubFor(post(urlEqualTo("/internal/accounts/account-1/withdrawals"))
                 .willReturn(aResponse()
                         .withStatus(201)
@@ -198,7 +203,34 @@ class WithdrawalControllerE2ETest {
                 .statusCode(201);
 
         CORE_SERVICE.verify(postRequestedFor(urlEqualTo("/internal/accounts/account-1/withdrawals"))
-                .withHeader("Authorization", WireMock.equalTo("Bearer " + token)));
+                .withHeader("Authorization", WireMock.equalTo("Bearer " + AuthServerStub.ACCESS_TOKEN)));
+    }
+
+    @Test
+    @DisplayName("sends the pin verification's atm session id on the withdrawal call")
+    void sendsTheAtmSessionIdOnTheWithdrawalCall() {
+        CORE_SERVICE.stubFor(post(urlEqualTo("/internal/accounts/account-1/withdrawals"))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(
+                                "{\"transactionId\":\"tx-1\",\"accountId\":\"account-1\",\"amount\":40.00,\"currency\":\"USD\",\"occurredOn\":\"2026-01-01\",\"newBalance\":210.00}")));
+        String token = tokenAdapter.issue("customer-1", Channel.ATM, TERMINAL_ID, "atm-session-1");
+
+        given()
+                .header("Authorization", "Bearer " + token)
+                .header("Idempotency-Key", "key-1")
+                .contentType(MediaType.APPLICATION_JSON_VALUE)
+                .body("{\"amount\":40.00,\"currency\":\"USD\"}")
+                .when()
+                .post("/accounts/{accountId}/withdrawals", "account-1")
+                .then()
+                .statusCode(201)
+                .body("transactionId", equalTo("tx-1"))
+                .body("newBalance", equalTo(210.00f));
+
+        CORE_SERVICE.verify(postRequestedFor(urlEqualTo("/internal/accounts/account-1/withdrawals"))
+                .withHeader("X-Atm-Session", WireMock.equalTo("atm-session-1")));
     }
 
     @Test

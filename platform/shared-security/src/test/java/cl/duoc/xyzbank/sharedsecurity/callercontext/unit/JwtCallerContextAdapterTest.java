@@ -83,6 +83,16 @@ class JwtCallerContextAdapterTest {
         Claims claims = parseClaims(token);
 
         assertEquals("terminal-9", claims.get("terminalId", String.class));
+        assertNull(claims.get("atmSessionId"));
+    }
+
+    @Test
+    @DisplayName("issues an atm session id claim when one is supplied")
+    void issuesAnAtmSessionIdClaimWhenOneIsSupplied() {
+        String token = adapter.issue("customer-3", Channel.ATM, "terminal-9", "atm-session-1");
+
+        assertEquals("atm-session-1", parseClaims(token).get("atmSessionId", String.class));
+        assertEquals(java.util.Optional.of("atm-session-1"), adapter.atmSessionIdOf(token));
     }
 
     @Test

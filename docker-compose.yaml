@@ -1,0 +1,412 @@
+# Deployable definition. Secrets come from .env (see .env.example); host ports for debugging
+# and the development certificates come from docker-compose.override.yml, which `docker compose
+# up` merges on a developer machine. TLS material is expected at /certs/* (design.md Decision 5).
+x-truststore-opts: &truststore-opts "-Djavax.net.ssl.trustStore=/certs/truststore.p12 -Djavax.net.ssl.trustStorePassword=${TLS_TRUSTSTORE_PASSWORD:?set TLS_TRUSTSTORE_PASSWORD in .env} -Djavax.net.ssl.trustStoreType=PKCS12"
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: xyz-bank-mysql
+    user: mysql
+    restart: unless-stopped
+    networks: [internal]
+    environment:
+      MYSQL_DATABASE: xyz_bank_migration
+      MYSQL_USER: migration
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - xyz_bank_mysql_data:/var/lib/mysql
+      - ./data-migration/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: xyz-bank-postgres
+    user: "70:70"
+    restart: unless-stopped
+    networks: [internal]
+    environment:
+      POSTGRES_DB: core_service
+      POSTGRES_USER: core_service
+      POSTGRES_PASSWORD: ${CORE_DB_PASSWORD:?set CORE_DB_PASSWORD in .env}
+    volumes:
+      - xyz_bank_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U core_service -d core_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  auth-postgres:
+    # auth-server's own database (OAuth authorizations and registered clients), separate from
+    # core_service: own container, database, user and volume, on the internal network only
+    image: postgres:16-alpine
+    container_name: xyz-bank-auth-postgres
+    user: "70:70"
+    restart: unless-stopped
+    networks: [internal]
+    environment:
+      POSTGRES_DB: auth_server
+      POSTGRES_USER: ${AUTH_DB_USERNAME:?set AUTH_DB_USERNAME in .env}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
+    volumes:
+      - xyz_bank_auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d auth_server"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  data-migration:
+    build:
+      context: .
+      dockerfile: data-migration/Dockerfile
+    image: xyz-bank/data-migration:${TAG:-latest}
+    container_name: xyz-bank-data-migration
+    networks: [internal]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: xyz_bank_migration
+      DB_USERNAME: migration
+      DB_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      MIGRATION_RUN_ALL: "true"
+
+  config-server:
+    build:
+      context: .
+      dockerfile: platform/config-server/Dockerfile
+    image: xyz-bank/config-server:${TAG:-latest}
+    container_name: xyz-bank-config-server
+    restart: unless-stopped
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8888/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  eureka-server:
+    build:
+      context: .
+      dockerfile: platform/eureka-server/Dockerfile
+    image: xyz-bank/eureka-server:${TAG:-latest}
+    container_name: xyz-bank-eureka-server
+    restart: unless-stopped
+    networks: [internal]
+    depends_on:
+      config-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8761/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  core-service:
+    build:
+      context: .
+      dockerfile: platform/core-service/Dockerfile
+    image: xyz-bank/core-service:${TAG:-latest}
+    container_name: xyz-bank-core-service
+    restart: unless-stopped
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      data-migration:
+        condition: service_completed_successfully
+      eureka-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: core_service
+      DB_USERNAME: core_service
+      DB_PASSWORD: ${CORE_DB_PASSWORD:?set CORE_DB_PASSWORD in .env}
+      TLS_PIN_KEYSTORE_PATH: file:/certs/keystore.p12
+      TLS_PIN_KEYSTORE_PASSWORD: ${TLS_KEYSTORE_PASSWORD:?set TLS_KEYSTORE_PASSWORD in .env}
+      AUTH_ISSUER: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}
+      AUTH_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      JAVA_TOOL_OPTIONS: *truststore-opts
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_SERVER_URL: http://eureka-server:8761
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FEATURE_INTEREST_CREDIT_VIA_KAFKA: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:-true}
+      FEATURE_TRANSACTION_CONFIRMED_EVENTS: ${FEATURE_TRANSACTION_CONFIRMED_EVENTS:-true}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  kafka:
+    image: apache/kafka:3.8.1
+    container_name: xyz-bank-kafka
+    restart: unless-stopped
+    networks: [internal]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  kafka-init:
+    image: apache/kafka:3.8.1
+    container_name: xyz-bank-kafka-init
+    networks: [internal]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        # Every saga topic and its dead-letter topic has 3 partitions (records are keyed by account
+        # id, so one account stays on one partition). A topic that already exists with fewer is
+        # raised: --alter can only increase, and fails on an equal count, hence the check.
+        set -euo pipefail
+        kafka_topics=/opt/kafka/bin/kafka-topics.sh
+        partitions=3
+        for topic in interests.calculated interests.credit-results transactions.confirmed; do
+          for name in "$$topic" "$$topic.DLT"; do
+            $$kafka_topics --bootstrap-server kafka:9092 --create --if-not-exists --topic "$$name" --partitions $$partitions --replication-factor 1
+            current=$$($$kafka_topics --bootstrap-server kafka:9092 --describe --topic "$$name" | grep -o 'PartitionCount: *[0-9]*' | grep -o '[0-9]*$$')
+            if [ "$$current" -lt "$$partitions" ]; then
+              $$kafka_topics --bootstrap-server kafka:9092 --alter --topic "$$name" --partitions $$partitions
+            fi
+          done
+        done
+
+  interests-service:
+    build:
+      context: .
+      dockerfile: platform/interests-service/Dockerfile
+    image: xyz-bank/interests-service:${TAG:-latest}
+    container_name: xyz-bank-interests-service
+    restart: unless-stopped
+    networks: [internal]
+    depends_on:
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      core-service:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_SERVER_URL: http://eureka-server:8761
+      AUTH_ISSUER: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}
+      AUTH_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      AUTH_TOKEN_URI: https://auth-server:9000/oauth2/token
+      INTERESTS_SERVICE_CLIENT_SECRET: ${INTERESTS_SERVICE_CLIENT_SECRET:?set INTERESTS_SERVICE_CLIENT_SECRET in .env}
+      JAVA_TOOL_OPTIONS: *truststore-opts
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FEATURE_INTEREST_CREDIT_VIA_KAFKA: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:-true}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8084/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  auth-server:
+    build:
+      context: .
+      dockerfile: platform/auth-server/Dockerfile
+    image: xyz-bank/auth-server:${TAG:-latest}
+    container_name: xyz-bank-auth-server
+    restart: unless-stopped
+    networks: [public, internal]
+    ports:
+      - "9000:9000"
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+    environment:
+      AUTH_DB_URL: jdbc:postgresql://auth-postgres:5432/auth_server
+      AUTH_DB_USERNAME: ${AUTH_DB_USERNAME:?set AUTH_DB_USERNAME in .env}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
+      TLS_KEYSTORE_PATH: file:/certs/keystore.p12
+      TLS_KEYSTORE_PASSWORD: ${TLS_KEYSTORE_PASSWORD:?set TLS_KEYSTORE_PASSWORD in .env}
+      # Public issuer: the URL the browser uses. Tokens carry it even when a BFF container
+      # reaches this server as https://auth-server:9000 (design.md Decision 1)
+      AUTH_ISSUER: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}
+      # Mounted, persistent signing key: restarting this container keeps issued tokens valid
+      AUTH_SIGNING_KEYSTORE_PATH: file:/certs/signing.p12
+      AUTH_SIGNING_KEYSTORE_PASSWORD: ${AUTH_SIGNING_KEYSTORE_PASSWORD:?set AUTH_SIGNING_KEYSTORE_PASSWORD in .env}
+      AUTH_SIGNING_KEY_ALIAS: auth-server-signing
+      BFF_WEB_CLIENT_SECRET: ${BFF_WEB_CLIENT_SECRET:?set BFF_WEB_CLIENT_SECRET in .env}
+      BFF_MOBILE_CLIENT_SECRET: ${BFF_MOBILE_CLIENT_SECRET:?set BFF_MOBILE_CLIENT_SECRET in .env}
+      BFF_ATM_CLIENT_SECRET: ${BFF_ATM_CLIENT_SECRET:?set BFF_ATM_CLIENT_SECRET in .env}
+      INTERESTS_SERVICE_CLIENT_SECRET: ${INTERESTS_SERVICE_CLIENT_SECRET:?set INTERESTS_SERVICE_CLIENT_SECRET in .env}
+      BFF_WEB_REDIRECT_URI: ${BFF_WEB_PUBLIC_URL:?set BFF_WEB_PUBLIC_URL in .env}/login/oauth2/code/oidc
+      BFF_MOBILE_REDIRECT_URI: ${BFF_MOBILE_PUBLIC_URL:?set BFF_MOBILE_PUBLIC_URL in .env}/login/oauth2/code/oidc
+      AUTH_DEMO_PASSWORD: ${AUTH_DEMO_PASSWORD:?set AUTH_DEMO_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --no-check-certificate -qO- https://127.0.0.1:9000/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  bff-web:
+    build:
+      context: .
+      dockerfile: bff/bff-web/Dockerfile
+    image: xyz-bank/bff-web:${TAG:-latest}
+    container_name: xyz-bank-bff-web
+    restart: unless-stopped
+    networks: [public, internal]
+    ports:
+      - "8081:8081"
+    depends_on:
+      core-service:
+        condition: service_healthy
+      interests-service:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+    environment:
+      CORE_SERVICE_BASE_URL: http://core-service:8080
+      INTERESTS_SERVICE_BASE_URL: http://interests-service:8084
+      FEATURE_USE_INTERESTS_SERVICE: ${FEATURE_USE_INTERESTS_SERVICE:-true}
+      TLS_KEYSTORE_PATH: file:/certs/keystore.p12
+      TLS_KEYSTORE_PASSWORD: ${TLS_KEYSTORE_PASSWORD:?set TLS_KEYSTORE_PASSWORD in .env}
+      # OIDC against auth-server (design.md Decision 1): the browser is sent to the public
+      # authorization URL, while this container exchanges codes and fetches keys over the
+      # Docker network; the ID token's issuer is checked against the public URL
+      OIDC_CLIENT_ID: bff-web
+      OIDC_CLIENT_SECRET: ${BFF_WEB_CLIENT_SECRET:?set BFF_WEB_CLIENT_SECRET in .env}
+      OIDC_AUTHORIZATION_URI: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}/oauth2/authorize
+      OIDC_TOKEN_URI: https://auth-server:9000/oauth2/token
+      OIDC_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      OIDC_ISSUER: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}
+      # Trust the dev CA for the TLS calls to auth-server. This replaces the JVM's default
+      # CAs, which is fine because this BFF makes no other TLS client calls (design.md Decision 6)
+      JAVA_TOOL_OPTIONS: *truststore-opts
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:9081/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  bff-mobile:
+    build:
+      context: .
+      dockerfile: bff/bff-mobile/Dockerfile
+    image: xyz-bank/bff-mobile:${TAG:-latest}
+    container_name: xyz-bank-bff-mobile
+    restart: unless-stopped
+    networks: [public, internal]
+    ports:
+      - "8082:8082"
+    depends_on:
+      core-service:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+    environment:
+      CORE_SERVICE_BASE_URL: http://core-service:8080
+      TLS_KEYSTORE_PATH: file:/certs/keystore.p12
+      TLS_KEYSTORE_PASSWORD: ${TLS_KEYSTORE_PASSWORD:?set TLS_KEYSTORE_PASSWORD in .env}
+      # OIDC against auth-server as a confidential client; same public/internal URL
+      # split as bff-web (design.md Decision 1)
+      OIDC_CLIENT_ID: bff-mobile
+      OIDC_CLIENT_SECRET: ${BFF_MOBILE_CLIENT_SECRET:?set BFF_MOBILE_CLIENT_SECRET in .env}
+      AUTH_SERVER_BASE_URL: https://auth-server:9000
+      OIDC_AUTHORIZATION_URI: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}/oauth2/authorize
+      OIDC_TOKEN_URI: https://auth-server:9000/oauth2/token
+      OIDC_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      OIDC_ISSUER: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}
+      # Trust the dev CA for the TLS calls to auth-server (design.md Decision 6)
+      JAVA_TOOL_OPTIONS: *truststore-opts
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:9082/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  bff-atm:
+    build:
+      context: .
+      dockerfile: bff/bff-atm/Dockerfile
+    image: xyz-bank/bff-atm:${TAG:-latest}
+    container_name: xyz-bank-bff-atm
+    restart: unless-stopped
+    networks: [public, internal]
+    ports:
+      - "8083:8083"
+    depends_on:
+      core-service:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+    environment:
+      CORE_SERVICE_BASE_URL: http://core-service:8080
+      CORE_SERVICE_PIN_VERIFICATION_BASE_URL: https://core-service:8453
+      AUTH_TOKEN_URI: https://auth-server:9000/oauth2/token
+      BFF_ATM_CLIENT_ID: bff-atm
+      BFF_ATM_CLIENT_SECRET: ${BFF_ATM_CLIENT_SECRET:?set BFF_ATM_CLIENT_SECRET in .env}
+      BFF_ATM_SESSION_SECRET: ${BFF_ATM_SESSION_SECRET:?set BFF_ATM_SESSION_SECRET in .env}
+      TLS_KEYSTORE_PATH: file:/certs/keystore.p12
+      TLS_KEYSTORE_PASSWORD: ${TLS_KEYSTORE_PASSWORD:?set TLS_KEYSTORE_PASSWORD in .env}
+      TLS_TRUSTSTORE_PATH: file:/certs/truststore.p12
+      TLS_TRUSTSTORE_PASSWORD: ${TLS_TRUSTSTORE_PASSWORD:?set TLS_TRUSTSTORE_PASSWORD in .env}
+      JAVA_TOOL_OPTIONS: *truststore-opts
+    healthcheck:
+      # The management port is plain HTTP and needs no terminal certificate (the mTLS
+      # requirement belongs to the customer-facing connector on 8083)
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:9083/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  xyz_bank_mysql_data:
+  xyz_bank_postgres_data:
+  xyz_bank_auth_postgres_data:
+
+networks:
+  public:
+  internal:
+    # No route out of the Docker network for the data plane; the development override relaxes
+    # this so it can publish debugging ports (design.md Decision 4)
+    internal: true

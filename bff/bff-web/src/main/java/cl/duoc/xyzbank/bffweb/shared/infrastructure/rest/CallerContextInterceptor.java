@@ -1,9 +1,9 @@
 package cl.duoc.xyzbank.bffweb.shared.infrastructure.rest;
 
+import cl.duoc.xyzbank.bffweb.shared.application.CallerContextResolver;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerContext;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.CallerIdentityException;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -13,12 +13,12 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
- * Resolves the caller's identity from the "session" cookie's JWT (caller-context spec: "A
- * validated channel credential is the sole source of caller identity"), rejecting a missing,
- * expired, or otherwise invalid cookie before any handler runs. Stores the raw token in MDC
- * (mirroring CorrelationIdFilter's pattern) so BearerTokenClientInterceptor can forward it as
- * the Authorization header on outgoing core-service calls, and clears it once the request
- * completes.
+ * Resolves the caller's identity from the "session" cookie, which holds the access token the
+ * authorization server issued to bff-web (caller-context spec: "A validated channel credential
+ * is the sole source of caller identity"). Rejects a missing, expired, or otherwise invalid
+ * cookie before any handler runs. Stores the raw token in MDC (mirroring CorrelationIdFilter's
+ * pattern) so BearerTokenClientInterceptor can forward it as the Authorization header on
+ * outgoing calls, and clears it once the request completes.
  */
 @Component
 public class CallerContextInterceptor implements HandlerInterceptor {
@@ -26,10 +26,10 @@ public class CallerContextInterceptor implements HandlerInterceptor {
     static final String SESSION_COOKIE_NAME = "session";
     public static final String USER_TOKEN_MDC_KEY = "userToken";
 
-    private final JwtCallerContextAdapter tokenAdapter;
+    private final CallerContextResolver callerContextResolver;
 
-    public CallerContextInterceptor(JwtCallerContextAdapter tokenAdapter) {
-        this.tokenAdapter = tokenAdapter;
+    public CallerContextInterceptor(CallerContextResolver callerContextResolver) {
+        this.callerContextResolver = callerContextResolver;
     }
 
     @Override
@@ -41,7 +41,7 @@ public class CallerContextInterceptor implements HandlerInterceptor {
         if (sessionJwt == null) {
             throw CallerIdentityException.invalid("Missing session cookie");
         }
-        CallerContext callerContext = tokenAdapter.resolve(sessionJwt);
+        CallerContext callerContext = callerContextResolver.resolve(sessionJwt);
         if (callerContext.channel() != Channel.WEB) {
             throw CallerIdentityException.forbidden("This endpoint requires the web channel");
         }

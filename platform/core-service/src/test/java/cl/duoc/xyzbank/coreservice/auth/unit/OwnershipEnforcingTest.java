@@ -9,14 +9,21 @@ import cl.duoc.xyzbank.coredomain.transactions.domain.entities.Transaction;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.DateRange;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionType;
 import cl.duoc.xyzbank.coredomain.transactions.unit.InMemoryTransactionRepository;
+import cl.duoc.xyzbank.coreservice.auth.application.ports.AccessTokenVerifier;
+import cl.duoc.xyzbank.coreservice.auth.application.ports.AtmSessionLookup;
+import cl.duoc.xyzbank.coreservice.auth.infrastructure.adapters.AccessTokenDecoders;
+import cl.duoc.xyzbank.coreservice.auth.infrastructure.adapters.JwtAccessTokenVerifier;
 import cl.duoc.xyzbank.coreservice.auth.infrastructure.rest.EnforcementFilter;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
+import cl.duoc.xyzbank.testsupport.TestAccessTokens;
+import com.nimbusds.jose.JOSEException;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -47,15 +54,32 @@ class OwnershipEnforcingTest {
      *    through for the controller's own 422, never a 500 from an unguarded UUID parse
      */
 
-    private static final String SECRET = "unit-test-signing-secret-unit-test-signing-secret";
-    private static final Map<String, String> CREDENTIALS = Map.of("web", "web-secret");
+    private static final Map<String, Channel> CHANNELS_BY_CLIENT = Map.of(
+            "bff-web", Channel.WEB, "bff-mobile", Channel.MOBILE,
+            "bff-atm", Channel.ATM, "interests-service", Channel.INTERESTS);
+    // core-service's ATM sessions, as the filter sees them: "atm-session:<customer>" is an active
+    // session opened by that customer's verified PIN
+    private static final String ATM_SESSION_PREFIX = "atm-session:";
 
-    private final JwtCallerContextAdapter tokenAdapter = new JwtCallerContextAdapter(SECRET);
+    private final AccessTokenVerifier verifier = new JwtAccessTokenVerifier(decoder(), CHANNELS_BY_CLIENT);
+    private final AtmSessionLookup atmSessions = sessionId -> sessionId.startsWith(ATM_SESSION_PREFIX)
+            ? Optional.of(sessionId.substring(ATM_SESSION_PREFIX.length()))
+            : Optional.empty();
     private final InMemoryAccountRepository accountRepository = new InMemoryAccountRepository();
     private final InMemoryTransactionRepository transactionRepository = new InMemoryTransactionRepository();
 
     private EnforcementFilter filter() {
-        return new EnforcementFilter(true, CREDENTIALS, tokenAdapter, accountRepository, transactionRepository);
+        return new EnforcementFilter(true, verifier, atmSessions, accountRepository, transactionRepository);
+    }
+
+    private static JwtDecoder decoder() {
+        try {
+            NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(TestAccessTokens.publicKey().toRSAPublicKey()).build();
+            decoder.setJwtValidator(AccessTokenDecoders.validator(TestAccessTokens.ISSUER, TestAccessTokens.AUDIENCE));
+            return decoder;
+        } catch (JOSEException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private Account anAccountOwnedBy(Id customerId) {
@@ -74,10 +98,9 @@ class OwnershipEnforcingTest {
     @DisplayName("lets an owner through to their own customer endpoint")
     void letsAnOwnerThroughToTheirOwnCustomerEndpoint() throws Exception {
         Id customerId = Id.generate();
-        String token = tokenAdapter.issue(customerId.getValue(), Channel.WEB, null);
+        String token = TestAccessTokens.web(customerId.getValue());
         MockHttpServletRequest request =
                 new MockHttpServletRequest("GET", "/internal/customers/" + customerId.getValue());
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -93,10 +116,9 @@ class OwnershipEnforcingTest {
     void letsAnOwnerThroughToTheirOwnAccountEndpoint() throws Exception {
         Id customerId = Id.generate();
         Account account = anAccountOwnedBy(customerId);
-        String token = tokenAdapter.issue(customerId.getValue(), Channel.WEB, null);
+        String token = TestAccessTokens.web(customerId.getValue());
         MockHttpServletRequest request =
                 new MockHttpServletRequest("GET", "/internal/accounts/" + account.getId().getValue() + "/balance");
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -116,10 +138,9 @@ class OwnershipEnforcingTest {
                 Id.generate(), account.getId(), TransactionType.DEBIT,
                 Money.create(new BigDecimal("10.00"), "USD"), LocalDate.now(), null);
         transactionRepository.save(transaction);
-        String token = tokenAdapter.issue(customerId.getValue(), Channel.WEB, null);
+        String token = TestAccessTokens.web(customerId.getValue());
         MockHttpServletRequest request =
                 new MockHttpServletRequest("GET", "/internal/transactions/" + transaction.getId().getValue());
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -136,10 +157,9 @@ class OwnershipEnforcingTest {
         Id ownerId = Id.generate();
         Account account = anAccountOwnedBy(ownerId);
         Id nonOwnerId = Id.generate();
-        String token = tokenAdapter.issue(nonOwnerId.getValue(), Channel.WEB, null);
+        String token = TestAccessTokens.web(nonOwnerId.getValue());
         MockHttpServletRequest request =
                 new MockHttpServletRequest("GET", "/internal/accounts/" + account.getId().getValue() + "/balance");
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -155,10 +175,9 @@ class OwnershipEnforcingTest {
     @Test
     @DisplayName("rejects a request for a well-formed but genuinely nonexistent account id as not-found")
     void rejectsARequestForAWellFormedButNonexistentAccountIdAsNotFound() throws Exception {
-        String token = tokenAdapter.issue(Id.generate().getValue(), Channel.WEB, null);
+        String token = TestAccessTokens.web(Id.generate().getValue());
         MockHttpServletRequest request =
                 new MockHttpServletRequest("GET", "/internal/accounts/" + Id.generate().getValue() + "/balance");
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -176,9 +195,8 @@ class OwnershipEnforcingTest {
     void rejectsANonOwnersRequestForSomeoneElsesCustomerProfileAsNotFound() throws Exception {
         Id ownerId = Id.generate();
         Id nonOwnerId = Id.generate();
-        String token = tokenAdapter.issue(nonOwnerId.getValue(), Channel.WEB, null);
+        String token = TestAccessTokens.web(nonOwnerId.getValue());
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/customers/" + ownerId.getValue());
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -202,10 +220,9 @@ class OwnershipEnforcingTest {
                 Money.create(new BigDecimal("10.00"), "USD"), LocalDate.now(), null);
         transactionRepository.save(transaction);
         Id nonOwnerId = Id.generate();
-        String token = tokenAdapter.issue(nonOwnerId.getValue(), Channel.WEB, null);
+        String token = TestAccessTokens.web(nonOwnerId.getValue());
         MockHttpServletRequest request =
                 new MockHttpServletRequest("GET", "/internal/transactions/" + transaction.getId().getValue());
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -221,9 +238,8 @@ class OwnershipEnforcingTest {
     @Test
     @DisplayName("lets a URL-encoded blank account id through as malformed, not as an unowned resource")
     void letsAUrlEncodedBlankAccountIdThroughAsMalformed() throws Exception {
-        String token = tokenAdapter.issue(Id.generate().getValue(), Channel.WEB, null);
+        String token = TestAccessTokens.web(Id.generate().getValue());
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/accounts/%20%20%20/balance");
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -241,11 +257,11 @@ class OwnershipEnforcingTest {
         Id ownerId = Id.generate();
         Account account = anAccountOwnedBy(ownerId);
         Id nonOwnerId = Id.generate();
-        String atmToken = tokenAdapter.issue(nonOwnerId.getValue(), Channel.ATM, "terminal-1");
+        String atmToken = TestAccessTokens.atm();
         MockHttpServletRequest request = new MockHttpServletRequest(
                 "POST", "/internal/accounts/" + account.getId().getValue() + "/withdrawals");
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + atmToken);
+        request.addHeader("X-Atm-Session", ATM_SESSION_PREFIX + nonOwnerId.getValue());
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
         FilterChain chain = (req, res) -> chainCalled.set(true);

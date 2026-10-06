@@ -2,6 +2,9 @@ package cl.duoc.xyzbank.interestsservice.shared.infrastructure.rest;
 
 import cl.duoc.xyzbank.interestsservice.shared.domain.CoreServiceUnavailableException;
 import cl.duoc.xyzbank.interestsservice.shared.domain.DomainException;
+import cl.duoc.xyzbank.interestsservice.shared.domain.ServiceTokenUnavailableException;
+import cl.duoc.xyzbank.interestsservice.shared.infrastructure.security.InsufficientScopeException;
+import cl.duoc.xyzbank.interestsservice.shared.infrastructure.security.InvalidAccessTokenException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -15,6 +18,28 @@ public class GlobalExceptionHandler {
         HttpStatus status = mapToHttpStatus(exception.getType());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, exception.getMessage());
         problem.setTitle(status.getReasonPhrase());
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidAccessTokenException.class)
+    public ProblemDetail handleInvalidAccessToken(InvalidAccessTokenException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage());
+        problem.setTitle(HttpStatus.UNAUTHORIZED.getReasonPhrase());
+        return problem;
+    }
+
+    @ExceptionHandler(InsufficientScopeException.class)
+    public ProblemDetail handleInsufficientScope(InsufficientScopeException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.getMessage());
+        problem.setTitle(HttpStatus.FORBIDDEN.getReasonPhrase());
+        return problem;
+    }
+
+    @ExceptionHandler(ServiceTokenUnavailableException.class)
+    public ProblemDetail handleServiceTokenUnavailable(ServiceTokenUnavailableException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.SERVICE_UNAVAILABLE, "The authorization server is temporarily unavailable. Please try again later.");
+        problem.setTitle(HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase());
         return problem;
     }
 

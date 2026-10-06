@@ -53,6 +53,9 @@ class CreditInterestUseCaseTest {
      * 11. An unknown account publishes InterestCreditRejected and does not credit
      * 12. A year already credited publishes InterestCreditRejected and leaves the balance unchanged
      * 13. A technical failure publishes nothing and propagates
+     * 14. An event that was already processed and arrives again, even with a different amount
+     *     (the interest was recalculated from the new balance), is acknowledged: nothing is
+     *     credited and no rejection is published
      */
 
     @Test
@@ -244,6 +247,23 @@ class CreditInterestUseCaseTest {
         assertEquals(1, results.rejections().size());
         assertEquals(eventId, results.rejections().get(0).eventId());
         assertTrue(results.rejections().get(0).reason().contains("Interest already credited"));
+    }
+
+    @Test
+    @DisplayName("acknowledges an already processed event that arrives again with a recalculated amount")
+    void acknowledgesAnAlreadyProcessedEventThatArrivesAgainWithARecalculatedAmount() {
+        Id accountId = anExistingAccount("1000.00");
+        String eventId = "interest:" + accountId.getValue() + ":2025";
+        InMemoryInterestCreditResultPublisher results = new InMemoryInterestCreditResultPublisher();
+        CreditInterestUseCase useCase = useCasePublishing(results);
+        useCase.executeFromEvent(aRequest(accountId, "35.00", eventId), eventId);
+
+        useCase.executeFromEvent(aRequest(accountId, "36.23", eventId), eventId);
+
+        assertEquals(
+                new BigDecimal("1035.00"),
+                accountRepository.findById(accountId).orElseThrow().getBalance().getAmount());
+        assertEquals(List.of(), results.rejections());
     }
 
     @Test

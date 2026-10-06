@@ -3,7 +3,7 @@ package cl.duoc.xyzbank.coreservice.accounts.integration;
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.infrastructure.persistence.JpaCustomerRepository;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @DisplayName("The JPA customer repository")
-class JpaCustomerRepositoryIT extends AbstractPostgresIT {
+class JpaCustomerRepositoryIT extends AbstractCoreServiceIT {
 
     /*
      * Cases:

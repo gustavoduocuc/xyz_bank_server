@@ -8,9 +8,14 @@ import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coredomain.transactions.domain.entities.Transaction;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionType;
 import cl.duoc.xyzbank.coredomain.transactions.unit.InMemoryTransactionRepository;
+import cl.duoc.xyzbank.coreservice.auth.application.ports.AccessTokenVerifier;
+import cl.duoc.xyzbank.coreservice.auth.application.ports.AtmSessionLookup;
+import cl.duoc.xyzbank.coreservice.auth.infrastructure.adapters.AccessTokenDecoders;
+import cl.duoc.xyzbank.coreservice.auth.infrastructure.adapters.JwtAccessTokenVerifier;
 import cl.duoc.xyzbank.coreservice.auth.infrastructure.rest.EnforcementFilter;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
+import cl.duoc.xyzbank.testsupport.TestAccessTokens;
+import com.nimbusds.jose.JOSEException;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,14 +25,15 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 import java.math.BigDecimal;
-import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
@@ -51,13 +57,18 @@ class EnforcementFilterTest {
      * 8. When enabled, a domain endpoint with a user token lacking the required scope is rejected
      */
 
-    private static final String SECRET = "unit-test-signing-secret-unit-test-signing-secret";
-    private static final Map<String, String> CREDENTIALS = Map.of(
-            "web", "web-secret",
-            "interests", "interests-secret");
+    // The caller's "service credential" is now the access token itself (its azp names the
+    // client); tokens are signed like auth-server's and verified with its public key.
+    private static final Map<String, Channel> CHANNELS_BY_CLIENT = Map.of(
+            "bff-web", Channel.WEB, "bff-mobile", Channel.MOBILE,
+            "bff-atm", Channel.ATM, "interests-service", Channel.INTERESTS);
     private static final String OWNING_CUSTOMER_ID = "customer-1";
+    private static final String ATM_SESSION_OF_OWNER = "atm-session-1";
 
-    private final JwtCallerContextAdapter tokenAdapter = new JwtCallerContextAdapter(SECRET);
+    private final AccessTokenVerifier verifier = new JwtAccessTokenVerifier(decoder(), CHANNELS_BY_CLIENT);
+    private final AtmSessionLookup atmSessions = sessionId -> ATM_SESSION_OF_OWNER.equals(sessionId)
+            ? Optional.of(OWNING_CUSTOMER_ID)
+            : Optional.empty();
     private final InMemoryAccountRepository accountRepository = new InMemoryAccountRepository();
     private final InMemoryTransactionRepository transactionRepository = new InMemoryTransactionRepository();
 
@@ -73,7 +84,34 @@ class EnforcementFilterTest {
     }
 
     private EnforcementFilter filter(boolean enabled) {
-        return new EnforcementFilter(enabled, CREDENTIALS, tokenAdapter, accountRepository, transactionRepository);
+        return new EnforcementFilter(enabled, verifier, atmSessions, accountRepository, transactionRepository);
+    }
+
+    private static JwtDecoder decoder() {
+        try {
+            NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(TestAccessTokens.publicKey().toRSAPublicKey()).build();
+            decoder.setJwtValidator(AccessTokenDecoders.validator(TestAccessTokens.ISSUER, TestAccessTokens.AUDIENCE));
+            return decoder;
+        } catch (JOSEException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    /**
+     * A token of the given channel acting for the owning customer: web and mobile tokens carry
+     * the customer as subject; the ATM service token reaches the customer through the ATM
+     * session core-service recorded at PIN verification; the interests token acts for no customer.
+     */
+    private static void authorizeAsOwner(MockHttpServletRequest request, Channel channel) {
+        switch (channel) {
+            case WEB -> request.addHeader("Authorization", "Bearer " + TestAccessTokens.web(OWNING_CUSTOMER_ID));
+            case MOBILE -> request.addHeader("Authorization", "Bearer " + TestAccessTokens.mobile(OWNING_CUSTOMER_ID, "D1"));
+            case ATM -> {
+                request.addHeader("Authorization", "Bearer " + TestAccessTokens.atm());
+                request.addHeader("X-Atm-Session", ATM_SESSION_OF_OWNER);
+            }
+            case INTERESTS -> request.addHeader("Authorization", "Bearer " + TestAccessTokens.interests());
+        }
     }
 
     @Test
@@ -95,8 +133,7 @@ class EnforcementFilterTest {
     @DisplayName("when enabled, a valid credential and a sufficiently scoped token are let through on a domain endpoint")
     void whenEnabledValidCredentialAndScopedTokenLetThroughOnDomainEndpoint() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/accounts/account-1/balance");
-        request.addHeader("X-Service-Credential", "web-secret");
-        request.addHeader("Authorization", "Bearer " + tokenAdapter.issue(OWNING_CUSTOMER_ID, Channel.WEB, null));
+        authorizeAsOwner(request, Channel.WEB);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
         FilterChain chain = (req, res) -> chainCalled.set(true);
@@ -109,8 +146,8 @@ class EnforcementFilterTest {
     @Test
     @DisplayName("when enabled, a valid service credential is let through on a pre-auth endpoint")
     void whenEnabledValidCredentialLetThroughOnPreAuthEndpoint() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/auth/web/refresh-tokens");
-        request.addHeader("X-Service-Credential", "web-secret");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/auth/atm/pin-verifications");
+        request.addHeader("Authorization", "Bearer " + TestAccessTokens.atm());
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
         FilterChain chain = (req, res) -> chainCalled.set(true);
@@ -138,7 +175,8 @@ class EnforcementFilterTest {
     @DisplayName("when enabled, an unrecognized service credential is rejected before reaching the chain")
     void whenEnabledUnrecognizedCredentialRejected() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/accounts/any/balance");
-        request.addHeader("X-Service-Credential", "not-a-real-credential");
+        request.addHeader("Authorization", "Bearer "
+                + TestAccessTokens.token("bff-web", Channel.WEB).subject(OWNING_CUSTOMER_ID).signedWithForeignKey().sign());
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
         FilterChain chain = (req, res) -> chainCalled.set(true);
@@ -153,7 +191,7 @@ class EnforcementFilterTest {
     @DisplayName("when enabled, a domain endpoint with no user token is rejected")
     void whenEnabledDomainEndpointWithNoUserTokenRejected() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/accounts/any/balance");
-        request.addHeader("X-Service-Credential", "web-secret");
+        request.addHeader("Authorization", "Bearer " + TestAccessTokens.atm());
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
         FilterChain chain = (req, res) -> chainCalled.set(true);
@@ -166,11 +204,9 @@ class EnforcementFilterTest {
     @Test
     @DisplayName("when enabled, a domain endpoint with an expired user token is rejected")
     void whenEnabledDomainEndpointWithExpiredUserTokenRejected() throws Exception {
-        JwtCallerContextAdapter expiredTokenAdapter =
-                new JwtCallerContextAdapter(SECRET, Clock.fixed(Instant.parse("2020-01-01T00:00:00Z"), ZoneOffset.UTC));
-        String expiredToken = expiredTokenAdapter.issue("customer-1", Channel.WEB, null);
+        String expiredToken = TestAccessTokens.token("bff-web", Channel.WEB)
+                .subject("customer-1").expiredAt(Instant.parse("2020-01-01T00:00:00Z")).sign();
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/accounts/any/balance");
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + expiredToken);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -185,9 +221,8 @@ class EnforcementFilterTest {
     @DisplayName("when enabled, a domain endpoint with a user token lacking the required scope is rejected")
     void whenEnabledDomainEndpointWithInsufficientScopeRejected() throws Exception {
         // /internal/customers/{id} requires web:customers:read; a mobile token never has it
-        String mobileToken = tokenAdapter.issue("customer-1", Channel.MOBILE, null);
+        String mobileToken = TestAccessTokens.mobile("customer-1", "D1");
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/customers/any");
-        request.addHeader("X-Service-Credential", "web-secret");
         request.addHeader("Authorization", "Bearer " + mobileToken);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -225,10 +260,8 @@ class EnforcementFilterTest {
     void enforcesExactRequiredScopePerDomainEndpoint(String method, String path, Set<Channel> allowedChannels)
             throws Exception {
         for (Channel channel : Channel.values()) {
-            String token = tokenAdapter.issue("customer-1", channel, null);
             MockHttpServletRequest request = new MockHttpServletRequest(method, path);
-            request.addHeader("X-Service-Credential", "web-secret");
-            request.addHeader("Authorization", "Bearer " + token);
+            authorizeAsOwner(request, channel);
             MockHttpServletResponse response = new MockHttpServletResponse();
             AtomicBoolean chainCalled = new AtomicBoolean(false);
             FilterChain chain = (req, res) -> chainCalled.set(true);
@@ -246,9 +279,8 @@ class EnforcementFilterTest {
     @Test
     @DisplayName("interests channel balance read skips customer ownership")
     void interestsChannelBalanceReadSkipsOwnership() throws Exception {
-        String interestsToken = tokenAdapter.issue("interests-service", Channel.INTERESTS, null);
+        String interestsToken = TestAccessTokens.interests();
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/accounts/account-1/balance");
-        request.addHeader("X-Service-Credential", "interests-secret");
         request.addHeader("Authorization", "Bearer " + interestsToken);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -262,10 +294,10 @@ class EnforcementFilterTest {
     @Test
     @DisplayName("interest credit rejects an unrecognized service credential")
     void interestCreditRejectsUnrecognizedServiceCredential() throws Exception {
-        String interestsToken = tokenAdapter.issue("interests-service", Channel.INTERESTS, null);
+        String interestsToken = TestAccessTokens.token("interests-service", Channel.INTERESTS)
+                .subject("interests-service").signedWithForeignKey().sign();
         MockHttpServletRequest request =
                 new MockHttpServletRequest("POST", "/internal/accounts/account-1/interest-credits");
-        request.addHeader("X-Service-Credential", "not-a-configured-credential");
         request.addHeader("Authorization", "Bearer " + interestsToken);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);

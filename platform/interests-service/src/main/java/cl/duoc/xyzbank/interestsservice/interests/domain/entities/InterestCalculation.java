@@ -9,8 +9,9 @@ public final class InterestCalculation {
     private final int period;
     private final BigDecimal amount;
     private final String currency;
-    private InterestCalculationStatus status;
-    private String reason;
+    // Written by a listener thread, read by request threads
+    private volatile InterestCalculationStatus status;
+    private volatile String reason;
 
     private InterestCalculation(
             String eventId,

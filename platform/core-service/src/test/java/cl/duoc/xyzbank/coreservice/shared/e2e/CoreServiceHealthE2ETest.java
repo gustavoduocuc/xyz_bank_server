@@ -1,6 +1,6 @@
 package cl.duoc.xyzbank.coreservice.shared.e2e;
 
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,7 +16,7 @@ import static org.hamcrest.Matchers.not;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The core-service health endpoint")
-class CoreServiceHealthE2ETest extends AbstractPostgresIT {
+class CoreServiceHealthE2ETest extends AbstractCoreServiceIT {
 
     /*
      * Cases:

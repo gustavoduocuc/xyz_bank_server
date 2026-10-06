@@ -26,12 +26,14 @@
     { "key": "withdrawalCurrency", "value": "USD" },
     { "key": "correlationId", "value": "postman-bff-demo" },
     { "key": "atmSessionToken", "value": "" },
-    { "key": "webBearerJwt", "value": "" }
+    { "key": "webBearerJwt", "value": "" },
+    { "key": "interestsServiceToken", "value": "" },
+    { "key": "authTokenUrl", "value": "https://localhost:9000/oauth2/token" }
   ],
   "item": [
     {
       "name": "interests-service",
-      "description": "Plain-HTTP smoke for Config Server (:8888), Eureka (:8761), and interests-service (:8084). Run after `docker compose up --build`. Apply uses `{{applyYear}}` (default 2026) because the demo seed already has year 2025. GET interest-summary forwards a minted WEB Bearer to core; POST interest-applications authenticates to core with the interests service JWT issued inside the service.",
+      "description": "Plain-HTTP smoke for Config Server (:8888), Eureka (:8761), and interests-service (:8084). Run after `docker compose up --build`. Apply uses `{{applyYear}}` (default 2026) because the demo seed already has year 2025. Run POST interests-service client token first: POST interest-applications requires that bearer (scope interests:write).",
       "event": [
         {
           "listen": "prerequest",
@@ -215,6 +217,49 @@
           }
         },
         {
+          "name": "POST interests-service client token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('access token is present', function () {",
+                  "  pm.expect(body.access_token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('interestsServiceToken', body.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "interests-service", "type": "string" },
+                { "key": "password", "value": "interests-service-dev-secret", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "client_credentials" }
+              ]
+            },
+            "url": {
+              "raw": "{{authTokenUrl}}",
+              "host": ["{{authTokenUrl}}"]
+            },
+            "description": "Obtains the interests-service client_credentials token (scope interests:write) from auth-server. Run this before POST apply annual interest. Requires SSL verification off in Postman (dev CA)."
+          }
+        },
+        {
           "name": "POST apply annual interest",
           "event": [
             {
@@ -238,6 +283,7 @@
           "request": {
             "method": "POST",
             "header": [
+              { "key": "Authorization", "value": "Bearer {{interestsServiceToken}}" },
               { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
             ],
             "url": {
@@ -248,7 +294,7 @@
                 { "key": "year", "value": "{{applyYear}}" }
               ]
             },
-            "description": "Applies annual interest via interests-service → core interest-credits (service JWT interests:write + Idempotency-Key interest-{accountId}-{year}). Default applyYear=2026 avoids clashing with the seeded 2025 summary."
+            "description": "Applies annual interest via interests-service. By default (Kafka saga) it returns the calculated summary once InterestCalculated is published and core-service credits the account asynchronously; with FEATURE_INTEREST_CREDIT_VIA_KAFKA=false it credits synchronously through core interest-credits. Requires the bearer from POST interests-service client token (scope interests:write). Default applyYear=2026 avoids clashing with the seeded 2025 summary."
           }
         },
         {
@@ -260,10 +306,10 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('replay matches first apply (no double credit)', function () {",
+                  "pm.test('repeat is accepted for the same account and year', function () {",
                   "  const body = pm.response.json();",
-                  "  pm.expect(String(body.interestAmount)).to.eql(pm.collectionVariables.get('lastAppliedInterestAmount'));",
-                  "  pm.expect(String(body.closingBalance)).to.eql(pm.collectionVariables.get('lastAppliedClosingBalance'));",
+                  "  pm.expect(body.accountId).to.eql(pm.collectionVariables.get('accountId'));",
+                  "  pm.expect(String(body.year)).to.eql(pm.collectionVariables.get('applyYear'));",
                   "});"
                 ]
               }
@@ -272,6 +318,7 @@
           "request": {
             "method": "POST",
             "header": [
+              { "key": "Authorization", "value": "Bearer {{interestsServiceToken}}" },
               { "key": "X-Correlation-Id", "value": "{{correlationId}}" }
             ],
             "url": {
@@ -282,7 +329,7 @@
                 { "key": "year", "value": "{{applyYear}}" }
               ]
             },
-            "description": "Retry the same applyYear. Same Idempotency-Key must replay without a second balance bump. Run immediately after POST apply annual interest."
+            "description": "Retry the same applyYear with the same interests-service token. With the Kafka saga (the default) the amounts in the response are recalculated from the current balance, so they may differ from the first apply; what must hold is that the account is credited only once for that year (checked end to end by scripts/verify-interest-saga.sh). Run immediately after POST apply annual interest."
           }
         }
       ]

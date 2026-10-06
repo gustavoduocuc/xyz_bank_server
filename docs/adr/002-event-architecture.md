@@ -14,7 +14,7 @@ Ese comando acopla la disponibilidad de los dos procesos. El GET de resumen (`bf
 
 ## Decisión
 
-El crédito de intereses, cuando `FEATURE_INTEREST_CREDIT_VIA_KAFKA` está en `true`, es una saga coreografiada sobre un broker Apache Kafka en modo KRaft (un nodo, sin ZooKeeper).
+El crédito de intereses, cuando `FEATURE_INTEREST_CREDIT_VIA_KAFKA` está en `true` (el default de `docker compose up`, ver el [ADR 003](003-kafka-default-and-dead-letter-topics.md)), es una saga coreografiada sobre un broker Apache Kafka en modo KRaft (un nodo, sin ZooKeeper).
 
 No hay orquestador. Cada servicio reacciona al evento que le corresponde:
 
@@ -25,13 +25,13 @@ No hay orquestador. Cada servicio reacciona al evento que le corresponde:
 
 La entrega es at-least-once. El `eventId` determinista `interest:{accountId}:{year}` hace idempotente al consumidor. La clave HTTP del camino síncrono sigue siendo `interest-{accountId}-{year}`.
 
-Con la flag en `false` (default, también en Compose) el POST HTTP actual no cambia: no escribe outbox ni arranca el listener ni el relay. El endpoint `POST /internal/accounts/{accountId}/interest-credits` se mantiene. Listener, outbox y relay de `core-service` solo se activan con `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`.
+Con la flag en `false` (el default de cada servicio; en Compose pasó a `true`, ver el [ADR 003](003-kafka-default-and-dead-letter-topics.md)) el POST HTTP actual no cambia: no escribe outbox ni arranca el listener ni el relay. El endpoint `POST /internal/accounts/{accountId}/interest-credits` se mantiene. Listener, outbox y relay de `core-service` solo se activan con `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`.
 
 ## Por qué outbox y no publicar dentro del caso de uso
 
 El crédito y el evento de resultado tienen que confirmarse juntos. Si la transacción del crédito falla, no queda fila en `outbox_events` y el relay no anuncia un crédito que no ocurrió. Si el relay no puede hablar con Kafka, la fila sigue sin publicar y el siguiente ciclo reintenta. El crédito no se deshace.
 
-Un rechazo de negocio (`VALIDATION`, `NOT_FOUND` o `CONFLICT`) no acredita y escribe solo `InterestCreditRejected` con `reason`. El offset se confirma para no bloquear la partición. Un fallo técnico no confirma el offset: Kafka reentrega.
+Un rechazo de negocio (`VALIDATION`, `NOT_FOUND` o `CONFLICT`) no acredita y escribe solo `InterestCreditRejected` con `reason`. El offset se confirma para no bloquear la partición. Un fallo técnico no confirma el offset: Kafka reentrega, con reintentos acotados y un dead-letter topic por tópico (ADR 003).
 
 ## Por qué no Event Sourcing
 

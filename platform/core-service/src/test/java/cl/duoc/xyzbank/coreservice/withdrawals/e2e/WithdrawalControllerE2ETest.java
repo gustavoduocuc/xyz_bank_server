@@ -6,10 +6,15 @@ import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
+import cl.duoc.xyzbank.coredomain.cards.domain.entities.AtmSession;
+import cl.duoc.xyzbank.coredomain.cards.domain.entities.Card;
+import cl.duoc.xyzbank.coredomain.cards.domain.repositories.AtmSessionRepository;
+import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
-import cl.duoc.xyzbank.sharedsecurity.callercontext.JwtCallerContextAdapter;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.coredomain.transactions.domain.repositories.TransactionRepository;
+import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.DateRange;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
+import cl.duoc.xyzbank.testsupport.TestAccessTokens;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
@@ -21,8 +26,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static io.restassured.RestAssured.given;
@@ -33,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The Withdrawal controller")
-class WithdrawalControllerE2ETest extends AbstractPostgresIT {
+class WithdrawalControllerE2ETest extends AbstractCoreServiceIT {
 
     /*
      * Cases:
@@ -44,10 +51,12 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
      * 5. Returns 422 for a currency mismatch
      * 6. Returns 422 for insufficient funds, and the balance is unchanged afterward
      * 7. Returns 422 for an exceeded daily limit, and the balance is unchanged afterward
-     * 8. Repeating an Idempotency-Key with the same body replays the original result
+     * 8. Repeating an Idempotency-Key with the same body replays the original result (same
+     *    transaction id, one transaction row, one debit)
      * 9. Repeating an Idempotency-Key with a different amount returns 409, leaving the balance unchanged
      * 10. Two concurrent withdrawals on the same account: exactly one succeeds, the other gets 409
-     * 11. Two concurrent withdrawals reusing the same Idempotency-Key and amount: only one withdrawal is applied
+     * 11. Two concurrent withdrawals reusing the same Idempotency-Key and amount: only one withdrawal is
+     *     applied (one transaction row); the losing request replays (201, same id) or gets 409
      */
 
     @LocalServerPort
@@ -60,21 +69,34 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
     private CustomerRepository customerRepository;
 
     @Autowired
-    private JwtCallerContextAdapter tokenAdapter;
+    private CardRepository cardRepository;
+
+    @Autowired
+    private AtmSessionRepository atmSessionRepository;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
 
     private Id ownerId;
+    private String ownersAtmSession;
 
     @BeforeEach
     void configureRestAssured() {
         RestAssured.port = port;
         ownerId = Id.generate();
         customerRepository.save(Customer.create(ownerId, "Jane Doe", "jane.doe+" + ownerId.getValue() + "@xyzbank.cl"));
+        // What a verified PIN leaves behind: a card of the owner and an active ATM session for it
+        Id cardId = Id.generate();
+        cardRepository.save(Card.create(cardId, ownerId, "{noop}pin", 0, false, 0L));
+        AtmSession session = AtmSession.open(ownerId, cardId, Instant.now());
+        atmSessionRepository.save(session);
+        ownersAtmSession = session.getId().getValue();
     }
 
     private RequestSpecification asOwner() {
         return given()
-                .header("X-Service-Credential", "dev-service-credential-atm")
-                .header("Authorization", "Bearer " + tokenAdapter.issue(ownerId.getValue(), Channel.ATM, "terminal-1"));
+                .header("Authorization", "Bearer " + TestAccessTokens.atm())
+                .header("X-Atm-Session", ownersAtmSession);
     }
 
     @Test
@@ -206,13 +228,14 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
         Id accountId = anExistingAccount("500.00");
         Map<String, Object> body = Map.of("amount", 100.00, "currency", "USD");
 
-        asOwner()
+        String firstTransactionId = asOwner()
                 .header("Idempotency-Key", "e2e-key-7")
                 .contentType("application/json")
                 .body(body)
                 .when().post("/internal/accounts/{accountId}/withdrawals", accountId.getValue())
                 .then()
-                .statusCode(201);
+                .statusCode(201)
+                .extract().path("transactionId");
 
         asOwner()
                 .header("Idempotency-Key", "e2e-key-7")
@@ -221,7 +244,10 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
                 .when().post("/internal/accounts/{accountId}/withdrawals", accountId.getValue())
                 .then()
                 .statusCode(201)
-                .body("newBalance", equalTo(400.00f));
+                .body("newBalance", equalTo(400.00f))
+                .body("transactionId", equalTo(firstTransactionId));
+
+        assertEquals(1, transactionsOf(accountId));
 
         asOwner()
                 .when().get("/internal/accounts/{accountId}/balance", accountId.getValue())
@@ -321,12 +347,19 @@ class WithdrawalControllerE2ETest extends AbstractPostgresIT {
         if (firstResponse.statusCode() == 201 && secondResponse.statusCode() == 201) {
             assertEquals(firstResponse.path("transactionId").toString(), secondResponse.path("transactionId").toString());
         }
+        assertEquals(1, transactionsOf(accountId));
 
         asOwner()
                 .when().get("/internal/accounts/{accountId}/balance", accountId.getValue())
                 .then()
                 .statusCode(200)
                 .body("balance", equalTo(40.00f));
+    }
+
+    private int transactionsOf(Id accountId) {
+        return transactionRepository.findByAccountId(
+                accountId, DateRange.create(Optional.empty(), Optional.empty()), Optional.empty(), Optional.empty(), 50)
+                .getItems().size();
     }
 
     private Id anExistingAccount(String balance) {

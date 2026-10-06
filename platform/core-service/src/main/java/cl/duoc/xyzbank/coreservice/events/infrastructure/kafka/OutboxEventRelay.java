@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -49,27 +50,43 @@ public class OutboxEventRelay {
         this.transactionsConfirmedTopic = transactionsConfirmedTopic;
     }
 
+    /**
+     * Sends pending events oldest first. When an event fails to send, the later events of the
+     * same account wait for the next run so they cannot overtake it (per-account order on the
+     * topics); events of other accounts keep flowing.
+     */
     @Scheduled(fixedDelayString = "${app.outbox.relay-delay-ms:1000}")
     public void publishPending() {
         try {
-            pendingEvents().forEach(this::publish);
+            Set<String> accountsWithAFailedSend = new HashSet<>();
+            for (PendingOutboxEvent pending : pendingEvents()) {
+                if (accountsWithAFailedSend.contains(pending.accountId())) {
+                    continue;
+                }
+                if (!publish(pending)) {
+                    accountsWithAFailedSend.add(pending.accountId());
+                }
+            }
         } catch (Exception exception) {
             log.warn("Outbox relay will retry on the next tick", exception);
         }
     }
 
-    private void publish(PendingOutboxEvent pending) {
+    private boolean publish(PendingOutboxEvent pending) {
         try {
             String payload = objectMapper.writeValueAsString(pending.message());
             kafkaTemplate.send(pending.topic(), pending.accountId(), payload).get(5, TimeUnit.SECONDS);
             jdbcTemplate.update(
                     "UPDATE outbox_events SET published = TRUE WHERE id = ? AND published = FALSE",
                     pending.id());
+            return true;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             log.warn("Outbox event {} stays until the next relay attempt", pending.eventId(), exception);
+            return false;
         } catch (Exception exception) {
             log.warn("Outbox event {} stays until the next relay attempt", pending.eventId(), exception);
+            return false;
         }
     }
 
@@ -81,7 +98,7 @@ public class OutboxEventRelay {
                        occurred_on, reason, movement_type
                 FROM outbox_events
                 WHERE published = FALSE
-                ORDER BY occurred_on NULLS LAST, id
+                ORDER BY seq
                 """,
                 (row, rowNumber) -> mapPending(row)).stream()
                 .filter(Objects::nonNull)

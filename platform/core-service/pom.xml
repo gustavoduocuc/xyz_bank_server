@@ -26,6 +26,13 @@
             <artifactId>core-domain</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- NimbusJwtDecoder and the JWT validators only: core-service keeps EnforcementFilter as
+             its single enforcement point, so Spring Security's web filter chain (which the
+             resource-server starter would auto-configure) is deliberately not on the classpath -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.xyzbank</groupId>
             <artifactId>shared-security</artifactId>
@@ -67,6 +74,11 @@
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.rest-assured</groupId>

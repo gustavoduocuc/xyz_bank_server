@@ -17,6 +17,8 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
         "${interests.kafka.enabled:false} || ${app.events.transaction-confirmed.enabled:false}")
 public class EventsKafkaConfig {
 
+    private static final String DEAD_LETTER_SUFFIX = ".DLT";
+
     @Bean(name = "taskScheduler")
     public ThreadPoolTaskScheduler taskScheduler() {
         CustomizableThreadFactory threadFactory = new CustomizableThreadFactory("outbox-relay-");
@@ -31,7 +33,17 @@ public class EventsKafkaConfig {
     @Bean
     @ConditionalOnProperty(name = "app.events.transaction-confirmed.enabled", havingValue = "true")
     public NewTopic transactionsConfirmedTopic(
-            @Value("${app.events.transaction-confirmed.topic}") String topic) {
-        return TopicBuilder.name(topic).partitions(1).replicas(1).build();
+            @Value("${app.events.transaction-confirmed.topic}") String topic,
+            @Value("${interests.kafka.partitions:3}") int partitions) {
+        return TopicBuilder.name(topic).partitions(partitions).replicas(1).build();
+    }
+
+    /** No consumer in this repository reads the topic yet; a future one gets its destination from day one. */
+    @Bean
+    @ConditionalOnProperty(name = "app.events.transaction-confirmed.enabled", havingValue = "true")
+    public NewTopic transactionsConfirmedDeadLetterTopic(
+            @Value("${app.events.transaction-confirmed.topic}") String topic,
+            @Value("${interests.kafka.partitions:3}") int partitions) {
+        return TopicBuilder.name(topic + DEAD_LETTER_SUFFIX).partitions(partitions).replicas(1).build();
     }
 }

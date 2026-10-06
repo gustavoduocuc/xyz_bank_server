@@ -17,10 +17,13 @@ spring:
         registration:
           oidc:
             client-id: ${OIDC_CLIENT_ID:xyz-bank-mobile-dev}
-            client-authentication-method: none
+            client-secret: ${OIDC_CLIENT_SECRET:xyz-bank-mobile-dev-secret}
+            client-authentication-method: client_secret_basic
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-            scope: openid,profile,email
+            # Exactly the mobile channel's scope set (Channel.MOBILE): the authorization server
+            # refuses the whole request if it contains any scope not registered for bff-mobile
+            scope: openid,profile,mobile:accounts:read,mobile:transactions:read
         provider:
           oidc:
             authorization-uri: ${OIDC_AUTHORIZATION_URI:http://localhost:9999/mock-oidc/authorize}
@@ -28,24 +31,91 @@ spring:
             jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:9999/mock-oidc/jwks}
             user-name-attribute: sub
 
+oidc:
+  # The "iss" every ID token must carry; defaults to the test suite's mock provider
+  expected-issuer: ${OIDC_ISSUER:http://localhost:9999/mock-oidc}
+
+# The authorization server's token, revocation and JWK set endpoints; token issuance signs and
+# writes to Postgres, 3 s bounds login and refresh (add-resilience4j-to-bffs design.md Decision 2)
+auth-server:
+  base-url: ${AUTH_SERVER_BASE_URL:http://localhost:9999}
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000
+
 core-service:
   base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
-  connect-timeout-ms: 3000
-  read-timeout-ms: 3000
-  service-credential: ${CORE_SERVICE_CREDENTIAL:dev-service-credential-mobile}
+  # A connect to a live container takes ms, so 1 s fails fast when it is gone; reads are indexed
+  # lookups, and 2 s keeps the worst case with retries (3 x 2 s + backoff) under ~7 s
+  connect-timeout-ms: 1000
+  read-timeout-ms: 2000
 
-channel-auth:
-  jwt:
-    secret: ${CHANNEL_AUTH_JWT_SECRET:dev-channel-auth-jwt-signing-secret-please-rotate-in-prod}
+# Fault tolerance of bff-mobile's outbound calls (bff-resilience spec; parameters justified in
+# add-resilience4j-to-bffs design.md Decisions 3 and 4)
+resilience4j:
+  circuitbreaker:
+    configs:
+      downstream:
+        slidingWindowType: COUNT_BASED
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # An open breaker must never turn health DOWN (one outage would cascade through compose)
+        registerHealthIndicator: false
+        # Unreachable, timed out, cut off or 5xx; a 4xx is an answer, not a failure
+        recordFailurePredicate: cl.duoc.xyzbank.bffmobile.shared.infrastructure.resilience.DownstreamFailurePredicate
+        # Another dependency's outage belongs to that dependency's breaker
+        ignoreExceptions:
+          - cl.duoc.xyzbank.bffmobile.shared.application.DependencyUnavailableException
+    instances:
+      coreService:
+        baseConfig: downstream
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        permittedNumberOfCallsInHalfOpenState: 3
+      authServer:
+        baseConfig: downstream
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 2
+  retry:
+    # No shared retry baseConfig: in 2.2.0 an instance that inherits a backoff and sets its own
+    # wait fails with "intervalFunction was configured twice". Nothing that talks to auth-server
+    # is retried (refresh rotation, single-use codes, device revocation).
+    instances:
+      # Reads only, after unreachable, timed out, cut off, 502, 503 or 504; never a 4xx, a 500 or
+      # an open circuit. ~200 ms then ~400 ms (+/-50 %) between the three attempts
+      coreServiceRead:
+        maxAttempts: 3
+        waitDuration: 200ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        enableRandomizedWait: true
+        randomizedWaitFactor: 0.5
+        retryExceptionPredicate: cl.duoc.xyzbank.bffmobile.shared.infrastructure.resilience.RetryableFailurePredicate
+        ignoreExceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+          - cl.duoc.xyzbank.bffmobile.shared.application.DependencyUnavailableException
 
+# Actuator lives on an internal, plain-HTTP management port (published on loopback only by the
+# local stack), so circuit-breaker state never reaches the customer-facing port. The customer-
+# facing port keeps answering /actuator/health through PublicHealthController
+# (add-resilience4j-to-bffs design.md Decision 8)
 management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:9082}
+    ssl:
+      enabled: false
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,circuitbreakers,circuitbreakerevents
   endpoint:
     health:
       show-details: never
+  health:
+    # An open breaker must not turn health DOWN
+    circuitbreakers:
+      enabled: false
 
 logging:
   pattern:

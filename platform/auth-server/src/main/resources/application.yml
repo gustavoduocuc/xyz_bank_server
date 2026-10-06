@@ -1,0 +1,66 @@
+server:
+  port: 9000
+  ssl:
+    enabled: true
+    key-store: ${TLS_KEYSTORE_PATH:classpath:tls/keystore.p12}
+    key-store-password: ${TLS_KEYSTORE_PASSWORD:xyzbank-dev}
+    key-store-type: PKCS12
+  servlet:
+    session:
+      cookie:
+        # Cookies are scoped by host, not port: a default JSESSIONID here would overwrite
+        # bff-web's/bff-mobile's JSESSIONID on "localhost" and lose their pending
+        # authorization request (design.md Decision 2)
+        name: XYZ_AUTH_SESSION
+
+spring:
+  application:
+    name: auth-server
+  # auth-server's own database (auth-postgres in the local stack): OAuth state only, never
+  # core_service's banking data, and never core-service's credentials
+  datasource:
+    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5433/auth_server}
+    username: ${AUTH_DB_USERNAME:auth_server}
+    password: ${AUTH_DB_PASSWORD:auth_server}
+  flyway:
+    enabled: true
+
+auth:
+  issuer: ${AUTH_ISSUER:https://localhost:9000}
+  signing:
+    # No default on purpose: the server must never start without a provisioned key
+    keystore-path: ${AUTH_SIGNING_KEYSTORE_PATH:}
+    keystore-password: ${AUTH_SIGNING_KEYSTORE_PASSWORD:}
+    key-alias: ${AUTH_SIGNING_KEY_ALIAS:auth-server-signing}
+  clients:
+    web:
+      client-id: bff-web
+      client-secret: ${BFF_WEB_CLIENT_SECRET:bff-web-dev-secret}
+      redirect-uri: ${BFF_WEB_REDIRECT_URI:https://localhost:8081/login/oauth2/code/oidc}
+    mobile:
+      client-id: bff-mobile
+      client-secret: ${BFF_MOBILE_CLIENT_SECRET:bff-mobile-dev-secret}
+      redirect-uri: ${BFF_MOBILE_REDIRECT_URI:https://localhost:8082/login/oauth2/code/oidc}
+    atm:
+      client-id: bff-atm
+      client-secret: ${BFF_ATM_CLIENT_SECRET:bff-atm-dev-secret}
+    interests:
+      client-id: interests-service
+      client-secret: ${INTERESTS_SERVICE_CLIENT_SECRET:interests-service-dev-secret}
+  demo-customer:
+    username: demo
+    password: ${AUTH_DEMO_PASSWORD:demo-password}
+    customer-id: 11111111-1111-1111-1111-111111111111
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%15.15t] %-40.40logger{39} : %m%n"

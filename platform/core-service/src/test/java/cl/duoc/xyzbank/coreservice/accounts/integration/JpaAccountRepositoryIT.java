@@ -1,20 +1,22 @@
 package cl.duoc.xyzbank.coreservice.accounts.integration;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
+import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
+import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.infrastructure.persistence.JpaAccountRepository;
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
-import java.time.LocalDate;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @DisplayName("The JPA account repository")
-class JpaAccountRepositoryIT extends AbstractPostgresIT {
+class JpaAccountRepositoryIT extends AbstractCoreServiceIT {
 
     /*
      * Cases:
@@ -38,12 +40,15 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
     @Autowired
     private JpaAccountRepository accountRepository;
 
+    @Autowired
+    private CustomerRepository customerRepository;
+
     @Test
     @DisplayName("saves an account and finds it by id")
     void savesAnAccountAndFindsItById() {
         Id id = Id.generate();
         Account account = Account.create(
-                id, AccountNumber.create("1111111111"), Id.generate(),
+                id, AccountNumber.create("1111111111"), aSavedCustomer(),
                 Money.create(new BigDecimal("100.00"), "USD"));
 
         accountRepository.save(account);
@@ -56,8 +61,8 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
     @Test
     @DisplayName("finds only the accounts owned by a given customer")
     void findsOnlyTheAccountsOwnedByAGivenCustomer() {
-        Id customerId = Id.generate();
-        Id otherCustomerId = Id.generate();
+        Id customerId = aSavedCustomer();
+        Id otherCustomerId = aSavedCustomer();
         Account ownedAccount = Account.create(
                 Id.generate(), AccountNumber.create("2222222222"), customerId,
                 Money.create(new BigDecimal("50.00"), "USD"));
@@ -86,10 +91,10 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
     void rejectsTwoAccountsWithTheSameAccountNumber() {
         AccountNumber sharedNumber = AccountNumber.create("4444444444");
         Account first = Account.create(
-                Id.generate(), sharedNumber, Id.generate(),
+                Id.generate(), sharedNumber, aSavedCustomer(),
                 Money.create(new BigDecimal("10.00"), "USD"));
         Account second = Account.create(
-                Id.generate(), sharedNumber, Id.generate(),
+                Id.generate(), sharedNumber, aSavedCustomer(),
                 Money.create(new BigDecimal("20.00"), "USD"));
         accountRepository.save(first);
 
@@ -101,7 +106,7 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
     void rejectsASaveBasedOnAStaleVersion() {
         Id id = Id.generate();
         Account original = Account.create(
-                id, AccountNumber.create("5555555555"), Id.generate(),
+                id, AccountNumber.create("5555555555"), aSavedCustomer(),
                 Money.create(new BigDecimal("500.00"), "USD"));
         accountRepository.save(original);
         Account firstCopy = accountRepository.findById(id).orElseThrow();
@@ -116,5 +121,11 @@ class JpaAccountRepositoryIT extends AbstractPostgresIT {
         DomainException exception = assertThrows(DomainException.class, () -> accountRepository.save(secondCopy));
 
         assertEquals(DomainException.Type.CONFLICT, exception.getType());
+    }
+
+    private Id aSavedCustomer() {
+        Id customerId = Id.generate();
+        customerRepository.save(Customer.create(customerId, "Account Owner", customerId.getValue() + "@xyzbank.cl"));
+        return customerId;
     }
 }

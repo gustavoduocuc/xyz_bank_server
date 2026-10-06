@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.coreservice.auth.e2e;
 
-import cl.duoc.xyzbank.testsupport.AbstractPostgresIT;
+import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
+import cl.duoc.xyzbank.testsupport.TestAccessTokens;
 import io.restassured.RestAssured;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,7 @@ import static org.hamcrest.Matchers.not;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The PIN verification TLS gate")
-class PinVerificationTlsGateE2ETest extends AbstractPostgresIT {
+class PinVerificationTlsGateE2ETest extends AbstractCoreServiceIT {
 
     /*
      * Cases:
@@ -43,7 +44,7 @@ class PinVerificationTlsGateE2ETest extends AbstractPostgresIT {
         given()
                 .relaxedHTTPSValidation()
                 .baseUri("https://localhost:8453")
-                .header("X-Service-Credential", "dev-service-credential-atm")
+                .header("Authorization", "Bearer " + TestAccessTokens.atm())
                 .contentType("application/json")
                 .body("{\"cardNumber\":\"unknown-card\",\"pin\":\"1234\"}")
                 .when()
