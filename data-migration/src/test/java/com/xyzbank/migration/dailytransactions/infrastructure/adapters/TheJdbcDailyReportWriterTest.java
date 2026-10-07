@@ -1,10 +1,9 @@
 package com.xyzbank.migration.dailytransactions.infrastructure.adapters;
 
-import com.xyzbank.migration.shared.domain.SourceLine;
-
 import com.xyzbank.migration.dailytransactions.domain.AnomalyType;
 import com.xyzbank.migration.dailytransactions.domain.ProcessedTransaction;
 import com.xyzbank.migration.dailytransactions.domain.Transaction;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

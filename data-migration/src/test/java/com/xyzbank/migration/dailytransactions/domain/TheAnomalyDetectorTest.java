@@ -1,7 +1,6 @@
 package com.xyzbank.migration.dailytransactions.domain;
 
 import com.xyzbank.migration.shared.domain.SourceLine;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

@@ -12,6 +12,7 @@ import com.xyzbank.migration.shared.infrastructure.batch.LoggingRetryListener;
 import com.xyzbank.migration.shared.infrastructure.batch.LoggingSkipListener;
 import com.xyzbank.migration.shared.infrastructure.batch.MigrationGuardTasklet;
 import com.xyzbank.migration.shared.infrastructure.batch.MigrationLedgerListener;
+import com.xyzbank.migration.shared.infrastructure.batch.NumberedLineMapper;
 import com.xyzbank.migration.shared.infrastructure.batch.StepMetricsListener;
 import com.xyzbank.migration.shared.infrastructure.batch.TransientDataAccessRetryPolicy;
 import org.springframework.batch.core.Job;
@@ -54,9 +55,7 @@ public class MonthlyInterestsJobConfig {
                 .name("monthlyInterestReader")
                 .resource(Objects.requireNonNull(resource))
                 .linesToSkip(1)
-                .delimited()
-                .names("cuentaId", "nombre", "saldo", "edad", "tipo")
-                .fieldSetMapper(new InterestAccountLineMapper())
+                .lineMapper(NumberedLineMapper.delimited(new InterestAccountLineMapper(), "cuentaId", "nombre", "saldo", "edad", "tipo"))
                 .build();
     }
 
