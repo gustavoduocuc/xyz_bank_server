@@ -20,6 +20,7 @@ import java.time.ZoneOffset;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("The WithdrawAccount use case")
 class WithdrawAccountUseCaseTest {
@@ -48,6 +49,8 @@ class WithdrawAccountUseCaseTest {
      * 9. Repeated idempotency key with the same account and amount replays the original result
      * 10. Repeated idempotency key with a different amount throws a conflict, leaving the balance unchanged
      * 11. The daily limit resets on a new day
+     * 12. The account's own daily limit overrides the configured default
+     * 13. Throws a conflict for a CLOSED account and records nothing
      */
 
     @Test
@@ -188,6 +191,35 @@ class WithdrawAccountUseCaseTest {
                 new WithdrawRequest(accountId.getValue(), new BigDecimal("900.00"), "USD", "key-10"));
 
         assertEquals(new BigDecimal("3100.00"), response.newBalance());
+    }
+
+    @Test
+    @DisplayName("applies the account's own daily limit instead of the configured default")
+    void appliesTheAccountsOwnDailyLimitInsteadOfTheConfiguredDefault() {
+        Id accountId = anExistingAccount("500.00");
+        Account account = accountRepository.findById(accountId).orElseThrow();
+        account.updateDetails(null, Money.create(new BigDecimal("300.00"), "USD"), 0, "upd-1");
+        accountRepository.save(account);
+
+        DomainException exception = assertThrows(DomainException.class, () -> useCase(CLOCK_DAY_1).execute(
+                new WithdrawRequest(accountId.getValue(), new BigDecimal("400.00"), "USD", "key-own-limit")));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("throws a conflict for a CLOSED account and records nothing")
+    void throwsAConflictForAClosedAccountAndRecordsNothing() {
+        Id accountId = Id.generate();
+        Account account = Account.open(accountId, AccountNumber.create("1234567890"), Id.generate(), "USD", null);
+        account.close(0, "close-1");
+        accountRepository.save(account);
+
+        DomainException exception = assertThrows(DomainException.class, () -> useCase(CLOCK_DAY_1).execute(
+                new WithdrawRequest(accountId.getValue(), new BigDecimal("10.00"), "USD", "key-closed")));
+
+        assertEquals(DomainException.Type.CONFLICT, exception.getType());
+        assertTrue(transactionRepository.findByIdempotencyKey("key-closed").isEmpty());
     }
 
     private Id anExistingAccount(String balance) {
