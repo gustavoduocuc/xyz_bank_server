@@ -35,13 +35,9 @@ public final class AnnualAccountCompiler {
         Money net = Money.zero();
 
         for (AnnualMovement movement : movements) {
-            net = net.add(movement.amount());
-            if (movement.isDeposit()) {
-                deposits = deposits.add(movement.amount());
-            }
-            if (movement.isOutgoing()) {
-                withdrawals = withdrawals.add(movement.absoluteAmount());
-            }
+            deposits = deposits.add(movement.depositContribution());
+            withdrawals = withdrawals.add(movement.withdrawalContribution());
+            net = net.add(movement.netContribution());
         }
 
         return new AnnualAccountSummary(accountId, deposits, withdrawals, net, movements.size());
