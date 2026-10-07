@@ -194,9 +194,14 @@ docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "S
 docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "SELECT COUNT(*) FROM daily_transaction_reports;"
 docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "SELECT COUNT(*) FROM account_balances;"
 docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "SELECT COUNT(*) FROM annual_audit_reports;"
+docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "SELECT * FROM daily_transaction_summaries ORDER BY summary_date LIMIT 10;"
 ```
 
-`status = SUCCESS` en `migration_executions` para `dailyTransactionsJob`, `monthlyInterestsJob` y `annualGenerationJob` indica que el job ya corrió. Un segundo `docker compose up` reutiliza el volumen y el job vuelve a salir 0 (ya migrado).
+`status = SUCCESS` en `migration_executions` para `dailyTransactionsJob`, `monthlyInterestsJob` y `annualGenerationJob` indica que el job ya corrió. Un segundo `docker compose up` reutiliza el volumen y el job vuelve a salir 0 (ya migrado) sin agregar filas.
+
+Si un job falla a mitad (por ejemplo, MySQL se cae), el proceso lo reinicia desde el último chunk confirmado hasta `MIGRATION_MAX_RESTARTS` veces (default 3), y Compose vuelve a levantar el contenedor (`restart: "on-failure:3"`) si el proceso muere. `daily_transaction_summaries` tiene el resumen diario: débitos, créditos, cantidad de transacciones y de anomalías por fecha. Detalle en [data-migration/docs/jobs.md](data-migration/docs/jobs.md).
+
+Si tu volumen MySQL se creó antes de que existieran `source_line` y las tablas de staging/resumen, recrealo una vez con `docker compose down -v`.
 
 ## Certificados TLS de desarrollo
 
