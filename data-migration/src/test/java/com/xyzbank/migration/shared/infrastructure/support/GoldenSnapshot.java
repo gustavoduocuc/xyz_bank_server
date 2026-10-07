@@ -38,6 +38,12 @@ public final class GoldenSnapshot {
             ORDER BY CAST(account_id AS UNSIGNED), account_id
             """;
 
+    public static final String dailyTransactionSummaries = """
+            SELECT summary_date, total_debits, total_credits, transaction_count, anomaly_count
+            FROM daily_transaction_summaries
+            ORDER BY summary_date
+            """;
+
     public static final String counts = """
             SELECT 'daily_transaction_reports' AS table_name, COUNT(*) AS row_count FROM daily_transaction_reports
             UNION ALL SELECT 'account_balances', COUNT(*) FROM account_balances
