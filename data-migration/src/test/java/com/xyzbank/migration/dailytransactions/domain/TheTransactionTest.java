@@ -1,9 +1,8 @@
 package com.xyzbank.migration.dailytransactions.domain;
 
-import com.xyzbank.migration.shared.domain.SourceLine;
-
 import com.xyzbank.migration.shared.domain.DomainError;
 import com.xyzbank.migration.shared.domain.Money;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 

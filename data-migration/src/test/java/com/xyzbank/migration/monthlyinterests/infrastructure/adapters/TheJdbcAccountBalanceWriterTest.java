@@ -3,6 +3,7 @@ package com.xyzbank.migration.monthlyinterests.infrastructure.adapters;
 import com.xyzbank.migration.monthlyinterests.domain.Account;
 import com.xyzbank.migration.monthlyinterests.domain.InterestApplied;
 import com.xyzbank.migration.monthlyinterests.domain.InterestRatePolicy;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class TheJdbcAccountBalanceWriterTest {
         @Test
         void persistsAccountBalancesWithAppliedInterest() {
             InterestApplied applied = InterestRatePolicy.apply(
-                    Account.create("101", "John Doe", 5000, 30, "ahorro")
+                    Account.create("101", "John Doe", 5000, 30, "ahorro", SourceLine.of(1))
             );
 
             writer.write(List.of(applied));
