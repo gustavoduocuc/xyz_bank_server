@@ -5,24 +5,25 @@ import cl.duoc.xyzbank.bffweb.dashboard.application.ports.CustomerProfilePort;
 import cl.duoc.xyzbank.bffweb.shared.infrastructure.adapters.CoreServiceCalls;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 @Component
 public class HttpCustomerProfileAdapter implements CustomerProfilePort {
 
-    private final RestClient coreServiceClient;
+    private final RestClient customersServiceClient;
 
-    public HttpCustomerProfileAdapter(RestClient coreServiceClient) {
-        this.coreServiceClient = coreServiceClient;
+    public HttpCustomerProfileAdapter(@Qualifier("customersServiceClient") RestClient customersServiceClient) {
+        this.customersServiceClient = customersServiceClient;
     }
 
-    /** A read, so it may be retried (bff-resilience spec); the breaker sees every attempt. */
+    /** The profile is owned by customers-service; a read, so it may be retried (bff-resilience spec). */
     @Override
-    @CircuitBreaker(name = "coreService")
-    @Retry(name = "coreServiceRead")
+    @CircuitBreaker(name = "customersService")
+    @Retry(name = "customersServiceRead")
     public CustomerProfile fetchProfile(String customerId) {
-        CustomerProfileWire wire = CoreServiceCalls.fetch(() -> coreServiceClient.get()
+        CustomerProfileWire wire = CoreServiceCalls.fetch(() -> customersServiceClient.get()
                 .uri("/internal/customers/{customerId}", customerId)
                 .retrieve()
                 .body(CustomerProfileWire.class));

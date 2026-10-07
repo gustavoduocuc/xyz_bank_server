@@ -43,6 +43,12 @@ core-service:
   connect-timeout-ms: 1000
   read-timeout-ms: 2000
 
+# The profile read is a single indexed lookup, like core-service's reads
+customers-service:
+  base-url: ${CUSTOMERS_SERVICE_BASE_URL:http://localhost:8085}
+  connect-timeout-ms: 1000
+  read-timeout-ms: 2000
+
 interests-service:
   base-url: ${INTERESTS_SERVICE_BASE_URL:http://localhost:8084}
   connect-timeout-ms: 1000
@@ -86,6 +92,11 @@ resilience4j:
         slidingWindowSize: 20
         minimumNumberOfCalls: 10
         permittedNumberOfCallsInHalfOpenState: 3
+      customersService:
+        baseConfig: downstream
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        permittedNumberOfCallsInHalfOpenState: 3
       authServer:
         baseConfig: downstream
         slidingWindowSize: 10
@@ -109,6 +120,15 @@ resilience4j:
         ignoreExceptions: &notRetried
           - io.github.resilience4j.circuitbreaker.CallNotPermittedException
           - cl.duoc.xyzbank.bffweb.shared.application.DependencyUnavailableException
+      customersServiceRead:
+        maxAttempts: 3
+        waitDuration: 200ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        enableRandomizedWait: true
+        randomizedWaitFactor: 0.5
+        retryExceptionPredicate: cl.duoc.xyzbank.bffweb.shared.infrastructure.resilience.RetryableFailurePredicate
+        ignoreExceptions: *notRetried
       interestsServiceRead:
         maxAttempts: 3
         waitDuration: 200ms
