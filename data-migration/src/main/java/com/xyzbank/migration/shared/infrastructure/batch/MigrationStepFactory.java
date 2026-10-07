@@ -19,6 +19,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  */
 public class MigrationStepFactory {
 
+    private static final String managerSuffix = "Manager";
+
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
     private final TaskExecutor batchTaskExecutor;
@@ -78,7 +80,17 @@ public class MigrationStepFactory {
                 .build();
     }
 
+    /**
+     * True for a partition manager step, whose counts aggregate those of its workers.
+     */
+    public static boolean isManager(String stepName) {
+        return stepName.endsWith(managerSuffix);
+    }
+
     public Step manager(String name, Step worker, Partitioner partitioner) {
+        if (!isManager(name)) {
+            throw new IllegalArgumentException("Partition manager step names must end with " + managerSuffix + ": " + name);
+        }
         return new StepBuilder(name, jobRepository)
                 .partitioner(worker.getName(), partitioner)
                 .step(worker)

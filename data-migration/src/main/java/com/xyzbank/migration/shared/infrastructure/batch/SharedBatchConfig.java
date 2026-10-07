@@ -2,6 +2,7 @@ package com.xyzbank.migration.shared.infrastructure.batch;
 
 import com.xyzbank.migration.shared.application.ports.MigrationExecutionPort;
 import com.xyzbank.migration.shared.infrastructure.adapters.JdbcMigrationExecutionAdapter;
+import org.springframework.batch.core.explore.JobExplorer;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -113,7 +114,12 @@ public class SharedBatchConfig {
     }
 
     @Bean
-    public MigrationLedgerListener migrationLedgerListener(MigrationExecutionPort migrationExecutionPort) {
-        return new MigrationLedgerListener(migrationExecutionPort);
+    public MigrationLedgerListener migrationLedgerListener(
+            MigrationExecutionPort migrationExecutionPort,
+            JobExplorer jobExplorer
+    ) {
+        return new MigrationLedgerListener(
+                migrationExecutionPort,
+                current -> jobExplorer.getJobExecutions(current.getJobInstance()));
     }
 }

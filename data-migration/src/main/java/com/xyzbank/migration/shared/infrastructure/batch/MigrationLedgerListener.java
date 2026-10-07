@@ -6,16 +6,25 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobExecutionListener;
+import org.springframework.batch.core.StepExecution;
 import org.springframework.lang.NonNull;
+
+import java.util.Objects;
+import java.util.stream.Stream;
 
 public class MigrationLedgerListener implements JobExecutionListener {
 
     private static final Logger logger = LoggerFactory.getLogger(MigrationLedgerListener.class);
 
     private final MigrationExecutionPort migrationExecutionPort;
+    private final JobExecutionHistory jobExecutionHistory;
 
-    public MigrationLedgerListener(MigrationExecutionPort migrationExecutionPort) {
+    public MigrationLedgerListener(
+            MigrationExecutionPort migrationExecutionPort,
+            JobExecutionHistory jobExecutionHistory
+    ) {
         this.migrationExecutionPort = migrationExecutionPort;
+        this.jobExecutionHistory = jobExecutionHistory;
     }
 
     @Override
@@ -52,14 +61,18 @@ public class MigrationLedgerListener implements JobExecutionListener {
     }
 
     private int totalWriteCount(JobExecution jobExecution) {
-        return (int) jobExecution.getStepExecutions().stream()
-                .mapToLong(step -> step.getWriteCount())
-                .sum();
+        return (int) countedSteps(jobExecution).mapToLong(StepExecution::getWriteCount).sum();
     }
 
     private int totalSkipCount(JobExecution jobExecution) {
-        return (int) jobExecution.getStepExecutions().stream()
-                .mapToLong(step -> step.getSkipCount())
-                .sum();
+        return (int) countedSteps(jobExecution).mapToLong(StepExecution::getSkipCount).sum();
+    }
+
+    private Stream<StepExecution> countedSteps(JobExecution jobExecution) {
+        Stream<JobExecution> previous = jobExecutionHistory.previousExecutions(jobExecution).stream()
+                .filter(execution -> !Objects.equals(execution.getId(), jobExecution.getId()));
+        return Stream.concat(previous, Stream.of(jobExecution))
+                .flatMap(execution -> execution.getStepExecutions().stream())
+                .filter(step -> !MigrationStepFactory.isManager(step.getStepName()));
     }
 }
