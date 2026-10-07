@@ -47,6 +47,9 @@ auth:
     interests:
       client-id: interests-service
       client-secret: ${INTERESTS_SERVICE_CLIENT_SECRET:interests-service-dev-secret}
+    customers-admin:
+      client-id: customers-admin
+      client-secret: ${CUSTOMERS_ADMIN_CLIENT_SECRET:customers-admin-dev-secret}
   demo-customer:
     username: demo
     password: ${AUTH_DEMO_PASSWORD:demo-password}
