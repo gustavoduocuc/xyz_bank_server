@@ -34,7 +34,7 @@ public class JdbcDailyReportWriter implements DailyReportWriter {
     public void write(List<ProcessedTransaction> transactions) {
         List<Object[]> rows = transactions.stream()
                 .map(processed -> new Object[]{
-                        processed.transaction().businessKey(),
+                        processed.businessKey(),
                         processed.idValue(),
                         Date.valueOf(processed.dateAsIso()),
                         processed.amountValue(),

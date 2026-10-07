@@ -57,4 +57,8 @@ public final class ProcessedTransaction {
     public SourceLine sourceLine() {
         return transaction.sourceLine();
     }
+
+    public String businessKey() {
+        return transaction.businessKey();
+    }
 }
