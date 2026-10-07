@@ -20,9 +20,11 @@ class ServiceClientTest {
      * Cases:
      * 1. The ATM service client allows exactly the ATM channel's scopes
      * 2. The interests service client allows exactly interests:write
-     * 3. bff-atm's tokens are meant for core-service; interests-service's also for itself
-     * 4. Rejects a service client for the web or mobile channel (those log customers in)
-     * 5. Rejects a blank client id
+     * 3. The customers-admin client allows exactly customers:read and customers:write
+     * 4. bff-atm's tokens are meant for core-service; interests-service's also for itself;
+     *    customers-admin's for customers-service
+     * 5. Rejects a service client for the web or mobile channel (those log customers in)
+     * 6. Rejects a blank client id
      */
 
     @Test
@@ -42,13 +44,23 @@ class ServiceClientTest {
     }
 
     @Test
-    @DisplayName("aims bff-atm's tokens at core-service and interests-service's also at itself")
+    @DisplayName("allows the customers-admin client exactly customers:read and customers:write")
+    void allowsTheCustomersAdminClientExactlyCustomersReadAndWrite() {
+        ServiceClient client = ServiceClient.create("customers-admin", Channel.CUSTOMERS_ADMIN);
+
+        assertEquals(Set.of("customers:read", "customers:write"), client.allowedScopes());
+    }
+
+    @Test
+    @DisplayName("aims bff-atm's tokens at core-service, interests-service's also at itself and customers-admin's at customers-service")
     void aimsServiceTokensAtTheirAudiences() {
         ServiceClient atm = ServiceClient.create("bff-atm", Channel.ATM);
         ServiceClient interests = ServiceClient.create("interests-service", Channel.INTERESTS);
+        ServiceClient customersAdmin = ServiceClient.create("customers-admin", Channel.CUSTOMERS_ADMIN);
 
         assertEquals(Set.of("core-service"), atm.audiences());
         assertEquals(Set.of("core-service", "interests-service"), interests.audiences());
+        assertEquals(Set.of("customers-service"), customersAdmin.audiences());
     }
 
     @ParameterizedTest

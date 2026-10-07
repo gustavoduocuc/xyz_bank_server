@@ -56,7 +56,10 @@ class ServiceClientE2ETest extends AbstractAuthServerIT {
     }
 
     @ParameterizedTest
-    @CsvSource({"bff-atm, bff-atm-dev-secret", "interests-service, interests-service-dev-secret"})
+    @CsvSource({
+            "bff-atm, bff-atm-dev-secret",
+            "interests-service, interests-service-dev-secret",
+            "customers-admin, customers-admin-dev-secret"})
     @DisplayName("issues an access token, and no refresh or ID token, to a service client with its secret")
     void issuesAnAccessTokenToAServiceClientWithItsSecret(String clientId, String secret) {
         Response response = clientCredentials(clientId, secret, null);
@@ -123,9 +126,11 @@ class ServiceClientE2ETest extends AbstractAuthServerIT {
     }
 
     private static Set<String> expectedScopes(String clientId) {
-        return "bff-atm".equals(clientId)
-                ? Set.of("atm:read-balance", "atm:withdraw")
-                : Set.of("interests:write");
+        return switch (clientId) {
+            case "bff-atm" -> Set.of("atm:read-balance", "atm:withdraw");
+            case "customers-admin" -> Set.of("customers:read", "customers:write");
+            default -> Set.of("interests:write");
+        };
     }
 
     private static Set<String> scopesOf(String accessToken) {

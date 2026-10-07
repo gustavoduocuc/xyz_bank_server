@@ -9,16 +9,17 @@ import java.util.Set;
 
 /**
  * A client that obtains tokens for itself (client_credentials), not for a logged-in
- * customer: bff-atm and interests-service. Its scopes are its channel's scope set.
+ * customer: bff-atm, interests-service and customers-admin. Its scopes are its channel's scope set.
  */
 public final class ServiceClient {
 
-    private static final Set<Channel> SERVICE_CHANNELS = Set.of(Channel.ATM, Channel.INTERESTS);
+    private static final Set<Channel> SERVICE_CHANNELS = Set.of(Channel.ATM, Channel.INTERESTS, Channel.CUSTOMERS_ADMIN);
     // interests-service's own token also reaches interests-service itself (the interest
     // application trigger requires interests:write); bff-atm's only reaches core-service
     private static final Map<Channel, Set<String>> AUDIENCES = Map.of(
             Channel.ATM, Set.of("core-service"),
-            Channel.INTERESTS, Set.of("core-service", "interests-service"));
+            Channel.INTERESTS, Set.of("core-service", "interests-service"),
+            Channel.CUSTOMERS_ADMIN, Set.of("customers-service"));
 
     private final String clientId;
     private final Channel channel;
@@ -33,7 +34,7 @@ public final class ServiceClient {
             throw DomainException.validation("Client id cannot be blank");
         }
         if (!SERVICE_CHANNELS.contains(channel)) {
-            throw DomainException.validation("Only the ATM and interests channels use service clients, not " + channel);
+            throw DomainException.validation("Only the ATM, interests and customers-admin channels use service clients, not " + channel);
         }
         return new ServiceClient(clientId, channel);
     }

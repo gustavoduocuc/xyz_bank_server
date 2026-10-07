@@ -21,7 +21,7 @@ public final class ChannelClient {
     // Web tokens also reach interests-service (interest summary relayed through it); mobile
     // tokens only core-service. Refresh lifetimes match the channel's session model.
     private static final Map<Channel, Set<String>> AUDIENCES = Map.of(
-            Channel.WEB, Set.of("core-service", "interests-service"),
+            Channel.WEB, Set.of("core-service", "interests-service", "customers-service"),
             Channel.MOBILE, Set.of("core-service"));
     private static final Map<Channel, Duration> REFRESH_TOKEN_LIFETIMES = Map.of(
             Channel.WEB, Duration.ofDays(30),
