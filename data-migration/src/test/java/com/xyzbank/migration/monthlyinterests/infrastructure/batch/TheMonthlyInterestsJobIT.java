@@ -1,7 +1,8 @@
-package com.xyzbank.migration.annualreports.infrastructure.batch;
+package com.xyzbank.migration.monthlyinterests.infrastructure.batch;
 
-import com.xyzbank.migration.annualreports.application.ports.InMemoryAnnualAuditWriter;
+import com.xyzbank.migration.monthlyinterests.application.ports.InMemoryAccountBalanceWriter;
 import com.xyzbank.migration.shared.application.ports.InMemoryMigrationExecutionPort;
+import com.xyzbank.migration.shared.infrastructure.support.MySqlContainerSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.Job;
@@ -26,28 +27,28 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestPropertySource(properties = {
         "spring.batch.job.enabled=false",
         "spring.main.allow-bean-definition-overriding=true",
-        "migration.data.annual-accounts=file:data/semana_2/cuentas_anuales.csv"
+        "migration.data.monthly-interests=file:data/semana_2/intereses.csv"
 })
-class TheAnnualGenerationJobTest {
+class TheMonthlyInterestsJobIT extends MySqlContainerSupport {
 
     /*
      * Cases:
-     * 1. Compiles audit summaries and omits invalid movements
+     * 1. Applies interests and omits invalid accounts
      */
 
     @Autowired
     private JobLauncherTestUtils jobLauncherTestUtils;
 
     @Autowired
-    @Qualifier("annualGenerationJob")
-    private Job annualGenerationJob;
+    @Qualifier("monthlyInterestsJob")
+    private Job monthlyInterestsJob;
 
     @Autowired
-    private InMemoryAnnualAuditWriter annualAuditWriter;
+    private InMemoryAccountBalanceWriter accountBalanceWriter;
 
     @Test
-    void compilesAuditSummariesAndOmitsInvalidMovements() throws Exception {
-        jobLauncherTestUtils.setJob(Objects.requireNonNull(annualGenerationJob));
+    void appliesInterestsAndOmitsInvalidAccounts() throws Exception {
+        jobLauncherTestUtils.setJob(Objects.requireNonNull(monthlyInterestsJob));
 
         JobExecution execution = jobLauncherTestUtils.launchJob(
                 new JobParametersBuilder()
@@ -56,7 +57,7 @@ class TheAnnualGenerationJobTest {
         );
 
         assertEquals(BatchStatus.COMPLETED, execution.getStatus());
-        assertEquals(7, annualAuditWriter.written().size());
+        assertEquals(6, accountBalanceWriter.written().size());
     }
 
     @TestConfiguration
@@ -64,8 +65,8 @@ class TheAnnualGenerationJobTest {
 
         @Bean
         @Primary
-        InMemoryAnnualAuditWriter annualAuditWriter() {
-            return new InMemoryAnnualAuditWriter();
+        InMemoryAccountBalanceWriter accountBalanceWriter() {
+            return new InMemoryAccountBalanceWriter();
         }
 
         @Bean

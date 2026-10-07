@@ -3,6 +3,7 @@ package com.xyzbank.migration.dailytransactions.infrastructure.batch;
 import com.xyzbank.migration.dailytransactions.application.ports.InMemoryDailyReportWriter;
 import com.xyzbank.migration.shared.application.ports.InMemoryMigrationExecutionPort;
 import com.xyzbank.migration.shared.infrastructure.batch.MigrationGuardTasklet;
+import com.xyzbank.migration.shared.infrastructure.support.MySqlContainerSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.BatchStatus;
@@ -30,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "spring.main.allow-bean-definition-overriding=true",
         "migration.data.daily-transactions=file:data/semana_2/transacciones.csv"
 })
-class TheDailyTransactionsJobTest {
+class TheDailyTransactionsJobIT extends MySqlContainerSupport {
 
     /*
      * Cases:

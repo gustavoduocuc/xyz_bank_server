@@ -4,19 +4,19 @@ import com.xyzbank.migration.annualreports.domain.AnnualAccountCompiler;
 import com.xyzbank.migration.annualreports.domain.AnnualAccountSummary;
 import com.xyzbank.migration.annualreports.domain.AnnualMovement;
 import com.xyzbank.migration.shared.domain.SourceLine;
+import com.xyzbank.migration.shared.infrastructure.support.MySqlContainerSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
-import javax.sql.DataSource;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class TheJdbcAnnualAuditWriterTest {
+@Testcontainers(disabledWithoutDocker = true)
+class TheJdbcAnnualAuditWriterIT {
 
     /*
      * Cases:
@@ -31,11 +31,7 @@ class TheJdbcAnnualAuditWriterTest {
 
         @BeforeEach
         void setUp() {
-            DataSource dataSource = new EmbeddedDatabaseBuilder()
-                    .setType(EmbeddedDatabaseType.H2)
-                    .addScript("classpath:db/schema.sql")
-                    .build();
-            jdbcTemplate = new JdbcTemplate(dataSource);
+            jdbcTemplate = MySqlContainerSupport.freshJdbcTemplate();
             writer = new JdbcAnnualAuditWriter(jdbcTemplate);
         }
 
