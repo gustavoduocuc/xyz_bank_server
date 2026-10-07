@@ -14,6 +14,6 @@ public class GetCustomerUseCase {
     public CustomerResponse execute(String customerId) {
         return customerRepository.findById(CustomerIds.parse(customerId))
                 .map(CustomerResponse::from)
-                .orElseThrow(() -> CustomerException.notFound("Customer " + customerId + " not found"));
+                .orElseThrow(() -> CustomerException.notFound(customerId));
     }
 }

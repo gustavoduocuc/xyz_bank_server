@@ -15,8 +15,8 @@ public class CustomerException extends RuntimeException {
         this.type = type;
     }
 
-    public static CustomerException notFound(String message) {
-        return new CustomerException(Type.NOT_FOUND, message);
+    public static CustomerException notFound(String customerId) {
+        return new CustomerException(Type.NOT_FOUND, "Customer " + customerId + " not found");
     }
 
     public static CustomerException validation(String message) {

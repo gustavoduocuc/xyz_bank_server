@@ -25,6 +25,7 @@ class JpaCustomerRepositoryIT extends AbstractPostgresIT {
      * 4. Returns the first customer when the idempotency key is already taken
      * 5. Increments the version on update
      * 6. Rejects an update made from a stale version
+     * 7. Keeps the idempotency key through an update
      */
 
     private static final UUID demoCustomer = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -99,6 +100,17 @@ class JpaCustomerRepositoryIT extends AbstractPostgresIT {
 
         assertEquals(CustomerException.Type.VERSION_CONFLICT, exception.type());
         assertEquals("first@xyzbank.cl", repository.findById(created.id()).orElseThrow().email());
+    }
+
+    @Test
+    @DisplayName("keeps the idempotency key through an update")
+    void keepsTheIdempotencyKeyThroughAnUpdate() {
+        String idempotencyKey = "key-" + UUID.randomUUID();
+        Customer created = repository.create(newCustomer(), idempotencyKey);
+
+        repository.update(created.updateContact("new@xyzbank.cl", null, null, 0));
+
+        assertEquals(created.id(), repository.findByIdempotencyKey(idempotencyKey).orElseThrow().id());
     }
 
     private static Customer newCustomer() {

@@ -17,7 +17,7 @@ public class UpdateCustomerContactUseCase {
             throw CustomerException.validation("version is required");
         }
         Customer customer = customerRepository.findById(CustomerIds.parse(customerId))
-                .orElseThrow(() -> CustomerException.notFound("Customer " + customerId + " not found"));
+                .orElseThrow(() -> CustomerException.notFound(customerId));
         Customer updated = customer.updateContact(
                 request.email(), request.phone(), request.address(), request.version());
         return CustomerResponse.from(customerRepository.update(updated));

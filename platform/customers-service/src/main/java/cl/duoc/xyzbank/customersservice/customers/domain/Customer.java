@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.customersservice.customers.domain;
 
+import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -48,16 +49,9 @@ public final class Customer {
                 id,
                 fullName,
                 newEmail == null ? email : validEmail(newEmail),
-                newPhone == null ? phone : newPhone,
-                newAddress == null ? address : newAddress,
+                Objects.requireNonNullElse(newPhone, phone),
+                Objects.requireNonNullElse(newAddress, address),
                 version);
-    }
-
-    private static String validEmail(String email) {
-        if (email == null || !EMAIL.matcher(email.trim()).matches()) {
-            throw CustomerException.validation("email must be a valid address");
-        }
-        return email.trim();
     }
 
     public UUID id() {
@@ -82,5 +76,12 @@ public final class Customer {
 
     public long version() {
         return version;
+    }
+
+    private static String validEmail(String email) {
+        if (email == null || !EMAIL.matcher(email.trim()).matches()) {
+            throw CustomerException.validation("email must be a valid address");
+        }
+        return email.trim();
     }
 }
