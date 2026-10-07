@@ -63,7 +63,7 @@ public class CustomerController {
         boolean readsAnyCustomer = caller.getAuthorities().stream()
                 .anyMatch(authority -> READ_ANY_CUSTOMER.equals(authority.getAuthority()));
         if (!readsAnyCustomer && !customerId.equals(caller.getToken().getSubject())) {
-            throw CustomerException.notFound("Customer " + customerId + " not found");
+            throw CustomerException.notFound(customerId);
         }
     }
 }

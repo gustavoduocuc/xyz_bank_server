@@ -68,8 +68,4 @@ public class CustomerJpaEntity {
     Long getVersion() {
         return version;
     }
-
-    String getIdempotencyKey() {
-        return idempotencyKey;
-    }
 }

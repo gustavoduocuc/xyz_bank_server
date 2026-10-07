@@ -36,7 +36,7 @@ public class JpaCustomerRepository implements CustomerRepository {
     @Override
     public Customer create(Customer customer, String idempotencyKey) {
         try {
-            return toDomain(springData.saveAndFlush(toEntity(customer, null, idempotencyKey)));
+            return toDomain(springData.saveAndFlush(toNewEntity(customer, idempotencyKey)));
         } catch (DataIntegrityViolationException concurrentDuplicate) {
             return findByIdempotencyKey(idempotencyKey).orElseThrow(() -> concurrentDuplicate);
         }
@@ -44,19 +44,22 @@ public class JpaCustomerRepository implements CustomerRepository {
 
     @Override
     public Customer update(Customer customer) {
-        String idempotencyKey = springData.findById(customer.id())
-                .map(CustomerJpaEntity::getIdempotencyKey)
-                .orElse(null);
         try {
-            return toDomain(springData.saveAndFlush(toEntity(customer, customer.version(), idempotencyKey)));
+            return toDomain(springData.saveAndFlush(toChangedEntity(customer)));
         } catch (ObjectOptimisticLockingFailureException staleVersion) {
             throw CustomerException.versionConflict("Customer " + customer.id() + " was changed concurrently");
         }
     }
 
-    private static CustomerJpaEntity toEntity(Customer customer, Long version, String idempotencyKey) {
+    private static CustomerJpaEntity toNewEntity(Customer customer, String idempotencyKey) {
         return new CustomerJpaEntity(customer.id(), customer.fullName(), customer.email(),
-                customer.phone(), customer.address(), version, idempotencyKey);
+                customer.phone(), customer.address(), null, idempotencyKey);
+    }
+
+    // idempotency_key is not updatable, so a change leaves the key stored at creation untouched
+    private static CustomerJpaEntity toChangedEntity(Customer customer) {
+        return new CustomerJpaEntity(customer.id(), customer.fullName(), customer.email(),
+                customer.phone(), customer.address(), customer.version(), null);
     }
 
     private static Customer toDomain(CustomerJpaEntity entity) {
