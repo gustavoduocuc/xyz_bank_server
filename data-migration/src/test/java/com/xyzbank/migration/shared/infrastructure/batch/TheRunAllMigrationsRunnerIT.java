@@ -19,8 +19,8 @@ class TheRunAllMigrationsRunnerIT extends MySqlContainerSupport {
 
     /*
      * Cases:
-     * 1. Launches the three jobs in order against MySQL and a CSV fixture
-     * 2. A second run against an already-migrated database still finishes successfully
+     * 1. Launches the three jobs in order against MySQL and a CSV fixture, exiting with code 0
+     * 2. A second run against an already-migrated database adds no rows and exits with code 0
      */
 
     @DynamicPropertySource
@@ -47,8 +47,9 @@ class TheRunAllMigrationsRunnerIT extends MySqlContainerSupport {
     @Test
     @DisplayName("launches the three jobs in order then finishes successfully")
     void launchesTheThreeJobsInOrderThenFinishesSuccessfully() throws Exception {
-        runAllMigrationsRunner.runJobs();
+        int exitCode = runAllMigrationsRunner.runJobs();
 
+        assertEquals(0, exitCode);
         assertTrue(count("daily_transaction_reports") > 0);
         assertTrue(count("account_balances") > 0);
         assertTrue(count("annual_audit_reports") > 0);
@@ -58,14 +59,19 @@ class TheRunAllMigrationsRunnerIT extends MySqlContainerSupport {
     }
 
     @Test
-    @DisplayName("exits successfully on a second run against an already-migrated database")
+    @DisplayName("adds no rows and exits with code 0 on a second run against an already-migrated database")
     void exitsSuccessfullyOnASecondRunAgainstAnAlreadyMigratedDatabase() throws Exception {
         runAllMigrationsRunner.runJobs();
         int dailyReports = count("daily_transaction_reports");
+        int balances = count("account_balances");
+        int audits = count("annual_audit_reports");
 
-        runAllMigrationsRunner.runJobs();
+        int exitCode = runAllMigrationsRunner.runJobs();
 
+        assertEquals(0, exitCode);
         assertEquals(dailyReports, count("daily_transaction_reports"));
+        assertEquals(balances, count("account_balances"));
+        assertEquals(audits, count("annual_audit_reports"));
         assertEquals("SUCCESS", statusOf("dailyTransactionsJob"));
     }
 
