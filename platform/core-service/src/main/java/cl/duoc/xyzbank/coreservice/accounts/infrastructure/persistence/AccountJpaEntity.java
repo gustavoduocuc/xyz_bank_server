@@ -39,6 +39,20 @@ public class AccountJpaEntity {
     @Column(name = "daily_withdrawn_date")
     private LocalDate dailyWithdrawnDate;
 
+    @Column(nullable = false)
+    private String status;
+
+    private String alias;
+
+    @Column(name = "daily_withdrawal_limit")
+    private BigDecimal dailyWithdrawalLimit;
+
+    @Column(name = "opening_idempotency_key", updatable = false)
+    private String openingIdempotencyKey;
+
+    @Column(name = "last_command_idempotency_key")
+    private String lastCommandIdempotencyKey;
+
     protected AccountJpaEntity() {
     }
 
@@ -50,7 +64,12 @@ public class AccountJpaEntity {
             String currency,
             long version,
             BigDecimal dailyWithdrawnAmount,
-            LocalDate dailyWithdrawnDate) {
+            LocalDate dailyWithdrawnDate,
+            String status,
+            String alias,
+            BigDecimal dailyWithdrawalLimit,
+            String openingIdempotencyKey,
+            String lastCommandIdempotencyKey) {
         this.id = id;
         this.accountNumber = accountNumber;
         this.customerId = customerId;
@@ -59,6 +78,27 @@ public class AccountJpaEntity {
         this.version = version;
         this.dailyWithdrawnAmount = dailyWithdrawnAmount;
         this.dailyWithdrawnDate = dailyWithdrawnDate;
+        this.status = status;
+        this.alias = alias;
+        this.dailyWithdrawalLimit = dailyWithdrawalLimit;
+        this.openingIdempotencyKey = openingIdempotencyKey;
+        this.lastCommandIdempotencyKey = lastCommandIdempotencyKey;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public String getAlias() {
+        return alias;
+    }
+
+    public BigDecimal getDailyWithdrawalLimit() {
+        return dailyWithdrawalLimit;
+    }
+
+    public String getLastCommandIdempotencyKey() {
+        return lastCommandIdempotencyKey;
     }
 
     public UUID getId() {
