@@ -1,6 +1,7 @@
 package com.xyzbank.migration.annualreports.infrastructure.batch;
 
-import com.xyzbank.migration.annualreports.application.ports.InMemoryAnnualAuditWriter;
+import com.xyzbank.migration.annualreports.application.ports.InMemoryAnnualMovementStore;
+import com.xyzbank.migration.annualreports.application.ports.SpyAnnualAuditConsolidation;
 import com.xyzbank.migration.shared.application.ports.InMemoryMigrationExecutionPort;
 import com.xyzbank.migration.shared.infrastructure.support.MySqlContainerSupport;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,7 @@ class TheAnnualGenerationJobIT extends MySqlContainerSupport {
 
     /*
      * Cases:
-     * 1. Compiles audit summaries and omits invalid movements
+     * 1. Stages valid movements, omits invalid ones and consolidates once
      */
 
     @Autowired
@@ -44,10 +45,13 @@ class TheAnnualGenerationJobIT extends MySqlContainerSupport {
     private Job annualGenerationJob;
 
     @Autowired
-    private InMemoryAnnualAuditWriter annualAuditWriter;
+    private InMemoryAnnualMovementStore annualMovementStore;
+
+    @Autowired
+    private SpyAnnualAuditConsolidation annualAuditConsolidation;
 
     @Test
-    void compilesAuditSummariesAndOmitsInvalidMovements() throws Exception {
+    void stagesValidMovementsOmitsInvalidOnesAndConsolidatesOnce() throws Exception {
         jobLauncherTestUtils.setJob(Objects.requireNonNull(annualGenerationJob));
 
         JobExecution execution = jobLauncherTestUtils.launchJob(
@@ -57,7 +61,8 @@ class TheAnnualGenerationJobIT extends MySqlContainerSupport {
         );
 
         assertEquals(BatchStatus.COMPLETED, execution.getStatus());
-        assertEquals(7, annualAuditWriter.written().size());
+        assertEquals(8, annualMovementStore.written().size());
+        assertEquals(1, annualAuditConsolidation.rebuilds());
     }
 
     @TestConfiguration
@@ -65,8 +70,14 @@ class TheAnnualGenerationJobIT extends MySqlContainerSupport {
 
         @Bean
         @Primary
-        InMemoryAnnualAuditWriter annualAuditWriter() {
-            return new InMemoryAnnualAuditWriter();
+        InMemoryAnnualMovementStore annualMovementStore() {
+            return new InMemoryAnnualMovementStore();
+        }
+
+        @Bean
+        @Primary
+        SpyAnnualAuditConsolidation annualAuditConsolidation() {
+            return new SpyAnnualAuditConsolidation();
         }
 
         @Bean

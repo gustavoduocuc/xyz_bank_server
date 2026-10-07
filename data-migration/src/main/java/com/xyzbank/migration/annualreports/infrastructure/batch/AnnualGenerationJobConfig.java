@@ -1,10 +1,13 @@
 package com.xyzbank.migration.annualreports.infrastructure.batch;
 
-import com.xyzbank.migration.annualreports.application.ports.AnnualAuditWriter;
+import com.xyzbank.migration.annualreports.application.ports.AnnualAuditConsolidation;
+import com.xyzbank.migration.annualreports.application.ports.AnnualMovementStore;
 import com.xyzbank.migration.annualreports.domain.AnnualMovement;
 import com.xyzbank.migration.annualreports.domain.DuplicateMovementDetector;
-import com.xyzbank.migration.annualreports.infrastructure.adapters.JdbcAnnualAuditWriter;
+import com.xyzbank.migration.annualreports.infrastructure.adapters.JdbcAnnualAuditConsolidation;
+import com.xyzbank.migration.annualreports.infrastructure.adapters.JdbcAnnualMovementStore;
 import com.xyzbank.migration.shared.application.ports.MigrationExecutionPort;
+import com.xyzbank.migration.shared.infrastructure.batch.ActionTasklet;
 import com.xyzbank.migration.shared.infrastructure.batch.ChunkThroughputListener;
 import com.xyzbank.migration.shared.infrastructure.batch.DomainSkipPolicy;
 import com.xyzbank.migration.shared.infrastructure.batch.JobSummaryListener;
@@ -42,8 +45,13 @@ import java.util.Objects;
 public class AnnualGenerationJobConfig {
 
     @Bean
-    public AnnualAuditWriter annualAuditWriter(JdbcTemplate jdbcTemplate) {
-        return new JdbcAnnualAuditWriter(jdbcTemplate);
+    public AnnualMovementStore annualMovementStore(JdbcTemplate jdbcTemplate) {
+        return new JdbcAnnualMovementStore(jdbcTemplate);
+    }
+
+    @Bean
+    public AnnualAuditConsolidation annualAuditConsolidation(JdbcTemplate jdbcTemplate) {
+        return new JdbcAnnualAuditConsolidation(jdbcTemplate);
     }
 
     @Bean
@@ -83,9 +91,8 @@ public class AnnualGenerationJobConfig {
     }
 
     @Bean
-    @StepScope
-    public AnnualAuditItemWriter annualAuditItemWriter(AnnualAuditWriter annualAuditWriter) {
-        return new AnnualAuditItemWriter(annualAuditWriter);
+    public AnnualMovementItemWriter annualMovementItemWriter(AnnualMovementStore annualMovementStore) {
+        return new AnnualMovementItemWriter(annualMovementStore);
     }
 
     @Bean
@@ -103,12 +110,12 @@ public class AnnualGenerationJobConfig {
     }
 
     @Bean
-    public Step compileAnnualAudit(
+    public Step stageAnnualMovements(
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             SynchronizedItemStreamReader<AnnualMovementLine> synchronizedAnnualMovementReader,
             AnnualMovementProcessor annualMovementProcessor,
-            AnnualAuditItemWriter annualAuditItemWriter,
+            AnnualMovementItemWriter annualMovementItemWriter,
             RepeatOperations batchStepOperations,
             @Value("${migration.batch.chunk-size}") int chunkSize,
             DomainSkipPolicy domainSkipPolicy,
@@ -118,11 +125,11 @@ public class AnnualGenerationJobConfig {
             StepMetricsListener stepMetricsListener,
             ChunkThroughputListener chunkThroughputListener
     ) {
-        return new StepBuilder("compileAnnualAudit", Objects.requireNonNull(jobRepository))
+        return new StepBuilder("stageAnnualMovements", Objects.requireNonNull(jobRepository))
                 .<AnnualMovementLine, AnnualMovement>chunk(chunkSize, Objects.requireNonNull(transactionManager))
                 .reader(Objects.requireNonNull(synchronizedAnnualMovementReader))
                 .processor(Objects.requireNonNull(annualMovementProcessor))
-                .writer(Objects.requireNonNull(annualAuditItemWriter))
+                .writer(Objects.requireNonNull(annualMovementItemWriter))
                 .stepOperations(Objects.requireNonNull(batchStepOperations))
                 .faultTolerant()
                 .processorNonTransactional()
@@ -137,10 +144,24 @@ public class AnnualGenerationJobConfig {
     }
 
     @Bean
+    public Step consolidateAnnualAudit(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
+            AnnualAuditConsolidation annualAuditConsolidation,
+            StepMetricsListener stepMetricsListener
+    ) {
+        return new StepBuilder("consolidateAnnualAudit", Objects.requireNonNull(jobRepository))
+                .tasklet(new ActionTasklet(annualAuditConsolidation::rebuild), Objects.requireNonNull(transactionManager))
+                .listener(Objects.requireNonNull(stepMetricsListener))
+                .build();
+    }
+
+    @Bean
     public Job annualGenerationJob(
             JobRepository jobRepository,
             Step checkAnnualMigrationNotDone,
-            Step compileAnnualAudit,
+            Step stageAnnualMovements,
+            Step consolidateAnnualAudit,
             JobSummaryListener jobSummaryListener,
             MigrationLedgerListener migrationLedgerListener
     ) {
@@ -150,7 +171,8 @@ public class AnnualGenerationJobConfig {
                 .listener(Objects.requireNonNull(migrationLedgerListener))
                 .start(Objects.requireNonNull(checkAnnualMigrationNotDone))
                 .on(MigrationGuardTasklet.alreadyMigratedExitCode).end()
-                .from(checkAnnualMigrationNotDone).on("*").to(Objects.requireNonNull(compileAnnualAudit))
+                .from(checkAnnualMigrationNotDone).on("*").to(Objects.requireNonNull(stageAnnualMovements))
+                .next(Objects.requireNonNull(consolidateAnnualAudit))
                 .end()
                 .build();
     }
