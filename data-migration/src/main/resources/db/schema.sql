@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS daily_transaction_reports (
     transaction_date DATE NOT NULL,
     amount DECIMAL(14, 2) NOT NULL,
     transaction_type VARCHAR(20) NOT NULL,
-    anomalies VARCHAR(255) NOT NULL
+    anomalies VARCHAR(255) NOT NULL,
+    source_line INT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS account_balances (
