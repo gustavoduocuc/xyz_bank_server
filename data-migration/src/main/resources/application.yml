@@ -23,9 +23,10 @@ migration:
     monthly-interests: ${MIGRATION_MONTHLY_INTERESTS:file:data/semana_3/intereses.csv}
     annual-accounts: ${MIGRATION_ANNUAL_ACCOUNTS:file:data/semana_3/cuentas_anuales.csv}
   batch:
-    chunk-size: 5
-    throttle-limit: 3
-    skip-limit: 2000
+    chunk-size: ${MIGRATION_CHUNK_SIZE:500}
+    throttle-limit: ${MIGRATION_THROTTLE_LIMIT:4}
+    max-restarts: ${MIGRATION_MAX_RESTARTS:3}
+    skip-limit: ${MIGRATION_SKIP_LIMIT:2000}
     retry-limit: 3
 
 logging:

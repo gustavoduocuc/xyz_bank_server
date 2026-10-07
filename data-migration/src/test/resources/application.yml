@@ -13,5 +13,6 @@ migration:
   batch:
     chunk-size: 5
     throttle-limit: 1
+    max-restarts: 3
     skip-limit: 100
     retry-limit: 3

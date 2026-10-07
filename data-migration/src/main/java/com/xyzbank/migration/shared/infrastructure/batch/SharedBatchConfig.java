@@ -2,9 +2,9 @@ package com.xyzbank.migration.shared.infrastructure.batch;
 
 import com.xyzbank.migration.shared.application.ports.MigrationExecutionPort;
 import com.xyzbank.migration.shared.infrastructure.adapters.JdbcMigrationExecutionAdapter;
-import org.springframework.batch.repeat.RepeatOperations;
-import org.springframework.batch.repeat.support.TaskExecutorRepeatTemplate;
+import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
@@ -12,11 +12,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.retry.backoff.BackOffPolicy;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.transaction.PlatformTransactionManager;
 
-import java.util.Objects;
 import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
+@EnableConfigurationProperties(MigrationBatchSettings.class)
 public class SharedBatchConfig {
 
     @Bean
@@ -35,13 +36,6 @@ public class SharedBatchConfig {
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.initialize();
         return executor;
-    }
-
-    @Bean
-    public RepeatOperations batchStepOperations(TaskExecutor batchTaskExecutor) {
-        TaskExecutorRepeatTemplate repeatTemplate = new TaskExecutorRepeatTemplate();
-        repeatTemplate.setTaskExecutor(Objects.requireNonNull(batchTaskExecutor));
-        return repeatTemplate;
     }
 
     @Bean
@@ -89,6 +83,33 @@ public class SharedBatchConfig {
     @Bean
     public ChunkThroughputListener chunkThroughputListener() {
         return new ChunkThroughputListener();
+    }
+
+    @Bean
+    public MigrationStepFactory migrationStepFactory(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
+            TaskExecutor batchTaskExecutor,
+            MigrationBatchSettings migrationBatchSettings,
+            DomainSkipPolicy domainSkipPolicy,
+            TransientDataAccessRetryPolicy transientDataAccessRetryPolicy,
+            BackOffPolicy transientDataAccessBackOffPolicy,
+            LoggingRetryListener loggingRetryListener,
+            StepMetricsListener stepMetricsListener,
+            ChunkThroughputListener chunkThroughputListener
+    ) {
+        return new MigrationStepFactory(
+                jobRepository,
+                transactionManager,
+                batchTaskExecutor,
+                migrationBatchSettings,
+                domainSkipPolicy,
+                transientDataAccessRetryPolicy,
+                transientDataAccessBackOffPolicy,
+                loggingRetryListener,
+                stepMetricsListener,
+                chunkThroughputListener
+        );
     }
 
     @Bean
