@@ -3,6 +3,7 @@ package com.xyzbank.migration.annualreports.infrastructure.batch;
 import com.xyzbank.migration.annualreports.application.ports.InMemoryAnnualAuditWriter;
 import com.xyzbank.migration.annualreports.domain.AnnualAccountSummary;
 import com.xyzbank.migration.annualreports.domain.AnnualMovement;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.item.Chunk;
@@ -33,7 +34,7 @@ class TheAnnualAuditItemWriterTest {
             AnnualAuditItemWriter writer = new AnnualAuditItemWriter(port);
 
             writer.write(Chunk.of(
-                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso")
+                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso", SourceLine.of(1))
             ));
 
             assertTrue(port.written().isEmpty());
@@ -45,10 +46,10 @@ class TheAnnualAuditItemWriterTest {
             AnnualAuditItemWriter writer = new AnnualAuditItemWriter(port);
 
             writer.write(Chunk.of(
-                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso")
+                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso", SourceLine.of(1))
             ));
             writer.write(Chunk.of(
-                    AnnualMovement.create("101", "2024-03-15", "retiro", -500, "Retiro")
+                    AnnualMovement.create("101", "2024-03-15", "retiro", -500, "Retiro", SourceLine.of(1))
             ));
             writer.close();
 
@@ -73,7 +74,7 @@ class TheAnnualAuditItemWriterTest {
                 ready.countDown();
                 start.await();
                 writer.write(Chunk.of(
-                        AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso")
+                        AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso", SourceLine.of(1))
                 ));
                 return null;
             });
@@ -81,7 +82,7 @@ class TheAnnualAuditItemWriterTest {
                 ready.countDown();
                 start.await();
                 writer.write(Chunk.of(
-                        AnnualMovement.create("101", "2024-03-15", "retiro", -500, "Retiro")
+                        AnnualMovement.create("101", "2024-03-15", "retiro", -500, "Retiro", SourceLine.of(1))
                 ));
                 return null;
             });
