@@ -101,7 +101,8 @@ public class EnforcementFilter extends OncePerRequestFilter {
             reject(response, HttpStatus.FORBIDDEN, "The token's scope does not permit this operation");
             return;
         }
-        if (token.get().channel() == Channel.INTERESTS) {
+        // Service channels act for no customer, so there is no ownership to check
+        if (token.get().channel() == Channel.INTERESTS || token.get().channel() == Channel.ACCOUNTS_ADMIN) {
             filterChain.doFilter(request, response);
             return;
         }

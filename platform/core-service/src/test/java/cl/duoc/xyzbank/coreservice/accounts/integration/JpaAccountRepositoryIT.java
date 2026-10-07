@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.coreservice.accounts.integration;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
+import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountStatus;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
@@ -33,6 +34,9 @@ class JpaAccountRepositoryIT extends AbstractCoreServiceIT {
      * 3. Returns an empty list when the customer owns no accounts
      * 4. Rejects two accounts with the same account number
      * 5. Rejects a save based on a stale version (optimistic lock conflict)
+     * 6. Round-trips the status, alias, own daily limit and last command key
+     * 7. Returns the first account when the opening key is already taken
+     * 8. Reads an account saved without lifecycle data as ACTIVE with no own limit
      */
 
     @Autowired
@@ -116,6 +120,58 @@ class JpaAccountRepositoryIT extends AbstractCoreServiceIT {
         DomainException exception = assertThrows(DomainException.class, () -> accountRepository.save(secondCopy));
 
         assertEquals(DomainException.Type.CONFLICT, exception.getType());
+    }
+
+    @Test
+    @DisplayName("round-trips the status, alias, own daily limit and last command key")
+    void roundTripsTheStatusAliasOwnDailyLimitAndLastCommandKey() {
+        Id id = Id.generate();
+        Account opened = accountRepository.saveOpened(
+                Account.open(id, uniqueNumber(), aSavedCustomer(), "USD", "Ahorro"), "open-" + id.getValue());
+        opened.updateDetails("Viajes", Money.create(new BigDecimal("800.00"), "USD"), 0, "upd-1");
+        accountRepository.save(opened);
+        Account updated = accountRepository.findById(id).orElseThrow();
+        updated.close(1, "close-1");
+        accountRepository.save(updated);
+
+        Account found = accountRepository.findById(id).orElseThrow();
+
+        assertEquals(AccountStatus.CLOSED, found.getStatus());
+        assertEquals(Optional.of("Viajes"), found.getAlias());
+        assertEquals(Optional.of(Money.create(new BigDecimal("800.00"), "USD")), found.getDailyWithdrawalLimit());
+        assertTrue(found.isLastCommand("close-1"));
+        assertEquals(2, found.getVersion());
+        assertEquals(id, accountRepository.findByOpeningIdempotencyKey("open-" + id.getValue()).orElseThrow().getId());
+    }
+
+    @Test
+    @DisplayName("returns the first account when the opening key is already taken")
+    void returnsTheFirstAccountWhenTheOpeningKeyIsAlreadyTaken() {
+        String key = "open-" + Id.generate().getValue();
+        Account first = accountRepository.saveOpened(
+                Account.open(Id.generate(), uniqueNumber(), aSavedCustomer(), "USD", null), key);
+
+        Account second = accountRepository.saveOpened(
+                Account.open(Id.generate(), uniqueNumber(), aSavedCustomer(), "USD", null), key);
+
+        assertEquals(first.getId(), second.getId());
+    }
+
+    @Test
+    @DisplayName("reads an account saved without lifecycle data as ACTIVE with no own limit")
+    void readsAnAccountSavedWithoutLifecycleDataAsActiveWithNoOwnLimit() {
+        Id id = Id.generate();
+        accountRepository.save(Account.create(
+                id, uniqueNumber(), aSavedCustomer(), Money.create(new BigDecimal("10.00"), "USD")));
+
+        Account found = accountRepository.findById(id).orElseThrow();
+
+        assertEquals(AccountStatus.ACTIVE, found.getStatus());
+        assertTrue(found.getDailyWithdrawalLimit().isEmpty());
+    }
+
+    private static AccountNumber uniqueNumber() {
+        return AccountNumber.create(String.format("%010d", Math.floorMod(System.nanoTime(), 10_000_000_000L)));
     }
 
     private Id aSavedCustomer() {

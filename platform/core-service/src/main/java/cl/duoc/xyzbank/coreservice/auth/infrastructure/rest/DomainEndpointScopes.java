@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The seven domain endpoints and the scope each one requires, matching channel-auth's
+ * The ten domain endpoints and the scope each one requires, matching channel-auth's
  * domain-endpoint table exactly. A plain, explicit table rather than annotations or AOP,
  * so it can be audited line-for-line against the spec.
  */
@@ -35,7 +35,10 @@ public final class DomainEndpointScopes {
                     "/internal/transactions/*",
                     Set.of("web:transactions:read", "mobile:transactions:read")),
             new Route(HttpMethod.POST, "/internal/accounts/*/withdrawals", Set.of("atm:withdraw")),
-            new Route(HttpMethod.POST, "/internal/accounts/*/interest-credits", Set.of("interests:write")));
+            new Route(HttpMethod.POST, "/internal/accounts/*/interest-credits", Set.of("interests:write")),
+            new Route(HttpMethod.POST, "/internal/accounts", Set.of("accounts:write")),
+            new Route(HttpMethod.PATCH, "/internal/accounts/*", Set.of("accounts:write")),
+            new Route(HttpMethod.POST, "/internal/accounts/*/closure", Set.of("accounts:write")));
 
     private DomainEndpointScopes() {
     }
