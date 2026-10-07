@@ -6,7 +6,6 @@ import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
-import org.springframework.batch.core.JobInstance;
 import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.StepExecution;
@@ -17,6 +16,7 @@ import org.springframework.batch.core.repository.JobRepository;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Launches a migration job so that a failure is resumed instead of started over: a
@@ -51,29 +51,22 @@ public class JobRestartLauncher {
     }
 
     public JobExecution launch(Job job, String inputFile) throws Exception {
-        JobExecution execution = lastExecutionFor(job.getName(), inputFile);
-        if (execution != null && execution.isRunning()) {
-            markOrphanedAsFailed(execution);
-        }
-        if (execution == null || !isRestartable(execution)) {
-            execution = jobLauncher.run(job, nextParameters(job, inputFile));
-        }
+        Optional<JobExecution> last = lastExecutionFor(job.getName(), inputFile);
+        last.filter(JobExecution::isRunning).ifPresent(this::markOrphanedAsFailed);
+        Optional<JobExecution> resumable = last.filter(this::isRestartable);
+        JobExecution execution = resumable.isPresent()
+                ? resumable.get()
+                : jobLauncher.run(job, nextParameters(job, inputFile));
         while (isRestartable(execution)) {
             execution = restart(execution);
         }
         return execution;
     }
 
-    private JobExecution lastExecutionFor(String jobName, String inputFile) {
-        JobInstance instance = jobExplorer.getLastJobInstance(jobName);
-        if (instance == null) {
-            return null;
-        }
-        JobExecution last = jobExplorer.getLastJobExecution(instance);
-        if (last == null || !Objects.equals(inputFile, last.getJobParameters().getString(inputFileParameter))) {
-            return null;
-        }
-        return last;
+    private Optional<JobExecution> lastExecutionFor(String jobName, String inputFile) {
+        return Optional.ofNullable(jobExplorer.getLastJobInstance(jobName))
+                .map(jobExplorer::getLastJobExecution)
+                .filter(last -> Objects.equals(inputFile, last.getJobParameters().getString(inputFileParameter)));
     }
 
     private boolean isRestartable(JobExecution execution) {
