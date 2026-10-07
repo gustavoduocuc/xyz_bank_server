@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.events.integration;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.interests.domain.entities.AnnualInterestSummary;
@@ -62,9 +60,6 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
 
     @Autowired
     private AccountRepository accountRepository;
-
-    @Autowired
-    private CustomerRepository customerRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -309,7 +304,6 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
 
     private Account aSavedAccount(String accountNumber) {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Events Customer", customerId.getValue() + "@xyzbank.cl"));
         Account account = Account.create(
                 Id.generate(),
                 AccountNumber.create(accountNumber),

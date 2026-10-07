@@ -220,9 +220,9 @@ class EnforcementFilterTest {
     @Test
     @DisplayName("when enabled, a domain endpoint with a user token lacking the required scope is rejected")
     void whenEnabledDomainEndpointWithInsufficientScopeRejected() throws Exception {
-        // /internal/customers/{id} requires web:customers:read; a mobile token never has it
+        // /internal/customers/{id}/accounts requires web:accounts:read; a mobile token never has it
         String mobileToken = TestAccessTokens.mobile("customer-1", "D1");
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/customers/any");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/customers/any/accounts");
         request.addHeader("Authorization", "Bearer " + mobileToken);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -237,7 +237,6 @@ class EnforcementFilterTest {
     // each proving the exact channel set allowed to call it and no others.
     static Stream<Arguments> domainEndpointRows() {
         return Stream.of(
-                Arguments.of("GET", "/internal/customers/customer-1", EnumSet.of(Channel.WEB)),
                 Arguments.of("GET", "/internal/customers/customer-1/accounts", EnumSet.of(Channel.WEB)),
                 Arguments.of(
                         "GET",

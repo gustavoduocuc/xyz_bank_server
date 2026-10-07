@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.accounts.config;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coreservice.accounts.application.usecases.GetAccountBalanceUseCase;
-import cl.duoc.xyzbank.coreservice.accounts.application.usecases.GetCustomerProfileUseCase;
 import cl.duoc.xyzbank.coreservice.accounts.application.usecases.ListAccountsForCustomerUseCase;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,14 +10,8 @@ import org.springframework.context.annotation.Configuration;
 public class AccountsConfig {
 
     @Bean
-    public GetCustomerProfileUseCase getCustomerProfileUseCase(CustomerRepository customerRepository) {
-        return new GetCustomerProfileUseCase(customerRepository);
-    }
-
-    @Bean
-    public ListAccountsForCustomerUseCase listAccountsForCustomerUseCase(
-            CustomerRepository customerRepository, AccountRepository accountRepository) {
-        return new ListAccountsForCustomerUseCase(customerRepository, accountRepository);
+    public ListAccountsForCustomerUseCase listAccountsForCustomerUseCase(AccountRepository accountRepository) {
+        return new ListAccountsForCustomerUseCase(accountRepository);
     }
 
     @Bean

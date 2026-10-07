@@ -1,8 +1,6 @@
 package cl.duoc.xyzbank.coreservice.accounts.integration;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
@@ -39,9 +37,6 @@ class JpaAccountRepositoryIT extends AbstractCoreServiceIT {
 
     @Autowired
     private JpaAccountRepository accountRepository;
-
-    @Autowired
-    private CustomerRepository customerRepository;
 
     @Test
     @DisplayName("saves an account and finds it by id")
@@ -125,7 +120,6 @@ class JpaAccountRepositoryIT extends AbstractCoreServiceIT {
 
     private Id aSavedCustomer() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Account Owner", customerId.getValue() + "@xyzbank.cl"));
         return customerId;
     }
 }

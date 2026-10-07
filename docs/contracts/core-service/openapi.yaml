@@ -51,26 +51,6 @@ paths:
           description: Incorrect PIN or unknown card (indistinguishable)
         '423':
           description: Card is locked (third consecutive failure, or already locked)
-  /internal/customers/{customerId}:
-    get:
-      summary: Get a customer's profile
-      description: Domain endpoint. Requires the `web:customers:read` scope.
-      operationId: getCustomerProfile
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/CustomerId'
-      responses:
-        '200':
-          description: The customer's profile
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CustomerProfileResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
   /internal/customers/{customerId}/accounts:
     get:
       summary: List the accounts owned by a customer
@@ -83,8 +63,9 @@ paths:
       responses:
         '200':
           description: >
-            The accounts owned by the customer. An empty array when the
-            customer exists but owns no accounts.
+            The accounts owned by the customer. An empty array when no
+            account is held for that identifier (customer profiles are owned
+            by customers-service). A non-owner gets 404.
           content:
             application/json:
               schema:
@@ -367,16 +348,6 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
   schemas:
-    CustomerProfileResponse:
-      type: object
-      required: [id, fullName, email]
-      properties:
-        id:
-          type: string
-        fullName:
-          type: string
-        email:
-          type: string
     AccountSummaryResponse:
       type: object
       required: [id, accountNumber, balance, currency]

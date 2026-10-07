@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.accounts.e2e;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
@@ -24,6 +22,7 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("The Customer controller")
@@ -31,19 +30,13 @@ class CustomerControllerE2ETest extends AbstractCoreServiceIT {
 
     /*
      * Cases:
-     * 1. Returns the profile of an existing customer
-     * 2. Returns 404 with a problem+json body for an unknown customer
-     * 3. Returns 422 with a problem+json body for a malformed customer id
-     * 4. Returns every account owned by a customer with multiple accounts
-     * 5. Returns an empty list for a customer with no accounts
-     * 6. Returns 404 for the accounts of an unknown customer
+     * 1. No longer serves the customer profile (it moved to customers-service)
+     * 2. Returns every account owned by a customer with multiple accounts
+     * 3. Returns an empty list for a customer with no accounts
      */
 
     @LocalServerPort
     private int port;
-
-    @Autowired
-    private CustomerRepository customerRepository;
 
     @Autowired
     private AccountRepository accountRepository;
@@ -59,46 +52,19 @@ class CustomerControllerE2ETest extends AbstractCoreServiceIT {
     }
 
     @Test
-    @DisplayName("returns the profile of an existing customer")
-    void returnsTheProfileOfAnExistingCustomer() {
-        Id id = Id.generate();
-        customerRepository.save(Customer.create(id, "Jane Doe", "jane.doe@xyzbank.cl"));
-
-        asOwner(id)
-                .when().get("/internal/customers/{customerId}", id.getValue())
-                .then()
-                .statusCode(200)
-                .body("id", equalTo(id.getValue()))
-                .body("fullName", equalTo("Jane Doe"))
-                .body("email", equalTo("jane.doe@xyzbank.cl"));
-    }
-
-    @Test
-    @DisplayName("returns 404 with a problem+json body for an unknown customer")
-    void returnsNotFoundForAnUnknownCustomer() {
+    @DisplayName("no longer serves the customer profile")
+    void noLongerServesTheCustomerProfile() {
         Id id = Id.generate();
         asOwner(id)
                 .when().get("/internal/customers/{customerId}", id.getValue())
                 .then()
-                .statusCode(404)
-                .contentType("application/problem+json");
-    }
-
-    @Test
-    @DisplayName("returns 422 with a problem+json body for a malformed customer id")
-    void returnsUnprocessableEntityForAMalformedCustomerId() {
-        asOwner(Id.generate())
-                .when().get("/internal/customers/{customerId}", "   ")
-                .then()
-                .statusCode(422)
-                .contentType("application/problem+json");
+                .statusCode(not(equalTo(200)));
     }
 
     @Test
     @DisplayName("returns every account owned by a customer with multiple accounts")
     void returnsEveryAccountOwnedByACustomerWithMultipleAccounts() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Jane Doe", "jane.doe@xyzbank.cl"));
         accountRepository.save(anAccountFor(customerId, "1111111111"));
         accountRepository.save(anAccountFor(customerId, "2222222222"));
 
@@ -113,24 +79,12 @@ class CustomerControllerE2ETest extends AbstractCoreServiceIT {
     @DisplayName("returns an empty list for a customer with no accounts")
     void returnsAnEmptyListForACustomerWithNoAccounts() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Jane Doe", "jane.doe@xyzbank.cl"));
 
         asOwner(customerId)
                 .when().get("/internal/customers/{customerId}/accounts", customerId.getValue())
                 .then()
                 .statusCode(200)
                 .body("$", empty());
-    }
-
-    @Test
-    @DisplayName("returns 404 for the accounts of an unknown customer")
-    void returnsNotFoundForTheAccountsOfAnUnknownCustomer() {
-        Id customerId = Id.generate();
-        asOwner(customerId)
-                .when().get("/internal/customers/{customerId}/accounts", customerId.getValue())
-                .then()
-                .statusCode(404)
-                .contentType("application/problem+json");
     }
 
     private Account anAccountFor(Id customerId, String accountNumber) {

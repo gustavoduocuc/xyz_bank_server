@@ -45,7 +45,7 @@ class OwnershipEnforcingTest {
      * 3. The owning customer's token is let through to a transaction endpoint identifying a transaction
      *    on their own account
      * 4. A non-owner's token is rejected as not-found for someone else's account
-     * 5. A non-owner's token is rejected as not-found for someone else's customer profile
+     * 5. A non-owner's token is rejected as not-found for someone else's customer accounts
      * 6. A non-owner's token is rejected as not-found for a transaction whose account belongs
      *    to a different customer, resolved through the transaction's account, not any direct
      *    field on the transaction itself
@@ -100,7 +100,7 @@ class OwnershipEnforcingTest {
         Id customerId = Id.generate();
         String token = TestAccessTokens.web(customerId.getValue());
         MockHttpServletRequest request =
-                new MockHttpServletRequest("GET", "/internal/customers/" + customerId.getValue());
+                new MockHttpServletRequest("GET", "/internal/customers/" + customerId.getValue() + "/accounts");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
@@ -191,12 +191,12 @@ class OwnershipEnforcingTest {
     }
 
     @Test
-    @DisplayName("rejects a non-owner's request for someone else's customer profile as not-found")
-    void rejectsANonOwnersRequestForSomeoneElsesCustomerProfileAsNotFound() throws Exception {
+    @DisplayName("rejects a non-owner's request for someone else's customer accounts as not-found")
+    void rejectsANonOwnersRequestForSomeoneElsesCustomerAccountsAsNotFound() throws Exception {
         Id ownerId = Id.generate();
         Id nonOwnerId = Id.generate();
         String token = TestAccessTokens.web(nonOwnerId.getValue());
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/customers/" + ownerId.getValue());
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/customers/" + ownerId.getValue() + "/accounts");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);

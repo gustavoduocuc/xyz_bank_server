@@ -29,7 +29,6 @@ public final class DomainEndpointOwnership {
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
     private static final List<Route> ROUTES = List.of(
-            new Route(HttpMethod.GET, "/internal/customers/{customerId}", "customerId", IdentifierType.CUSTOMER_ID),
             new Route(
                     HttpMethod.GET,
                     "/internal/customers/{customerId}/accounts",
