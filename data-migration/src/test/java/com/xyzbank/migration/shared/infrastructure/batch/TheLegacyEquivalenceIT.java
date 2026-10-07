@@ -28,6 +28,7 @@ class TheLegacyEquivalenceIT extends MySqlContainerSupport {
      * 2. Produces the legacy daily transaction reports
      * 3. Produces the legacy account balances and interest rates
      * 4. Produces the legacy annual totals per account
+     * 5. Summarizes the legacy daily reports per date
      */
 
     private static final String dataSet = "semana_3";
@@ -66,6 +67,12 @@ class TheLegacyEquivalenceIT extends MySqlContainerSupport {
     @DisplayName("produces the legacy annual totals per account")
     void producesTheLegacyAnnualTotalsPerAccount() {
         assertMatchesGolden("annual_audit_reports", GoldenSnapshot.annualAuditReports);
+    }
+
+    @Test
+    @DisplayName("summarizes the legacy daily reports per date")
+    void summarizesTheLegacyDailyReportsPerDate() {
+        assertMatchesGolden("daily_transaction_summaries", GoldenSnapshot.dailyTransactionSummaries);
     }
 
     private void assertMatchesGolden(String name, String query) {
