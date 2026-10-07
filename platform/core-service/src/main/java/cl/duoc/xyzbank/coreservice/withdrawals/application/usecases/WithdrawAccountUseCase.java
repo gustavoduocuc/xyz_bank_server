@@ -53,7 +53,8 @@ public class WithdrawAccountUseCase {
 
         Money amount = Money.create(request.amount(), request.currency());
         LocalDate today = LocalDate.now(clock);
-        Money dailyLimit = Money.create(dailyLimitAmount, account.getBalance().getCurrency());
+        Money dailyLimit = account.effectiveDailyLimit(
+                Money.create(dailyLimitAmount, account.getBalance().getCurrency()));
 
         account.withdraw(amount, today, dailyLimit);
 
