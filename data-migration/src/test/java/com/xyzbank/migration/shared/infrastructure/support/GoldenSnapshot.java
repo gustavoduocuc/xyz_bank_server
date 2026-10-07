@@ -1,24 +1,21 @@
 package com.xyzbank.migration.shared.infrastructure.support;
 
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.ResultSetMetaData;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Renders a query result as CSV so migrated tables can be compared against
- * versioned golden files under src/test/resources/expected/.
+ * versioned golden files on the test classpath under expected/.
  */
 public final class GoldenSnapshot {
-
-    public static final Path expectedRoot = Path.of("src/test/resources/expected");
 
     public static final String dailyTransactionReports = """
             SELECT transaction_id, transaction_date, amount, transaction_type, anomalies
@@ -76,17 +73,8 @@ public final class GoldenSnapshot {
 
     public static String expected(String dataSet, String name) {
         try {
-            return Files.readString(expectedRoot.resolve(dataSet).resolve(name + ".csv"), StandardCharsets.UTF_8);
-        } catch (IOException exception) {
-            throw new UncheckedIOException(exception);
-        }
-    }
-
-    public static void write(String dataSet, String name, String content) {
-        try {
-            Path target = expectedRoot.resolve(dataSet).resolve(name + ".csv");
-            Files.createDirectories(target.getParent());
-            Files.writeString(target, content, StandardCharsets.UTF_8);
+            return new ClassPathResource("expected/" + dataSet + "/" + name + ".csv")
+                    .getContentAsString(StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
