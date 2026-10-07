@@ -68,6 +68,7 @@ services:
       dockerfile: data-migration/Dockerfile
     image: xyz-bank/data-migration:${TAG:-latest}
     container_name: xyz-bank-data-migration
+    restart: "on-failure:3"
     networks: [internal]
     depends_on:
       mysql:
