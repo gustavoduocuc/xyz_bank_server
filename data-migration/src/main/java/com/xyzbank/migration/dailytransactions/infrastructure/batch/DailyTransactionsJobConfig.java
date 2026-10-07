@@ -12,6 +12,7 @@ import com.xyzbank.migration.shared.infrastructure.batch.LoggingRetryListener;
 import com.xyzbank.migration.shared.infrastructure.batch.LoggingSkipListener;
 import com.xyzbank.migration.shared.infrastructure.batch.MigrationGuardTasklet;
 import com.xyzbank.migration.shared.infrastructure.batch.MigrationLedgerListener;
+import com.xyzbank.migration.shared.infrastructure.batch.NumberedLineMapper;
 import com.xyzbank.migration.shared.infrastructure.batch.StepMetricsListener;
 import com.xyzbank.migration.shared.infrastructure.batch.TransientDataAccessRetryPolicy;
 import org.springframework.batch.core.Job;
@@ -60,9 +61,7 @@ public class DailyTransactionsJobConfig {
                 .name("dailyTransactionReader")
                 .resource(Objects.requireNonNull(resource))
                 .linesToSkip(1)
-                .delimited()
-                .names("id", "fecha", "monto", "tipo")
-                .fieldSetMapper(new DailyTransactionLineMapper())
+                .lineMapper(NumberedLineMapper.delimited(new DailyTransactionLineMapper(), "id", "fecha", "monto", "tipo"))
                 .build();
     }
 

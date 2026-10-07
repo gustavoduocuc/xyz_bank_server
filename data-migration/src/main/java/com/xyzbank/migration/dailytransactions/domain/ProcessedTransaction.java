@@ -1,5 +1,7 @@
 package com.xyzbank.migration.dailytransactions.domain;
 
+import com.xyzbank.migration.shared.domain.SourceLine;
+
 import java.util.List;
 
 public final class ProcessedTransaction {
@@ -50,5 +52,9 @@ public final class ProcessedTransaction {
 
     public TransactionType type() {
         return transaction.type();
+    }
+
+    public SourceLine sourceLine() {
+        return transaction.sourceLine();
     }
 }

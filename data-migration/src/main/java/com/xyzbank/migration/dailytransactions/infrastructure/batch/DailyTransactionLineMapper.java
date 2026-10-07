@@ -1,19 +1,19 @@
 package com.xyzbank.migration.dailytransactions.infrastructure.batch;
 
 import com.xyzbank.migration.shared.infrastructure.batch.CsvFieldNormalizer;
-import org.springframework.batch.item.file.mapping.FieldSetMapper;
+import com.xyzbank.migration.shared.infrastructure.batch.NumberedLineMapper;
 import org.springframework.batch.item.file.transform.FieldSet;
-import org.springframework.lang.NonNull;
 
-public class DailyTransactionLineMapper implements FieldSetMapper<DailyTransactionLine> {
+public class DailyTransactionLineMapper implements NumberedLineMapper.NumberedFieldSetMapper<DailyTransactionLine> {
 
     @Override
-    public DailyTransactionLine mapFieldSet(@NonNull FieldSet fieldSet) {
+    public DailyTransactionLine map(FieldSet fieldSet, int lineNumber) {
         return new DailyTransactionLine(
                 CsvFieldNormalizer.text(fieldSet.readRawString("id")),
                 CsvFieldNormalizer.text(fieldSet.readRawString("fecha")),
                 CsvFieldNormalizer.amount(fieldSet.readRawString("monto")),
-                CsvFieldNormalizer.text(fieldSet.readRawString("tipo"))
+                CsvFieldNormalizer.text(fieldSet.readRawString("tipo")),
+                lineNumber
         );
     }
 }

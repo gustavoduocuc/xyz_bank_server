@@ -1,5 +1,7 @@
 package com.xyzbank.migration.dailytransactions.infrastructure.adapters;
 
+import com.xyzbank.migration.shared.domain.SourceLine;
+
 import com.xyzbank.migration.dailytransactions.domain.AnomalyType;
 import com.xyzbank.migration.dailytransactions.domain.ProcessedTransaction;
 import com.xyzbank.migration.dailytransactions.domain.Transaction;
@@ -41,7 +43,7 @@ class TheJdbcDailyReportWriterTest {
         @Test
         void persistsProcessedDailyTransactions() {
             ProcessedTransaction processed = ProcessedTransaction.withAnomalies(
-                    Transaction.create("9", "2024-01-07", 3000, "debito"),
+                    Transaction.create("9", "2024-01-07", 3000, "debito", SourceLine.of(1)),
                     List.of(AnomalyType.HIGH_AMOUNT)
             );
 
