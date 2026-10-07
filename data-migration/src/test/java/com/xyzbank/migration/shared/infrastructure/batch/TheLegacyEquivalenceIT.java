@@ -2,9 +2,10 @@ package com.xyzbank.migration.shared.infrastructure.batch;
 
 import com.xyzbank.migration.shared.infrastructure.support.GoldenSnapshot;
 import com.xyzbank.migration.shared.infrastructure.support.MySqlContainerSupport;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "migration.data.annual-accounts=file:data/semana_3/cuentas_anuales.csv"
 })
 @DisplayName("The migration compared with the legacy results")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TheLegacyEquivalenceIT extends MySqlContainerSupport {
 
     /*
@@ -39,7 +41,8 @@ class TheLegacyEquivalenceIT extends MySqlContainerSupport {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @BeforeEach
+    // Every case only reads the migrated tables, so one full run serves them all.
+    @BeforeAll
     void migrateSemana3() {
         clearMigrationData(jdbcTemplate);
         assertEquals(0, runAllMigrationsRunner.runJobs());
