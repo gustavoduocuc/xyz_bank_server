@@ -1,5 +1,7 @@
 package com.xyzbank.migration.shared.infrastructure.batch;
 
+import com.xyzbank.migration.shared.infrastructure.support.MySqlContainerSupport;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -7,17 +9,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
-@Testcontainers(disabledWithoutDocker = true)
 @DisplayName("The run-all migrations runner")
-class TheRunAllMigrationsRunnerTest {
+class TheRunAllMigrationsRunnerIT extends MySqlContainerSupport {
 
     /*
      * Cases:
@@ -25,17 +23,8 @@ class TheRunAllMigrationsRunnerTest {
      * 2. A second run against an already-migrated database still finishes successfully
      */
 
-    @Container
-    static final MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.4");
-
     @DynamicPropertySource
-    static void registerDatasource(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
-        registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
-        registry.add("spring.sql.init.mode", () -> "always");
-        registry.add("spring.sql.init.schema-locations", () -> "classpath:db/schema.sql");
+    static void registerMigrationProperties(DynamicPropertyRegistry registry) {
         registry.add("migration.run-all", () -> "false");
         registry.add("spring.batch.job.enabled", () -> "false");
         registry.add("migration.batch.skip-limit", () -> "2000");
@@ -49,6 +38,11 @@ class TheRunAllMigrationsRunnerTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    void clearPreviousRuns() {
+        clearMigrationData(jdbcTemplate);
+    }
 
     @Test
     @DisplayName("launches the three jobs in order then finishes successfully")

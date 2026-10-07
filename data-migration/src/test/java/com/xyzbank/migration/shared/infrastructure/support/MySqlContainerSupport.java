@@ -1,6 +1,9 @@
 package com.xyzbank.migration.shared.infrastructure.support;
 
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
@@ -17,8 +20,11 @@ import java.util.List;
 public abstract class MySqlContainerSupport {
 
     public static final List<String> businessTables = List.of(
+            "daily_transaction_lines",
             "daily_transaction_reports",
+            "daily_transaction_summaries",
             "account_balances",
+            "annual_movements",
             "annual_audit_reports",
             "migration_executions"
     );
@@ -42,6 +48,22 @@ public abstract class MySqlContainerSupport {
             mysql.start();
         }
         return mysql;
+    }
+
+    /**
+     * A JdbcTemplate on the shared container, outside any Spring context, with the
+     * migration schema applied and every business table empty.
+     */
+    public static JdbcTemplate freshJdbcTemplate() {
+        MySQLContainer<?> container = startedContainer();
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                container.getJdbcUrl(), container.getUsername(), container.getPassword());
+        new ResourceDatabasePopulator(new ClassPathResource("db/schema.sql")).execute(dataSource);
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        for (String table : businessTables) {
+            jdbcTemplate.execute("DELETE FROM " + table);
+        }
+        return jdbcTemplate;
     }
 
     protected static void clearMigrationData(JdbcTemplate jdbcTemplate) {

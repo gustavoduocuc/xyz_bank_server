@@ -4,19 +4,19 @@ import com.xyzbank.migration.monthlyinterests.domain.Account;
 import com.xyzbank.migration.monthlyinterests.domain.InterestApplied;
 import com.xyzbank.migration.monthlyinterests.domain.InterestRatePolicy;
 import com.xyzbank.migration.shared.domain.SourceLine;
+import com.xyzbank.migration.shared.infrastructure.support.MySqlContainerSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
-import javax.sql.DataSource;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class TheJdbcAccountBalanceWriterTest {
+@Testcontainers(disabledWithoutDocker = true)
+class TheJdbcAccountBalanceWriterIT {
 
     /*
      * Cases:
@@ -31,11 +31,7 @@ class TheJdbcAccountBalanceWriterTest {
 
         @BeforeEach
         void setUp() {
-            DataSource dataSource = new EmbeddedDatabaseBuilder()
-                    .setType(EmbeddedDatabaseType.H2)
-                    .addScript("classpath:db/schema.sql")
-                    .build();
-            jdbcTemplate = new JdbcTemplate(dataSource);
+            jdbcTemplate = MySqlContainerSupport.freshJdbcTemplate();
             writer = new JdbcAccountBalanceWriter(jdbcTemplate);
         }
 

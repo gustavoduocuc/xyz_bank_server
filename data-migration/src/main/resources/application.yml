@@ -2,13 +2,14 @@ spring:
   application:
     name: xyz-bank-data-migration
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:xyz_bank_migration}
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:xyz_bank_migration}?rewriteBatchedStatements=true
     username: ${DB_USERNAME:migration}
     password: ${DB_PASSWORD:migration}
     driver-class-name: com.mysql.cj.jdbc.Driver
   sql:
     init:
-      mode: never
+      mode: always
+      schema-locations: classpath:db/schema.sql
   batch:
     jdbc:
       initialize-schema: always
