@@ -1,6 +1,7 @@
 package com.xyzbank.migration.annualreports.domain;
 
 import com.xyzbank.migration.shared.domain.Money;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -23,8 +24,8 @@ class TheAnnualAccountCompilerTest {
         @Test
         void compilesOneAccountFromMultipleMovements() {
             List<AnnualMovement> movements = List.of(
-                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso mensual"),
-                    AnnualMovement.create("101", "2024-03-15", "retiro", -500, "Retiro parcial")
+                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso mensual", SourceLine.of(1)),
+                    AnnualMovement.create("101", "2024-03-15", "retiro", -500, "Retiro parcial", SourceLine.of(1))
             );
 
             List<AnnualAccountSummary> summaries = AnnualAccountCompiler.compile(movements);
@@ -41,8 +42,8 @@ class TheAnnualAccountCompilerTest {
         @Test
         void groupsMovementsByAccountId() {
             List<AnnualMovement> movements = List.of(
-                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso mensual"),
-                    AnnualMovement.create("102", "2024-05-22", "deposito", 1500, "Ingreso mensual")
+                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso mensual", SourceLine.of(1)),
+                    AnnualMovement.create("102", "2024-05-22", "deposito", 1500, "Ingreso mensual", SourceLine.of(1))
             );
 
             List<AnnualAccountSummary> summaries = AnnualAccountCompiler.compile(movements);
@@ -53,8 +54,8 @@ class TheAnnualAccountCompilerTest {
         @Test
         void calculatesNetBalanceAcrossDepositsAndWithdrawals() {
             List<AnnualMovement> movements = List.of(
-                    AnnualMovement.create("104", "2024-09-05", "compra", -100, "Compra en tienda"),
-                    AnnualMovement.create("104", "2024-10-01", "deposito", 2500, "Ingreso extra")
+                    AnnualMovement.create("104", "2024-09-05", "compra", -100, "Compra en tienda", SourceLine.of(1)),
+                    AnnualMovement.create("104", "2024-10-01", "deposito", 2500, "Ingreso extra", SourceLine.of(1))
             );
 
             AnnualAccountSummary summary = AnnualAccountCompiler.compile(movements).get(0);

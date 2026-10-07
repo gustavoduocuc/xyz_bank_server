@@ -3,6 +3,7 @@ package com.xyzbank.migration.annualreports.infrastructure.adapters;
 import com.xyzbank.migration.annualreports.domain.AnnualAccountCompiler;
 import com.xyzbank.migration.annualreports.domain.AnnualAccountSummary;
 import com.xyzbank.migration.annualreports.domain.AnnualMovement;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -41,8 +42,8 @@ class TheJdbcAnnualAuditWriterTest {
         @Test
         void persistsAnnualAuditSummaries() {
             List<AnnualAccountSummary> summaries = AnnualAccountCompiler.compile(List.of(
-                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso mensual"),
-                    AnnualMovement.create("101", "2024-03-15", "retiro", -500, "Retiro parcial")
+                    AnnualMovement.create("101", "2024-01-01", "deposito", 1000, "Ingreso mensual", SourceLine.of(1)),
+                    AnnualMovement.create("101", "2024-03-15", "retiro", -500, "Retiro parcial", SourceLine.of(1))
             ));
 
             writer.write(summaries);

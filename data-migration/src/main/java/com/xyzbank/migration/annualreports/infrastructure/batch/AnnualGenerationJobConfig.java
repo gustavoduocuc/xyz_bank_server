@@ -12,6 +12,7 @@ import com.xyzbank.migration.shared.infrastructure.batch.LoggingRetryListener;
 import com.xyzbank.migration.shared.infrastructure.batch.LoggingSkipListener;
 import com.xyzbank.migration.shared.infrastructure.batch.MigrationGuardTasklet;
 import com.xyzbank.migration.shared.infrastructure.batch.MigrationLedgerListener;
+import com.xyzbank.migration.shared.infrastructure.batch.NumberedLineMapper;
 import com.xyzbank.migration.shared.infrastructure.batch.StepMetricsListener;
 import com.xyzbank.migration.shared.infrastructure.batch.TransientDataAccessRetryPolicy;
 import org.springframework.batch.core.Job;
@@ -54,9 +55,8 @@ public class AnnualGenerationJobConfig {
                 .name("annualMovementReader")
                 .resource(Objects.requireNonNull(resource))
                 .linesToSkip(1)
-                .delimited()
-                .names("cuentaId", "fecha", "transaccion", "monto", "descripcion")
-                .fieldSetMapper(new AnnualMovementLineMapper())
+                .lineMapper(NumberedLineMapper.delimited(
+                        new AnnualMovementLineMapper(), "cuentaId", "fecha", "transaccion", "monto", "descripcion"))
                 .build();
     }
 

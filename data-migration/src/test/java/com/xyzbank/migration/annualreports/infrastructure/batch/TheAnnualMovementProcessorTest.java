@@ -68,7 +68,7 @@ class TheAnnualMovementProcessorTest {
         }
 
         private AnnualMovementLine line(String accountId, String date, String type, Double amount, String description) {
-            return new AnnualMovementLine(accountId, date, type, amount, description);
+            return new AnnualMovementLine(accountId, date, type, amount, description, 2);
         }
     }
 }
