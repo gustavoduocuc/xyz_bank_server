@@ -7,7 +7,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 public abstract class AbstractPostgresIT {
 
     static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine");
+            new PostgreSQLContainer<>("postgres:16-alpine").withReuse(true);
 
     static {
         POSTGRES.start();

@@ -2,10 +2,10 @@ openapi: 3.0.3
 info:
   title: core-service — accounts
   description: >
-    Internal endpoints for customer profiles, account balances, and PIN
-    verification. core-service is the only component with database access;
-    these endpoints are internal-network-only and are not exposed through any
-    BFF. Every endpoint requires a bearer access token issued by auth-server.
+    Internal endpoints for accounts, balances, transactions, withdrawals,
+    interest credit and PIN verification (Account Management). Customer
+    profiles belong to customers-service. These endpoints are
+    internal-network-only and are not exposed through any BFF. Every endpoint requires a bearer access token issued by auth-server.
     Domain endpoints require the scope shown in that operation's description.
     PIN verification requires a bff-atm client token. ATM balance and
     withdrawal also require the X-Atm-Session header for the session
