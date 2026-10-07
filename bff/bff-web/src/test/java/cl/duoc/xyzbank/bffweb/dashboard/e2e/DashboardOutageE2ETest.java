@@ -55,9 +55,12 @@ class DashboardOutageE2ETest {
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
+    // customers-service stays up: this test is about core-service's outage and breaker
+    private static final WireMockServer CUSTOMERS_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
 
     static {
         CORE_SERVICE.start();
+        CUSTOMERS_SERVICE.start();
     }
 
     @BeforeAll
@@ -68,6 +71,7 @@ class DashboardOutageE2ETest {
     @DynamicPropertySource
     static void coreServiceBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("core-service.base-url", CORE_SERVICE::baseUrl);
+        registry.add("customers-service.base-url", CUSTOMERS_SERVICE::baseUrl);
     }
 
     @LocalServerPort
@@ -84,6 +88,9 @@ class DashboardOutageE2ETest {
         RestAssured.baseURI = "https://localhost";
         RestAssured.useRelaxedHTTPSValidation();
         CORE_SERVICE.resetAll();
+        CUSTOMERS_SERVICE.resetAll();
+        CUSTOMERS_SERVICE.stubFor(get(urlEqualTo("/internal/customers/customer-1")).willReturn(json(
+                "{\"id\":\"customer-1\",\"fullName\":\"Ana Perez\",\"email\":\"ana@example.com\"}")));
         circuitBreakers.getAllCircuitBreakers().forEach(CircuitBreaker::reset);
         coreService = circuitBreakers.circuitBreaker("coreService");
     }
@@ -92,6 +99,7 @@ class DashboardOutageE2ETest {
     static void stopServers() {
         OIDC_PROVIDER.stop();
         CORE_SERVICE.stop();
+        CUSTOMERS_SERVICE.stop();
     }
 
     @Test
@@ -121,6 +129,9 @@ class DashboardOutageE2ETest {
         }
         assertEquals(CircuitBreaker.State.HALF_OPEN, coreService.getState());
 
+        // Each dashboard makes two core-service calls (accounts, transactions); the half-open
+        // breaker needs three successful trial calls to close
+        dashboard().then().statusCode(200).body("profile.fullName", equalTo("Ana Perez"));
         dashboard().then().statusCode(200).body("profile.fullName", equalTo("Ana Perez"));
 
         assertEquals(CircuitBreaker.State.CLOSED, coreService.getState());
@@ -142,8 +153,6 @@ class DashboardOutageE2ETest {
     }
 
     private static void coreServiceAnswers() {
-        CORE_SERVICE.stubFor(get(urlEqualTo("/internal/customers/customer-1")).willReturn(json(
-                "{\"id\":\"customer-1\",\"fullName\":\"Ana Perez\",\"email\":\"ana@example.com\"}")));
         CORE_SERVICE.stubFor(get(urlEqualTo("/internal/customers/customer-1/accounts")).willReturn(json(
                 "[{\"id\":\"account-1\",\"accountNumber\":\"1000000001\",\"balance\":500.00,\"currency\":\"USD\"}]")));
         CORE_SERVICE.stubFor(get(urlPathEqualTo("/internal/accounts/account-1/transactions")).willReturn(json(

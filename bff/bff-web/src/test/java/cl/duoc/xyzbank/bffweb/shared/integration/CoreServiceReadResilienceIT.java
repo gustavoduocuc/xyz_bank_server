@@ -1,7 +1,6 @@
 package cl.duoc.xyzbank.bffweb.shared.integration;
 
 import cl.duoc.xyzbank.bffweb.dashboard.application.ports.AccountsPort;
-import cl.duoc.xyzbank.bffweb.dashboard.application.ports.CustomerProfilePort;
 import cl.duoc.xyzbank.bffweb.shared.infrastructure.adapters.CoreServiceCallException;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
@@ -34,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class CoreServiceReadResilienceIT {
 
     /*
-     * Cases, for each core-service read adapter (profile, accounts, dashboard transactions,
+     * Cases, for each core-service read adapter (accounts, dashboard transactions,
      * transaction history) -- bff-resilience spec, "Only idempotent operations are retried, and
      * never on a client error":
      * 1. A transient 503 is retried and the read succeeds
@@ -53,8 +52,6 @@ class CoreServiceReadResilienceIT {
         registry.add("core-service.base-url", CORE_SERVICE::baseUrl);
     }
 
-    @Autowired
-    private CustomerProfilePort profiles;
 
     @Autowired
     private AccountsPort accounts;
@@ -91,9 +88,6 @@ class CoreServiceReadResilienceIT {
     static Stream<Read> reads() {
         String page = "{\"items\":[],\"nextCursor\":null}";
         return Stream.of(
-                new Read("profile", "/internal/customers/customer-1",
-                        "{\"id\":\"customer-1\",\"fullName\":\"Ana Perez\",\"email\":\"ana@example.com\"}",
-                        test -> test.profiles.fetchProfile("customer-1")),
                 new Read("accounts", "/internal/customers/customer-1/accounts", "[]",
                         test -> test.accounts.fetchAccountsForCustomer("customer-1")),
                 new Read("dashboard transactions", "/internal/accounts/account-1/transactions", page,
