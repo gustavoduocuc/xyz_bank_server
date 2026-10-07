@@ -17,12 +17,7 @@ public final class FirstWinsUpsert {
     private FirstWinsUpsert() {
     }
 
-    /**
-     * @param table          target table, which must have a {@code source_line} column
-     * @param keyColumn      the primary key column
-     * @param keyExpression  SQL for the key value, e.g. {@code ?} or {@code SHA2(?, 256)}
-     * @param valueColumns   the remaining columns, bound in order after the key; {@code source_line} is bound last
-     */
+    // source_line is bound last, after the key and the value columns.
     public static String statement(String table, String keyColumn, String keyExpression, List<String> valueColumns) {
         List<String> columns = new ArrayList<>();
         columns.add(keyColumn);
@@ -45,10 +40,7 @@ public final class FirstWinsUpsert {
                 onDuplicateKeyUpdate(table, valueColumns));
     }
 
-    /**
-     * The {@code ON DUPLICATE KEY UPDATE} clause alone, for an {@code INSERT … SELECT}
-     * whose derived table is aliased {@code incoming} and exposes {@code source_line}.
-     */
+    // For an INSERT ... SELECT, the derived table must be aliased "incoming" and expose source_line.
     public static String onDuplicateKeyUpdate(String table, List<String> valueColumns) {
         String assignments = valueColumns.stream()
                 .map(column -> "%1$s = IF(%2$s.%3$s < %4$s.%3$s, %2$s.%1$s, %4$s.%1$s)"

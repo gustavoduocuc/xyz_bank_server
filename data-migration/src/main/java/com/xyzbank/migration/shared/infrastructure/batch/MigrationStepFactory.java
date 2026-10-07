@@ -80,9 +80,7 @@ public class MigrationStepFactory {
                 .build();
     }
 
-    /**
-     * True for a partition manager step, whose counts aggregate those of its workers.
-     */
+    // A manager's counts aggregate those of its workers, so callers exclude it to avoid double counting.
     public static boolean isManager(String stepName) {
         return stepName.endsWith(managerSuffix);
     }
