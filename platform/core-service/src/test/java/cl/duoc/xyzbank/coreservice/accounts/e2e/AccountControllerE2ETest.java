@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.accounts.e2e;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
@@ -40,9 +38,6 @@ class AccountControllerE2ETest extends AbstractCoreServiceIT {
     @Autowired
     private AccountRepository accountRepository;
 
-    @Autowired
-    private CustomerRepository customerRepository;
-
     @BeforeEach
     void configureRestAssured() {
         RestAssured.port = port;
@@ -58,7 +53,6 @@ class AccountControllerE2ETest extends AbstractCoreServiceIT {
     void returnsTheBalanceOfAnExistingAccount() {
         Id id = Id.generate();
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Jane Doe", "jane.doe+" + customerId.getValue() + "@xyzbank.cl"));
         Account account = Account.create(
                 id, AccountNumber.create("1234567890"), customerId,
                 Money.create(new BigDecimal("300.00"), "USD"));

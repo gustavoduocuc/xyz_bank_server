@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.auth.e2e;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.cards.domain.entities.AtmSession;
@@ -67,9 +65,6 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
     private int port;
 
     @Autowired
-    private CustomerRepository customerRepository;
-
-    @Autowired
     private AccountRepository accountRepository;
 
     @Autowired
@@ -100,10 +95,11 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
     @Test
     @DisplayName("rejects a token with insufficient scope with 403")
     void rejectsATokenWithInsufficientScopeWith403() {
-        String webTokenWithoutCustomersScope = TestAccessTokens.token("bff-web", Channel.WEB)
-                .subject(ANY_CUSTOMER).scopes(Set.of("web:accounts:read")).sign();
+        String webTokenWithoutAccountsScope = TestAccessTokens.token("bff-web", Channel.WEB)
+                .subject(ANY_CUSTOMER).scopes(Set.of("web:customers:read")).sign();
 
-        bearer(webTokenWithoutCustomersScope).get("/internal/customers/{id}", ANY_CUSTOMER).then().statusCode(403);
+        bearer(webTokenWithoutAccountsScope).get("/internal/customers/{id}/accounts", ANY_CUSTOMER)
+                .then().statusCode(403);
     }
 
     @Test
@@ -223,7 +219,6 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
 
     private Id aCustomer() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "ATM Customer", customerId.getValue() + "@xyzbank.cl"));
         return customerId;
     }
 

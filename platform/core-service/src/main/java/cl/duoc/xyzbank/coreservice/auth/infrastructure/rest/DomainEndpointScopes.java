@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The eight domain endpoints and the scope each one requires, matching channel-auth's
+ * The seven domain endpoints and the scope each one requires, matching channel-auth's
  * domain-endpoint table exactly. A plain, explicit table rather than annotations or AOP,
  * so it can be audited line-for-line against the spec.
  */
@@ -20,7 +20,6 @@ public final class DomainEndpointScopes {
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
     private static final List<Route> ROUTES = List.of(
-            new Route(HttpMethod.GET, "/internal/customers/*", Set.of("web:customers:read")),
             new Route(HttpMethod.GET, "/internal/customers/*/accounts", Set.of("web:accounts:read")),
             new Route(
                     HttpMethod.GET,

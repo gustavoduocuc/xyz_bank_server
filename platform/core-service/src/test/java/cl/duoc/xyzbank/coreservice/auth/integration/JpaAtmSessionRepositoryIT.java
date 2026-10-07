@@ -1,7 +1,5 @@
 package cl.duoc.xyzbank.coreservice.auth.integration;
 
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.cards.domain.entities.AtmSession;
 import cl.duoc.xyzbank.coredomain.cards.domain.entities.Card;
 import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
@@ -36,9 +34,6 @@ class JpaAtmSessionRepositoryIT extends AbstractCoreServiceIT {
 
     @Autowired
     private AtmSessionLookup atmSessionLookup;
-
-    @Autowired
-    private CustomerRepository customerRepository;
 
     @Autowired
     private CardRepository cardRepository;
@@ -79,7 +74,6 @@ class JpaAtmSessionRepositoryIT extends AbstractCoreServiceIT {
 
     private Id aCustomer() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "ATM Customer", customerId.getValue() + "@xyzbank.cl"));
         return customerId;
     }
 
