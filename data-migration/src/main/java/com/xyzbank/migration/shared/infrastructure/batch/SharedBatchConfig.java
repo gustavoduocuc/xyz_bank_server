@@ -3,6 +3,8 @@ package com.xyzbank.migration.shared.infrastructure.batch;
 import com.xyzbank.migration.shared.application.ports.MigrationExecutionPort;
 import com.xyzbank.migration.shared.infrastructure.adapters.JdbcMigrationExecutionAdapter;
 import org.springframework.batch.core.explore.JobExplorer;
+import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -111,6 +113,18 @@ public class SharedBatchConfig {
                 stepMetricsListener,
                 chunkThroughputListener
         );
+    }
+
+    @Bean
+    public JobRestartLauncher jobRestartLauncher(
+            JobLauncher jobLauncher,
+            JobOperator jobOperator,
+            JobExplorer jobExplorer,
+            JobRepository jobRepository,
+            MigrationBatchSettings migrationBatchSettings
+    ) {
+        return new JobRestartLauncher(
+                jobLauncher, jobOperator, jobExplorer, jobRepository, migrationBatchSettings.maxRestarts());
     }
 
     @Bean
