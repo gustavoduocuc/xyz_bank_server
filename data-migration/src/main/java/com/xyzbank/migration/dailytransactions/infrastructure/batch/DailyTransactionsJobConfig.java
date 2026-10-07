@@ -1,10 +1,13 @@
 package com.xyzbank.migration.dailytransactions.infrastructure.batch;
 
+import com.xyzbank.migration.dailytransactions.application.ports.DailyReportPublication;
 import com.xyzbank.migration.dailytransactions.application.ports.DailyReportWriter;
 import com.xyzbank.migration.dailytransactions.domain.AnomalyDetector;
 import com.xyzbank.migration.dailytransactions.domain.ProcessedTransaction;
+import com.xyzbank.migration.dailytransactions.infrastructure.adapters.JdbcDailyReportPublication;
 import com.xyzbank.migration.dailytransactions.infrastructure.adapters.JdbcDailyReportWriter;
 import com.xyzbank.migration.shared.application.ports.MigrationExecutionPort;
+import com.xyzbank.migration.shared.infrastructure.batch.ActionTasklet;
 import com.xyzbank.migration.shared.infrastructure.batch.ChunkThroughputListener;
 import com.xyzbank.migration.shared.infrastructure.batch.DomainSkipPolicy;
 import com.xyzbank.migration.shared.infrastructure.batch.JobSummaryListener;
@@ -50,6 +53,11 @@ public class DailyTransactionsJobConfig {
     @Bean
     public DailyReportWriter dailyReportWriter(JdbcTemplate jdbcTemplate) {
         return new JdbcDailyReportWriter(jdbcTemplate);
+    }
+
+    @Bean
+    public DailyReportPublication dailyReportPublication(JdbcTemplate jdbcTemplate) {
+        return new JdbcDailyReportPublication(jdbcTemplate);
     }
 
     @Bean
@@ -135,10 +143,24 @@ public class DailyTransactionsJobConfig {
     }
 
     @Bean
+    public Step publishDailyTransactions(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
+            DailyReportPublication dailyReportPublication,
+            StepMetricsListener stepMetricsListener
+    ) {
+        return new StepBuilder("publishDailyTransactions", Objects.requireNonNull(jobRepository))
+                .tasklet(new ActionTasklet(dailyReportPublication::publish), Objects.requireNonNull(transactionManager))
+                .listener(Objects.requireNonNull(stepMetricsListener))
+                .build();
+    }
+
+    @Bean
     public Job dailyTransactionsJob(
             JobRepository jobRepository,
             Step checkDailyMigrationNotDone,
             Step processDailyTransactions,
+            Step publishDailyTransactions,
             JobSummaryListener jobSummaryListener,
             MigrationLedgerListener migrationLedgerListener
     ) {
@@ -149,6 +171,7 @@ public class DailyTransactionsJobConfig {
                 .start(Objects.requireNonNull(checkDailyMigrationNotDone))
                 .on(MigrationGuardTasklet.alreadyMigratedExitCode).end()
                 .from(checkDailyMigrationNotDone).on("*").to(Objects.requireNonNull(processDailyTransactions))
+                .next(Objects.requireNonNull(publishDailyTransactions))
                 .end()
                 .build();
     }
