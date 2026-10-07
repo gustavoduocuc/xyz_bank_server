@@ -4,6 +4,7 @@ import com.xyzbank.migration.dailytransactions.domain.AnomalyDetector;
 import com.xyzbank.migration.dailytransactions.domain.ProcessedTransaction;
 import com.xyzbank.migration.dailytransactions.domain.Transaction;
 import com.xyzbank.migration.shared.domain.DomainError;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import com.xyzbank.migration.shared.infrastructure.batch.CsvFieldNormalizer;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.lang.NonNull;
@@ -27,7 +28,8 @@ public class DailyTransactionProcessor implements ItemProcessor<DailyTransaction
                 CsvFieldNormalizer.text(line.id()),
                 CsvFieldNormalizer.text(line.fecha()),
                 amount,
-                CsvFieldNormalizer.text(line.tipo())
+                CsvFieldNormalizer.text(line.tipo()),
+                SourceLine.of(line.sourceLine())
         );
         ProcessedTransaction processed = anomalyDetector.evaluate(transaction);
 
