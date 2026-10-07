@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS account_balances (
     age INT NOT NULL,
     previous_balance DECIMAL(14, 2) NOT NULL,
     interest_rate DECIMAL(8, 4) NOT NULL,
-    final_balance DECIMAL(14, 2) NOT NULL
+    final_balance DECIMAL(14, 2) NOT NULL,
+    source_line INT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS annual_audit_reports (
