@@ -1,6 +1,6 @@
 # XYZ Bank Server
 
-Plataforma BFF de XYZ Bank: tres backends por canal (`bff-web`, `bff-mobile`, `bff-atm`) frente a un `core-service` interno y un `interests-service` extraído (con `config-server` y `eureka-server`), más un job de migración CSV hacia MySQL.
+Plataforma BFF de XYZ Bank: tres backends por canal (`bff-web`, `bff-mobile`, `bff-atm`) frente a un `core-service` interno (Gestión de Cuentas), un `customers-service` (Gestión de Clientes) y un `interests-service` extraídos (con `config-server` y `eureka-server`), más un job de migración CSV hacia MySQL.
 
 **Autenticación y HTTPS están implementadas con configuración de desarrollo.** Cada canal se autentica con una credencial real — cookie de sesión (web), JWT de dispositivo (mobile), o certificado mTLS del terminal más un PIN de tarjeta (ATM) — pero todo el material de confianza es de dev/test: un usuario demo con contraseña fija, un secreto de cliente fijo para `bff-web`, un secreto de firma de sesión fijo, credenciales de servicio por BFF fijas, y una CA de desarrollo autofirmada con sus certificados y la clave de firma de tokens de `auth-server`. Estas últimas no están en el repositorio: cada desarrollador las genera en su máquina con `scripts/generate-dev-tls-certs.sh` (ver [Arranque local](#arranque-local)). Antes de un despliegue real hace falta: usuarios reales en el servidor de autorización, secretos y claves de firma provistos fuera del repo, una CA gestionada que emita certificados reales, y credenciales de servicio rotadas por BFF.
 
@@ -35,6 +35,7 @@ flowchart LR
     ConfigServer[config-server :8888]
     EurekaServer[eureka-server :8761]
     InterestsService[interests-service :8084]
+    CustomersService[customers-service :8085]
   end
 
   CoreService[core-service :8080]
@@ -53,6 +54,7 @@ flowchart LR
   AtmClient -- HTTPS + mTLS --> BffAtm
   BffWeb -- HTTP --> InterestsService
   BffWeb -- HTTP --> CoreService
+  BffWeb -- "HTTP perfil" --> CustomersService
   BffMobile -- HTTP --> CoreService
   BffAtm -- HTTP --> CoreService
   BffAtm -- HTTPS --> CoreServicePin
@@ -67,6 +69,9 @@ flowchart LR
   InterestsService --> EurekaServer
   CoreService --> EurekaServer
   CoreService --> Postgres
+  CustomersService -- "esquema customers" --> Postgres
+  CustomersService --> ConfigServer
+  CustomersService --> EurekaServer
   CoreServicePin -.-> CoreService
   Migration --> MySQL
 ```
@@ -104,12 +109,13 @@ Eso levanta (los puertos marcados «override» solo los publica `docker-compose.
 | Kafka (KRaft) | 9092 (override) | Broker de la saga de intereses |
 | core-service | 8080 (override) | API interna de dominio |
 | interests-service | 8084 (override) | Cálculo/acreditación de intereses anuales |
+| customers-service | 8085 (override) | Gestión de Clientes: perfiles (esquema `customers`) |
 | bff-web | 8081 | Dashboard, historial e intereses |
 | bff-mobile | 8082 | Resumen aplanado de cuenta |
 | bff-atm | 8083 | Saldo y retiro |
 | auth-server | 9000 | Servidor OAuth 2.0 / OIDC (login web y mobile), solo HTTPS |
 
-El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos y sus tres `.DLT` con 3 particiones cada uno. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`, `bff-mobile`, `bff-atm` e `interests-service` esperan a que `auth-server` esté sano.
+El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos y sus tres `.DLT` con 3 particiones cada uno. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. `customers-service` espera a PostgreSQL, `config-server`, `eureka-server` y `auth-server`, y `bff-web` espera a `customers-service`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`, `bff-mobile`, `bff-atm` e `interests-service` esperan a que `auth-server` esté sano.
 
 ### Servidor de autorización (`auth-server`)
 
@@ -131,6 +137,7 @@ El issuer es el valor de `AUTH_PUBLIC_ISSUER` en `.env` (`https://localhost:9000
 | `BFF_ATM_CLIENT_SECRET` | valor de desarrollo | Secreto de `bff-atm` (`auth-server` y `bff-atm`) |
 | `BFF_ATM_SESSION_SECRET` | valor de desarrollo | Firma HS256 de la sesión de terminal; solo `bff-atm` |
 | `INTERESTS_SERVICE_CLIENT_SECRET` | valor de desarrollo | Secreto de `interests-service` (`auth-server` e `interests-service`) |
+| `CUSTOMERS_ADMIN_CLIENT_SECRET` | valor de desarrollo | Secreto del cliente `customers-admin` (`client_credentials`, scopes `customers:read` y `customers:write`) en `auth-server` |
 | `AUTH_DB_USERNAME` / `AUTH_DB_PASSWORD` | `auth_server` / valor de desarrollo | Credenciales de `auth-postgres`, que solo usa `auth-server` |
 | `AUTH_PUBLIC_ISSUER`, `BFF_WEB_PUBLIC_URL`, `BFF_MOBILE_PUBLIC_URL` | `https://localhost:9000`, `:8081`, `:8082` | URLs públicas (issuer y redirect URIs) |
 | `TLS_KEYSTORE_PASSWORD`, `TLS_TRUSTSTORE_PASSWORD`, `AUTH_SIGNING_KEYSTORE_PASSWORD` | `xyzbank-dev` | Contraseñas de los keystores (coinciden con `scripts/generate-dev-tls-certs.sh`) |
@@ -350,6 +357,31 @@ curl -sS --cacert dev/certs/ca.crt \
   https://localhost:8082/accounts/22222222-2222-2222-2222-222222222222/summary
 ```
 
+**customers-service — alta y modificación de clientes** (ver [`docs/adr/004-service-decomposition.md`](docs/adr/004-service-decomposition.md) y [`docs/contracts/customers-service/openapi.yaml`](docs/contracts/customers-service/openapi.yaml))
+
+```bash
+# Token del cliente customers-admin (customers:read customers:write)
+TOKEN=$(curl -sS --cacert dev/certs/ca.crt -u "customers-admin:$(grep ^CUSTOMERS_ADMIN_CLIENT_SECRET= .env | cut -d= -f2)" \
+  -d grant_type=client_credentials https://localhost:9000/oauth2/token | jq -r .access_token)
+
+# Alta idempotente: repetir la misma Idempotency-Key devuelve el mismo cliente (201)
+curl -sS -X POST http://localhost:8085/internal/customers -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: alta-001' \
+  -d '{"fullName":"Jane Doe","email":"jane@xyzbank.cl","phone":"+56911111111","address":"Av. Siempre Viva 1"}'
+
+# Modificación con bloqueo optimista: version es la última leída; una versión vieja responde 409
+curl -sS -X PATCH http://localhost:8085/internal/customers/<id> -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"email":"jane.doe@xyzbank.cl","version":0}'
+
+# Token válido para customers-service pero sin customers:write -> 403
+# (un token cuya audiencia no incluye customers-service, como el de bff-atm, recibe 401)
+READ_TOKEN=$(curl -sS --cacert dev/certs/ca.crt -u "customers-admin:$(grep ^CUSTOMERS_ADMIN_CLIENT_SECRET= .env | cut -d= -f2)" \
+  -d grant_type=client_credentials -d scope=customers:read https://localhost:9000/oauth2/token | jq -r .access_token)
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8085/internal/customers \
+  -H "Authorization: Bearer $READ_TOKEN" -H 'Content-Type: application/json' -H 'Idempotency-Key: alta-002' \
+  -d '{"fullName":"X","email":"x@xyzbank.cl"}'
+```
+
 **auth-server — un cliente no puede pedir scopes de otro canal**
 
 ```bash
@@ -363,6 +395,7 @@ Health y OpenAPI:
 ```bash
 curl -sS http://localhost:8080/actuator/health
 curl -sS http://localhost:8084/actuator/health
+curl -sS http://localhost:8085/actuator/health
 curl -sS http://localhost:8888/actuator/health
 curl -sS http://localhost:8761/actuator/health
 curl -sS --cacert dev/certs/ca.crt https://localhost:9000/actuator/health
@@ -406,6 +439,14 @@ mvn verify
 ```
 
 Los ITs de PostgreSQL/MySQL usan Testcontainers. Sin Docker se omiten (`disabledWithoutDocker`) en lugar de fallar.
+
+Los soportes de Testcontainers declaran `.withReuse(true)`: si habilitas la reutilización en tu máquina, el contenedor de PostgreSQL/MySQL sobrevive entre corridas y `mvn verify` no espera a que arranque de nuevo. Sin esa propiedad el comportamiento es el de siempre (un contenedor por corrida):
+
+```bash
+echo "testcontainers.reuse.enable=true" >> ~/.testcontainers.properties
+```
+
+Un contenedor reutilizado conserva los datos de corridas anteriores; los tests limpian lo que usan. Para descartarlo: `docker rm -f $(docker ps -q --filter label=org.testcontainers=true)`.
 
 Baja el stack (`docker compose down`) antes de correr `mvn verify`: los tests de `core-service` levantan su conector de verificación de PIN en el puerto fijo 8453, el mismo que publica el contenedor `core-service`.
 

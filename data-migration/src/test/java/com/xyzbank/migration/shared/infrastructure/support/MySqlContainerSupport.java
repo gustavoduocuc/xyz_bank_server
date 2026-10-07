@@ -44,7 +44,7 @@ public abstract class MySqlContainerSupport {
 
     public static synchronized MySQLContainer<?> startedContainer() {
         if (mysql == null) {
-            mysql = new MySQLContainer<>("mysql:8.4");
+            mysql = new MySQLContainer<>("mysql:8.4").withReuse(true);
             mysql.start();
         }
         return mysql;

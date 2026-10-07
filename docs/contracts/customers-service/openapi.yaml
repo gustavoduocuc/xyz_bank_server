@@ -1,0 +1,199 @@
+openapi: 3.0.3
+info:
+  title: customers-service — customer management
+  description: >
+    Internal endpoints for customer profiles. customers-service owns customer
+    data (the customers schema of the shared PostgreSQL). Every endpoint
+    requires a bearer access token issued by auth-server whose audience
+    includes customers-service and that carries the scope shown in the
+    operation's description. A web token reads only its own customer; any
+    other identifier answers 404, exactly like an unknown customer.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8085
+security:
+  - BearerAuth: []
+paths:
+  /internal/customers:
+    post:
+      summary: Create a customer
+      description: >
+        Requires the `customers:write` scope. Idempotent through the
+        Idempotency-Key header: repeating a key returns the customer the first
+        request created (same id, 201) and creates nothing else.
+      operationId: createCustomer
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '201':
+          description: The customer created under this Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Missing, expired or invalid token
+        '403':
+          description: The token lacks `customers:write`
+  /internal/customers/{customerId}:
+    get:
+      summary: Get a customer's profile
+      description: >
+        Requires `web:customers:read` (own customer only) or `customers:read`
+        (any customer).
+      operationId: getCustomer
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: The customer's profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Missing, expired or invalid token
+        '403':
+          description: The token lacks a read scope
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update a customer's contact details
+      description: >
+        Requires the `customers:write` scope. Changes only email, phone and
+        address; omitted fields keep their value. `version` must be the one
+        the caller last read: a stale version answers 409 and changes nothing.
+        A successful update returns the next version.
+      operationId: updateCustomerContact
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerContactRequest'
+      responses:
+        '200':
+          description: The updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Missing, expired or invalid token
+        '403':
+          description: The token lacks `customers:write`
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The version is stale; re-read the customer and retry
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Malformed identifier, missing Idempotency-Key, or invalid body
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: No such customer (or another customer, for a web token)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+  schemas:
+    CreateCustomerRequest:
+      type: object
+      required: [fullName, email]
+      properties:
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        address:
+          type: string
+    UpdateCustomerContactRequest:
+      type: object
+      required: [version]
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        address:
+          type: string
+        version:
+          type: integer
+          format: int64
+    CustomerResponse:
+      type: object
+      required: [id, fullName, email, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        version:
+          type: integer
+          format: int64
+    ProblemDetail:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string

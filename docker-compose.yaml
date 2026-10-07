@@ -245,6 +245,43 @@ services:
       retries: 20
       start_period: 40s
 
+  customers-service:
+    build:
+      context: .
+      dockerfile: platform/customers-service/Dockerfile
+    image: xyz-bank/customers-service:${TAG:-latest}
+    container_name: xyz-bank-customers-service
+    restart: unless-stopped
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+    environment:
+      # Shared PostgreSQL; customers-service only uses its own customers schema
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: core_service
+      DB_USERNAME: core_service
+      DB_PASSWORD: ${CORE_DB_PASSWORD:?set CORE_DB_PASSWORD in .env}
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_SERVER_URL: http://eureka-server:8761
+      AUTH_ISSUER: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}
+      AUTH_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      JAVA_TOOL_OPTIONS: *truststore-opts
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8085/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
   auth-server:
     build:
       context: .
@@ -275,6 +312,7 @@ services:
       BFF_MOBILE_CLIENT_SECRET: ${BFF_MOBILE_CLIENT_SECRET:?set BFF_MOBILE_CLIENT_SECRET in .env}
       BFF_ATM_CLIENT_SECRET: ${BFF_ATM_CLIENT_SECRET:?set BFF_ATM_CLIENT_SECRET in .env}
       INTERESTS_SERVICE_CLIENT_SECRET: ${INTERESTS_SERVICE_CLIENT_SECRET:?set INTERESTS_SERVICE_CLIENT_SECRET in .env}
+      CUSTOMERS_ADMIN_CLIENT_SECRET: ${CUSTOMERS_ADMIN_CLIENT_SECRET:?set CUSTOMERS_ADMIN_CLIENT_SECRET in .env}
       BFF_WEB_REDIRECT_URI: ${BFF_WEB_PUBLIC_URL:?set BFF_WEB_PUBLIC_URL in .env}/login/oauth2/code/oidc
       BFF_MOBILE_REDIRECT_URI: ${BFF_MOBILE_PUBLIC_URL:?set BFF_MOBILE_PUBLIC_URL in .env}/login/oauth2/code/oidc
       AUTH_DEMO_PASSWORD: ${AUTH_DEMO_PASSWORD:?set AUTH_DEMO_PASSWORD in .env}
@@ -298,12 +336,15 @@ services:
     depends_on:
       core-service:
         condition: service_healthy
+      customers-service:
+        condition: service_healthy
       interests-service:
         condition: service_healthy
       auth-server:
         condition: service_healthy
     environment:
       CORE_SERVICE_BASE_URL: http://core-service:8080
+      CUSTOMERS_SERVICE_BASE_URL: http://customers-service:8085
       INTERESTS_SERVICE_BASE_URL: http://interests-service:8084
       FEATURE_USE_INTERESTS_SERVICE: ${FEATURE_USE_INTERESTS_SERVICE:-true}
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
