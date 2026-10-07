@@ -3,7 +3,7 @@ package cl.duoc.xyzbank.authserver.clients.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * The deployment-specific parts of the five clients: ids, secrets and redirect URIs. The
+ * The deployment-specific parts of the six clients: ids, secrets and redirect URIs. The
  * channel rules (which channels, which scopes, audiences, lifetimes, HTTPS redirects) live in
  * ChannelClient and ServiceClient; the protocol policy (grants, PKCE, no consent, rotation) in
  * ChannelRegisteredClientMapper.
@@ -14,7 +14,8 @@ public record AuthClientsProperties(
         LoginClient mobile,
         ServiceClientSettings atm,
         ServiceClientSettings interests,
-        ServiceClientSettings customersAdmin) {
+        ServiceClientSettings customersAdmin,
+        ServiceClientSettings accountsAdmin) {
 
     public record LoginClient(String clientId, String clientSecret, String redirectUri) {
     }

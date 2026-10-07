@@ -12,4 +12,9 @@ public interface AccountRepository {
     Optional<Account> findById(Id id);
 
     List<Account> findByCustomerId(Id customerId);
+
+    Optional<Account> findByOpeningIdempotencyKey(String idempotencyKey);
+
+    /** Saves a newly opened account under its opening key; if the key is taken, returns that key's account. */
+    Account saveOpened(Account account, String openingIdempotencyKey);
 }

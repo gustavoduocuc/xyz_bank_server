@@ -50,6 +50,9 @@ auth:
     customers-admin:
       client-id: customers-admin
       client-secret: ${CUSTOMERS_ADMIN_CLIENT_SECRET:customers-admin-dev-secret}
+    accounts-admin:
+      client-id: accounts-admin
+      client-secret: ${ACCOUNTS_ADMIN_CLIENT_SECRET:accounts-admin-dev-secret}
   demo-customer:
     username: demo
     password: ${AUTH_DEMO_PASSWORD:demo-password}

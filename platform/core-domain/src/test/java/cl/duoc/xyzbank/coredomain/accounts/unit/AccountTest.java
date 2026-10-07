@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.coredomain.accounts.unit;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
+import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountStatus;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
@@ -10,9 +11,12 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("The Account")
 class AccountTest {
@@ -31,6 +35,14 @@ class AccountTest {
      * 10. Withdraw rejects an amount whose currency does not match the account's balance currency
      * 11. Credit increases the balance by the credited amount
      * 12. Credit rejects an amount whose currency does not match the account's balance currency
+     * 13. Opens with a zero balance, ACTIVE, version 0 and an optional alias
+     * 14. Updates the alias and its own daily limit, remembering the command key
+     * 15. Rejects a non-positive daily limit or one in another currency
+     * 16. Rejects an update or closure made from a stale version
+     * 17. Closes an account with a zero balance
+     * 18. Rejects closing an account with funds or one already closed
+     * 19. A closed account accepts no withdrawal, credit or update
+     * 20. Uses its own daily limit when set and the default otherwise
      */
 
     @Test
@@ -210,5 +222,120 @@ class AccountTest {
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
         assertEquals(new BigDecimal("500.00"), account.getBalance().getAmount());
+    }
+
+    @Test
+    @DisplayName("opens with a zero balance, ACTIVE, version 0 and an optional alias")
+    void opensWithAZeroBalanceActiveVersion0AndAnOptionalAlias() {
+        Account account = openAccount("Ahorro");
+
+        assertEquals(usd("0.00"), account.getBalance());
+        assertEquals(AccountStatus.ACTIVE, account.getStatus());
+        assertEquals(0, account.getVersion());
+        assertEquals(Optional.of("Ahorro"), account.getAlias());
+        assertEquals(Optional.empty(), account.getDailyWithdrawalLimit());
+    }
+
+    @Test
+    @DisplayName("updates the alias and its own daily limit, remembering the command key")
+    void updatesTheAliasAndItsOwnDailyLimitRememberingTheCommandKey() {
+        Account account = openAccount(null);
+
+        account.updateDetails("Viajes", usd("800.00"), 0, "upd-1");
+
+        assertEquals(Optional.of("Viajes"), account.getAlias());
+        assertEquals(Optional.of(usd("800.00")), account.getDailyWithdrawalLimit());
+        assertTrue(account.isLastCommand("upd-1"));
+        assertFalse(account.isLastCommand("upd-2"));
+    }
+
+    @Test
+    @DisplayName("rejects a non-positive daily limit or one in another currency")
+    void rejectsANonPositiveDailyLimitOrOneInAnotherCurrency() {
+        Account account = openAccount(null);
+
+        DomainException zero = assertThrows(DomainException.class,
+                () -> account.updateDetails(null, usd("0.00"), 0, "upd-1"));
+        DomainException otherCurrency = assertThrows(DomainException.class,
+                () -> account.updateDetails(null, Money.create(new BigDecimal("100.00"), "CLP"), 0, "upd-2"));
+
+        assertEquals(DomainException.Type.VALIDATION, zero.getType());
+        assertEquals(DomainException.Type.VALIDATION, otherCurrency.getType());
+    }
+
+    @Test
+    @DisplayName("rejects an update or closure made from a stale version")
+    void rejectsAnUpdateOrClosureMadeFromAStaleVersion() {
+        Account account = openAccount(null);
+
+        DomainException update = assertThrows(DomainException.class,
+                () -> account.updateDetails("Viajes", null, 3, "upd-1"));
+        DomainException closure = assertThrows(DomainException.class, () -> account.close(3, "close-1"));
+
+        assertEquals(DomainException.Type.CONFLICT, update.getType());
+        assertEquals(DomainException.Type.CONFLICT, closure.getType());
+    }
+
+    @Test
+    @DisplayName("closes an account with a zero balance")
+    void closesAnAccountWithAZeroBalance() {
+        Account account = openAccount(null);
+
+        account.close(0, "close-1");
+
+        assertEquals(AccountStatus.CLOSED, account.getStatus());
+        assertTrue(account.isLastCommand("close-1"));
+    }
+
+    @Test
+    @DisplayName("rejects closing an account with funds or one already closed")
+    void rejectsClosingAnAccountWithFundsOrOneAlreadyClosed() {
+        Account withFunds = openAccount(null);
+        withFunds.credit(usd("10.00"));
+        Account closed = openAccount(null);
+        closed.close(0, "close-1");
+
+        DomainException funds = assertThrows(DomainException.class, () -> withFunds.close(0, "close-2"));
+        DomainException again = assertThrows(DomainException.class, () -> closed.close(0, "close-3"));
+
+        assertEquals(DomainException.Type.CONFLICT, funds.getType());
+        assertEquals(AccountStatus.ACTIVE, withFunds.getStatus());
+        assertEquals(DomainException.Type.CONFLICT, again.getType());
+    }
+
+    @Test
+    @DisplayName("a closed account accepts no withdrawal, credit or update")
+    void aClosedAccountAcceptsNoWithdrawalCreditOrUpdate() {
+        Account account = openAccount(null);
+        account.close(0, "close-1");
+
+        DomainException withdrawal = assertThrows(DomainException.class,
+                () -> account.withdraw(usd("1.00"), LocalDate.of(2025, 1, 1), usd("100.00")));
+        DomainException credit = assertThrows(DomainException.class, () -> account.credit(usd("1.00")));
+        DomainException update = assertThrows(DomainException.class,
+                () -> account.updateDetails("Viajes", null, 0, "upd-1"));
+
+        assertEquals(DomainException.Type.CONFLICT, withdrawal.getType());
+        assertEquals(DomainException.Type.CONFLICT, credit.getType());
+        assertEquals(DomainException.Type.CONFLICT, update.getType());
+        assertEquals(usd("0.00"), account.getBalance());
+    }
+
+    @Test
+    @DisplayName("uses its own daily limit when set and the default otherwise")
+    void usesItsOwnDailyLimitWhenSetAndTheDefaultOtherwise() {
+        Account account = openAccount(null);
+
+        assertEquals(usd("5000.00"), account.effectiveDailyLimit(usd("5000.00")));
+        account.updateDetails(null, usd("800.00"), 0, "upd-1");
+        assertEquals(usd("800.00"), account.effectiveDailyLimit(usd("5000.00")));
+    }
+
+    private static Account openAccount(String alias) {
+        return Account.open(Id.generate(), AccountNumber.create("1234567890"), Id.generate(), "USD", alias);
+    }
+
+    private static Money usd(String amount) {
+        return Money.create(new BigDecimal(amount), "USD");
     }
 }

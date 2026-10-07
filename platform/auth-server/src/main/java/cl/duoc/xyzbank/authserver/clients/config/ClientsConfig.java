@@ -41,7 +41,8 @@ public class ClientsConfig {
         return new ConfiguredServiceClientRepository(List.of(
                 ServiceClient.create(properties.atm().clientId(), Channel.ATM),
                 ServiceClient.create(properties.interests().clientId(), Channel.INTERESTS),
-                ServiceClient.create(properties.customersAdmin().clientId(), Channel.CUSTOMERS_ADMIN)));
+                ServiceClient.create(properties.customersAdmin().clientId(), Channel.CUSTOMERS_ADMIN),
+                ServiceClient.create(properties.accountsAdmin().clientId(), Channel.ACCOUNTS_ADMIN)));
     }
 
     @Bean
@@ -66,7 +67,9 @@ public class ClientsConfig {
                 properties.atm().clientId(), encoder.encode(properties.atm().clientSecret()),
                 properties.interests().clientId(), encoder.encode(properties.interests().clientSecret()),
                 properties.customersAdmin().clientId(),
-                encoder.encode(properties.customersAdmin().clientSecret())));
+                encoder.encode(properties.customersAdmin().clientSecret()),
+                properties.accountsAdmin().clientId(),
+                encoder.encode(properties.accountsAdmin().clientSecret())));
         ChannelClientSeeder seeder = new ChannelClientSeeder(
                 channelClientRepository, serviceClientRepository, mapper, registeredClientRepository);
         return seeder::seed;

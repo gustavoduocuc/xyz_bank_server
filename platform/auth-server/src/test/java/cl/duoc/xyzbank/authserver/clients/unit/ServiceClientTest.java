@@ -21,10 +21,11 @@ class ServiceClientTest {
      * 1. The ATM service client allows exactly the ATM channel's scopes
      * 2. The interests service client allows exactly interests:write
      * 3. The customers-admin client allows exactly customers:read and customers:write
-     * 4. bff-atm's tokens are meant for core-service; interests-service's also for itself;
-     *    customers-admin's for customers-service
-     * 5. Rejects a service client for the web or mobile channel (those log customers in)
-     * 6. Rejects a blank client id
+     * 4. The accounts-admin client allows exactly accounts:write and customers:read
+     * 5. bff-atm's tokens are meant for core-service; interests-service's also for itself;
+     *    customers-admin's for customers-service; accounts-admin's for core-service and customers-service
+     * 6. Rejects a service client for the web or mobile channel (those log customers in)
+     * 7. Rejects a blank client id
      */
 
     @Test
@@ -52,15 +53,25 @@ class ServiceClientTest {
     }
 
     @Test
-    @DisplayName("aims bff-atm's tokens at core-service, interests-service's also at itself and customers-admin's at customers-service")
+    @DisplayName("allows the accounts-admin client exactly accounts:write and customers:read")
+    void allowsTheAccountsAdminClientExactlyAccountsWriteAndCustomersRead() {
+        ServiceClient client = ServiceClient.create("accounts-admin", Channel.ACCOUNTS_ADMIN);
+
+        assertEquals(Set.of("accounts:write", "customers:read"), client.allowedScopes());
+    }
+
+    @Test
+    @DisplayName("aims each service client's tokens at its audiences")
     void aimsServiceTokensAtTheirAudiences() {
         ServiceClient atm = ServiceClient.create("bff-atm", Channel.ATM);
         ServiceClient interests = ServiceClient.create("interests-service", Channel.INTERESTS);
         ServiceClient customersAdmin = ServiceClient.create("customers-admin", Channel.CUSTOMERS_ADMIN);
+        ServiceClient accountsAdmin = ServiceClient.create("accounts-admin", Channel.ACCOUNTS_ADMIN);
 
         assertEquals(Set.of("core-service"), atm.audiences());
         assertEquals(Set.of("core-service", "interests-service"), interests.audiences());
         assertEquals(Set.of("customers-service"), customersAdmin.audiences());
+        assertEquals(Set.of("core-service", "customers-service"), accountsAdmin.audiences());
     }
 
     @ParameterizedTest
