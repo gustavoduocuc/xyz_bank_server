@@ -1,78 +1,85 @@
 package com.xyzbank.migration.monthlyinterests.infrastructure.batch;
 
-import com.xyzbank.migration.monthlyinterests.application.ports.InMemoryAccountBalanceWriter;
-import com.xyzbank.migration.shared.application.ports.InMemoryMigrationExecutionPort;
 import com.xyzbank.migration.shared.infrastructure.support.MySqlContainerSupport;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParametersBuilder;
-import org.springframework.batch.test.JobLauncherTestUtils;
-import org.springframework.batch.test.context.SpringBatchTest;
+import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
-import java.util.Objects;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBatchTest
 @SpringBootTest
 @TestPropertySource(properties = {
-        "spring.batch.job.enabled=false",
-        "spring.main.allow-bean-definition-overriding=true",
-        "migration.data.monthly-interests=file:data/semana_2/intereses.csv"
+        "migration.batch.throttle-limit=2",
+        "migration.data.monthly-interests=classpath:fixtures/monthly-partitioned.csv"
 })
+@DisplayName("The monthly interests job")
 class TheMonthlyInterestsJobIT extends MySqlContainerSupport {
 
     /*
      * Cases:
-     * 1. Applies interests and omits invalid accounts
+     * 1. Applies interests in one worker step per range under a manager step
+     * 2. Keeps the account from the lowest line when a duplicate falls in another partition
      */
 
     @Autowired
-    private JobLauncherTestUtils jobLauncherTestUtils;
+    private JobLauncher jobLauncher;
 
     @Autowired
     @Qualifier("monthlyInterestsJob")
     private Job monthlyInterestsJob;
 
     @Autowired
-    private InMemoryAccountBalanceWriter accountBalanceWriter;
+    private JdbcTemplate jdbcTemplate;
 
-    @Test
-    void appliesInterestsAndOmitsInvalidAccounts() throws Exception {
-        jobLauncherTestUtils.setJob(Objects.requireNonNull(monthlyInterestsJob));
-
-        JobExecution execution = jobLauncherTestUtils.launchJob(
-                new JobParametersBuilder()
-                        .addLong("run.id", System.currentTimeMillis())
-                        .toJobParameters()
-        );
-
-        assertEquals(BatchStatus.COMPLETED, execution.getStatus());
-        assertEquals(6, accountBalanceWriter.written().size());
+    @BeforeEach
+    void setUp() {
+        clearMigrationData(jdbcTemplate);
     }
 
-    @TestConfiguration
-    static class TestWriters {
+    @Test
+    @DisplayName("applies interests in one worker step per range under a manager step")
+    void appliesInterestsInOneWorkerStepPerRangeUnderAManagerStep() throws Exception {
+        JobExecution execution = launch();
 
-        @Bean
-        @Primary
-        InMemoryAccountBalanceWriter accountBalanceWriter() {
-            return new InMemoryAccountBalanceWriter();
-        }
+        assertEquals(BatchStatus.COMPLETED, execution.getStatus());
+        List<String> steps = execution.getStepExecutions().stream().map(StepExecution::getStepName).sorted().toList();
+        assertEquals(List.of(
+                "calculateMonthlyInterestsManager",
+                "calculateMonthlyInterestsWorker:range0",
+                "calculateMonthlyInterestsWorker:range1",
+                "checkMonthlyMigrationNotDone"), steps);
+        assertEquals(new BigDecimal("0.0150"), jdbcTemplate.queryForObject(
+                "SELECT interest_rate FROM account_balances WHERE account_id = '102'", BigDecimal.class));
+    }
 
-        @Bean
-        @Primary
-        InMemoryMigrationExecutionPort migrationExecutionPort() {
-            return new InMemoryMigrationExecutionPort();
-        }
+    @Test
+    @DisplayName("keeps the account from the lowest line when a duplicate falls in another partition")
+    void keepsTheAccountFromTheLowestLineWhenADuplicateFallsInAnotherPartition() throws Exception {
+        launch();
+
+        Map<String, Object> account = jdbcTemplate.queryForMap("SELECT * FROM account_balances WHERE account_id = '137'");
+        assertEquals(new BigDecimal("7000.00"), account.get("previous_balance"));
+        assertEquals(2, account.get("source_line"));
+        assertEquals(3, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM account_balances", Integer.class));
+    }
+
+    private JobExecution launch() throws Exception {
+        return jobLauncher.run(
+                monthlyInterestsJob, new JobParametersBuilder().addLong("run.id", System.nanoTime()).toJobParameters());
     }
 }
