@@ -10,6 +10,10 @@ import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coredomain.transactions.domain.entities.Transaction;
 import cl.duoc.xyzbank.coredomain.transactions.domain.valueobjects.TransactionType;
 import cl.duoc.xyzbank.coreservice.interests.infrastructure.persistence.JpaInterestCreditRepository;
+import cl.duoc.xyzbank.coreservice.postings.application.dto.PostingEntry;
+import cl.duoc.xyzbank.coreservice.postings.application.dto.PostingRequest;
+import cl.duoc.xyzbank.coreservice.postings.application.dto.PostingResponse;
+import cl.duoc.xyzbank.coreservice.postings.application.usecases.ApplyPostingsUseCase;
 import cl.duoc.xyzbank.coreservice.withdrawals.application.dto.WithdrawRequest;
 import cl.duoc.xyzbank.coreservice.withdrawals.application.dto.WithdrawalResponse;
 import cl.duoc.xyzbank.coreservice.withdrawals.application.usecases.WithdrawAccountUseCase;
@@ -53,6 +57,7 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
      * 4. Events for the same account use accountId as the Kafka key
      * 5. A successful interest credit writes InterestCreditApplied and TransactionConfirmed together
      * 6. A failed surrounding transaction rolls back both outbox rows
+     * 7. A transfer posting writes one PAYMENT_DEBIT and one PAYMENT_CREDIT, and its repeat writes none
      */
 
     @Autowired
@@ -72,6 +77,9 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
 
     @Autowired
     private TransactionTemplate transactionTemplate;
+
+    @Autowired
+    private ApplyPostingsUseCase applyPostingsUseCase;
 
     @Test
     @DisplayName("publishes exactly one TransactionConfirmed when a withdrawal succeeds")
@@ -231,6 +239,26 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
         assertEquals(0, countOutboxByEventId(transaction.getId().getValue()));
     }
 
+
+    @Test
+    @DisplayName("writes one PAYMENT_DEBIT and one PAYMENT_CREDIT for a transfer posting, and none when it is repeated")
+    void writesOnePaymentDebitAndOnePaymentCreditForATransferPostingAndNoneWhenItIsRepeated() {
+        String source = aSavedAccount("9180706020").getId().getValue();
+        String destination = aSavedAccount("9180706021").getId().getValue();
+        PostingRequest request = new PostingRequest(UUID.randomUUID().toString(), List.of(
+                new PostingEntry(source, "DEBIT", new BigDecimal("100.00"), "USD"),
+                new PostingEntry(destination, "CREDIT", new BigDecimal("100.00"), "USD")));
+
+        PostingResponse first = applyPostingsUseCase.execute(request);
+        applyPostingsUseCase.execute(request);
+
+        assertEquals(List.of("PAYMENT_DEBIT", "PAYMENT_CREDIT"), first.entries().stream()
+                .map(entry -> jdbcTemplate.queryForObject(
+                        "SELECT movement_type FROM outbox_events WHERE event_id = ?",
+                        String.class, entry.transactionId()))
+                .toList());
+        first.entries().forEach(entry -> assertEquals(1, countOutboxByEventId(entry.transactionId())));
+    }
     private JsonNode awaitTransactionConfirmed(String accountId, String eventId) throws Exception {
         List<ConsumerRecord<String, String>> records = awaitTransactionConfirmedRecords(accountId, List.of(eventId));
         return objectMapper.readTree(records.getFirst().value());

@@ -38,7 +38,8 @@ public final class DomainEndpointScopes {
             new Route(HttpMethod.POST, "/internal/accounts/*/interest-credits", Set.of("interests:write")),
             new Route(HttpMethod.POST, "/internal/accounts", Set.of("accounts:write")),
             new Route(HttpMethod.PATCH, "/internal/accounts/*", Set.of("accounts:write")),
-            new Route(HttpMethod.POST, "/internal/accounts/*/closure", Set.of("accounts:write")));
+            new Route(HttpMethod.POST, "/internal/accounts/*/closure", Set.of("accounts:write")),
+            new Route(HttpMethod.POST, "/internal/postings", Set.of("postings:write")));
 
     private DomainEndpointScopes() {
     }
