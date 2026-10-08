@@ -1,4 +1,12 @@
 spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://localhost:9000
+          jwk-set-uri: http://localhost:9997/oauth2/jwks
+          audiences:
+            - interests-service
   config:
     import: "optional:configserver:"
   flyway:
@@ -21,9 +29,6 @@ interests:
   annual-rate: 0.035
 
 auth:
-  issuer: https://localhost:9000
-  jwk-set-uri: http://localhost:9997/oauth2/jwks
-  audience: interests-service
   channel-clients:
     WEB: bff-web
     MOBILE: bff-mobile

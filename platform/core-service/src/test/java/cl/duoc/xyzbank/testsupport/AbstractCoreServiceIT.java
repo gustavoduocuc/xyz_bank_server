@@ -12,8 +12,8 @@ public abstract class AbstractCoreServiceIT extends AbstractPostgresIT {
 
     @DynamicPropertySource
     static void registerTokenVerification(DynamicPropertyRegistry registry) {
-        registry.add("auth.jwk-set-uri", TestJwksServer::jwkSetUri);
-        registry.add("auth.issuer", () -> TestAccessTokens.ISSUER);
+        registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", TestJwksServer::jwkSetUri);
+        registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> TestAccessTokens.ISSUER);
         registry.add("customers-service.base-url", TestCustomersService::baseUrl);
     }
 }
