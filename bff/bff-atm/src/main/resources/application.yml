@@ -15,14 +15,15 @@ server:
 spring:
   application:
     name: bff-atm
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+  cloud:
+    compatibility-verifier:
+      enabled: false
 
 core-service:
-  base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
+  # PIN verification goes straight to core-service's mutual-TLS connector, not through the gateway
   pin-verification-base-url: ${CORE_SERVICE_PIN_VERIFICATION_BASE_URL:https://localhost:8453}
-  # design.md Decision 2: a connect to a live container takes ms, so 1 s fails fast when it is
-  # gone; reads keep 3 s, which also narrows the chance of retrying a still-committing withdrawal
-  connect-timeout-ms: 1000
-  read-timeout-ms: 3000
 
 auth-server:
   token-uri: ${AUTH_TOKEN_URI:http://localhost:9000/oauth2/token}
@@ -103,6 +104,19 @@ resilience4j:
 # local stack), so circuit-breaker state never reaches the customer-facing port. The customer-
 # facing port keeps answering /actuator/health through PublicHealthController
 # (add-resilience4j-to-bffs design.md Decision 8)
+# Registers in Eureka when EUREKA_CLIENT_ENABLED is true (the Compose stack); off for local runs and tests
+eureka:
+  client:
+    enabled: ${EUREKA_CLIENT_ENABLED:false}
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761}/eureka/
+    register-with-eureka: true
+    fetch-registry: false
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
 management:
   server:
     port: ${MANAGEMENT_SERVER_PORT:9083}
