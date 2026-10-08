@@ -130,7 +130,7 @@ public class EnforcementFilter extends OncePerRequestFilter {
 
     // Service channels act for no customer, so there is no ownership to check
     private boolean actsForNoCustomer(Channel channel) {
-        return channel == Channel.INTERESTS || channel == Channel.ACCOUNTS_ADMIN;
+        return channel == Channel.INTERESTS || channel == Channel.ACCOUNTS_ADMIN || channel == Channel.PAYMENTS;
     }
 
     private Optional<String> actingCustomer(HttpServletRequest request, VerifiedAccessToken token) {

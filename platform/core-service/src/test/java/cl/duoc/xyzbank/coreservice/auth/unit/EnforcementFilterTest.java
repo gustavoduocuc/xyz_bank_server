@@ -62,7 +62,7 @@ class EnforcementFilterTest {
     private static final Map<String, Channel> CHANNELS_BY_CLIENT = Map.of(
             "bff-web", Channel.WEB, "bff-mobile", Channel.MOBILE,
             "bff-atm", Channel.ATM, "interests-service", Channel.INTERESTS,
-            "accounts-admin", Channel.ACCOUNTS_ADMIN);
+            "accounts-admin", Channel.ACCOUNTS_ADMIN, "payments-service", Channel.PAYMENTS);
     private static final String OWNING_CUSTOMER_ID = "customer-1";
     private static final String ATM_SESSION_OF_OWNER = "atm-session-1";
 
@@ -101,7 +101,7 @@ class EnforcementFilterTest {
     /**
      * A token of the given channel acting for the owning customer: web and mobile tokens carry
      * the customer as subject; the ATM service token reaches the customer through the ATM
-     * session core-service recorded at PIN verification; the interests and accounts-admin tokens act
+     * session core-service recorded at PIN verification; the interests, accounts-admin and payments tokens act
      * for no customer. A channel not listed sends no token.
      */
     private static void authorizeAsOwner(MockHttpServletRequest request, Channel channel) {
@@ -115,6 +115,8 @@ class EnforcementFilterTest {
             case INTERESTS -> request.addHeader("Authorization", "Bearer " + TestAccessTokens.interests());
             case ACCOUNTS_ADMIN -> request.addHeader("Authorization", "Bearer "
                     + TestAccessTokens.token("accounts-admin", Channel.ACCOUNTS_ADMIN).subject("accounts-admin").sign());
+            case PAYMENTS -> request.addHeader("Authorization", "Bearer "
+                    + TestAccessTokens.token("payments-service", Channel.PAYMENTS).subject("payments-service").sign());
             default -> {
             }
         }
@@ -239,7 +241,7 @@ class EnforcementFilterTest {
         assertFalse(chainCalled.get());
     }
 
-    // The ten domain-endpoint table rows from channel-auth's spec, one case per row,
+    // The eleven domain-endpoint table rows from channel-auth's spec, one case per row,
     // each proving the exact channel set allowed to call it and no others.
     static Stream<Arguments> domainEndpointRows() {
         return Stream.of(
@@ -259,7 +261,8 @@ class EnforcementFilterTest {
                         "POST", "/internal/accounts/account-1/interest-credits", EnumSet.of(Channel.INTERESTS)),
                 Arguments.of("POST", "/internal/accounts", EnumSet.of(Channel.ACCOUNTS_ADMIN)),
                 Arguments.of("PATCH", "/internal/accounts/account-1", EnumSet.of(Channel.ACCOUNTS_ADMIN)),
-                Arguments.of("POST", "/internal/accounts/account-1/closure", EnumSet.of(Channel.ACCOUNTS_ADMIN)));
+                Arguments.of("POST", "/internal/accounts/account-1/closure", EnumSet.of(Channel.ACCOUNTS_ADMIN)),
+                Arguments.of("POST", "/internal/postings", EnumSet.of(Channel.PAYMENTS)));
     }
 
     @ParameterizedTest(name = "{0} {1} allows only {2}")

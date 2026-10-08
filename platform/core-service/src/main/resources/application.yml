@@ -90,6 +90,7 @@ auth:
     ATM: bff-atm
     INTERESTS: interests-service
     ACCOUNTS_ADMIN: accounts-admin
+    PAYMENTS: payments-service
 
 # Opening an account asks customers-service whether the customer exists. The lookup is one
 # indexed read: 1 s to connect and 2 s to read bound it; the breaker turns an outage into 503
