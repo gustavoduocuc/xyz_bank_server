@@ -16,7 +16,6 @@ import cl.duoc.xyzbank.coreservice.postings.application.ports.PostingRepository;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,68 +47,80 @@ public class ApplyPostingsUseCase {
 
     public PostingResponse execute(PostingRequest request) {
         validate(request);
-
-        List<Transaction> recorded = request.entries().stream()
-                .map(entry -> transactionRepository.findByIdempotencyKey(keyOf(request.paymentId(), entry)))
-                .flatMap(Optional::stream)
-                .toList();
+        List<Transaction> recorded = recordedTransactionsOf(request);
         if (!recorded.isEmpty()) {
             return toResponse(request.paymentId(), recorded, transaction -> findAccountOrThrow(transaction.getAccountId()));
         }
+        return applyEntries(request);
+    }
 
+    private List<Transaction> recordedTransactionsOf(PostingRequest request) {
+        return request.entries().stream()
+                .map(entry -> transactionRepository.findByIdempotencyKey(keyOf(request.paymentId(), entry)))
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    private PostingResponse applyEntries(PostingRequest request) {
         LocalDate today = LocalDate.now(clock);
-        List<Account> accounts = new ArrayList<>();
-        List<Transaction> transactions = new ArrayList<>();
-        for (PostingEntry entry : request.entries()) {
-            Account account = findAccountOrThrow(Id.create(entry.accountId()));
-            Money amount = Money.create(entry.amount(), entry.currency());
-            TransactionType type = TransactionType.valueOf(entry.direction());
-            if (type == TransactionType.DEBIT) {
-                account.debit(amount);
-            } else {
-                account.credit(amount);
-            }
-            accounts.add(account);
-            transactions.add(Transaction.create(Id.generate(), account.getId(), type, amount, today,
-                    "Payment " + request.paymentId(), Optional.of(keyOf(request.paymentId(), entry))));
-        }
-
+        List<AppliedEntry> applied = request.entries().stream()
+                .map(entry -> applyEntry(request.paymentId(), entry, today))
+                .toList();
+        List<Account> accounts = applied.stream().map(AppliedEntry::account).toList();
+        List<Transaction> transactions = applied.stream().map(AppliedEntry::transaction).toList();
         postingRepository.persistPosting(accounts, transactions);
-
         Map<Id, Account> accountsById = accounts.stream().collect(Collectors.toMap(Account::getId, account -> account));
         return toResponse(request.paymentId(), transactions, transaction -> accountsById.get(transaction.getAccountId()));
     }
 
-    private void validate(PostingRequest request) {
+    private AppliedEntry applyEntry(String paymentId, PostingEntry entry, LocalDate today) {
+        Account account = findAccountOrThrow(Id.create(entry.accountId()));
+        Money amount = Money.create(entry.amount(), entry.currency());
+        TransactionType type = TransactionType.valueOf(entry.direction());
+        if (type == TransactionType.DEBIT) {
+            account.debit(amount);
+        } else {
+            account.credit(amount);
+        }
+        Transaction transaction = Transaction.create(Id.generate(), account.getId(), type, amount, today,
+                "Payment " + paymentId, Optional.of(keyOf(paymentId, entry)));
+        return new AppliedEntry(account, transaction);
+    }
+
+    private static void validate(PostingRequest request) {
         requireUuid(request.paymentId());
         List<PostingEntry> entries = request.entries() == null ? List.of() : request.entries();
         if (entries.isEmpty() || entries.size() > 2) {
             throw DomainException.validation("A posting has one or two entries");
         }
-        for (PostingEntry entry : entries) {
-            if (entry.accountId() == null || entry.accountId().isBlank()) {
-                throw DomainException.validation("Each entry needs an accountId");
-            }
-            if (!"DEBIT".equals(entry.direction()) && !"CREDIT".equals(entry.direction())) {
-                throw DomainException.validation("An entry's direction is DEBIT or CREDIT");
-            }
-            if (entry.amount() == null || entry.amount().signum() <= 0) {
-                throw DomainException.validation("Amount must be positive");
-            }
-        }
+        entries.forEach(ApplyPostingsUseCase::requireValidEntry);
         if (entries.size() == 2) {
-            PostingEntry first = entries.get(0);
-            PostingEntry second = entries.get(1);
-            if (first.direction().equals(second.direction()) || first.accountId().equals(second.accountId())) {
-                throw DomainException.validation("Two entries must be one DEBIT and one CREDIT on different accounts");
-            }
+            requireOppositeEntries(entries.get(0), entries.get(1));
+        }
+    }
+
+    private static void requireValidEntry(PostingEntry entry) {
+        if (entry.accountId() == null || entry.accountId().isBlank()) {
+            throw DomainException.validation("Each entry needs an accountId");
+        }
+        if (!"DEBIT".equals(entry.direction()) && !"CREDIT".equals(entry.direction())) {
+            throw DomainException.validation("An entry's direction is DEBIT or CREDIT");
+        }
+        if (entry.amount() == null || entry.amount().signum() <= 0) {
+            throw DomainException.validation("Amount must be positive");
+        }
+    }
+
+    private static void requireOppositeEntries(PostingEntry first, PostingEntry second) {
+        if (first.direction().equals(second.direction()) || first.accountId().equals(second.accountId())) {
+            throw DomainException.validation("Two entries must be one DEBIT and one CREDIT on different accounts");
         }
     }
 
     private static void requireUuid(String paymentId) {
         try {
             UUID.fromString(paymentId == null ? "" : paymentId);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException malformed) {
             throw DomainException.validation("paymentId must be a UUID");
         }
     }
@@ -134,5 +145,8 @@ public class ApplyPostingsUseCase {
                         transaction.getAmount().getCurrency(),
                         accountOf.apply(transaction).getBalance().getAmount()))
                 .toList());
+    }
+
+    private record AppliedEntry(Account account, Transaction transaction) {
     }
 }

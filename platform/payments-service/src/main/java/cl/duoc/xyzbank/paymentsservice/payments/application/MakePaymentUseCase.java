@@ -29,21 +29,24 @@ public class MakePaymentUseCase {
     }
 
     public PaymentResponse execute(String idempotencyKey, PaymentRequest request) {
-        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > MAX_KEY_LENGTH) {
-            throw PaymentException.validation("Idempotency-Key header is required, up to 64 characters");
-        }
+        requireValidKey(idempotencyKey);
         Payment payment = paymentRepository.findByIdempotencyKey(idempotencyKey)
                 .orElseGet(() -> paymentRepository.create(newPayment(idempotencyKey, request)));
         if (payment.status() != PaymentStatus.PENDING) {
             return PaymentResponse.from(payment);
         }
-
         PostingOutcome outcome = postingGateway.post(payment);
-
         Instant now = Instant.now(clock);
         Payment settled = outcome == PostingOutcome.APPLIED ? payment.complete(now) : payment.reject(now);
         paymentRepository.update(settled);
         return PaymentResponse.from(settled);
+    }
+
+    private static void requireValidKey(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > MAX_KEY_LENGTH) {
+            throw PaymentException.validation(
+                    "Idempotency-Key header is required, up to " + MAX_KEY_LENGTH + " characters");
+        }
     }
 
     private Payment newPayment(String idempotencyKey, PaymentRequest request) {
@@ -53,8 +56,8 @@ public class MakePaymentUseCase {
         return Payment.create(
                 UUID.randomUUID(),
                 request.type(),
-                Uuids.parse("sourceAccountId", request.sourceAccountId()),
-                Uuids.parse("destinationAccountId", request.destinationAccountId()),
+                RequestIds.optional("sourceAccountId", request.sourceAccountId()).orElse(null),
+                RequestIds.optional("destinationAccountId", request.destinationAccountId()).orElse(null),
                 request.amount(),
                 request.currency(),
                 idempotencyKey,

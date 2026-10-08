@@ -44,6 +44,13 @@ public final class Money {
         return new Money(result, this.currency);
     }
 
+    public boolean isLessThan(Money other) {
+        if (!this.currency.equals(other.currency)) {
+            throw DomainException.validation("Cannot compare money with different currencies");
+        }
+        return this.amount.compareTo(other.amount) < 0;
+    }
+
     public BigDecimal getAmount() {
         return amount;
     }

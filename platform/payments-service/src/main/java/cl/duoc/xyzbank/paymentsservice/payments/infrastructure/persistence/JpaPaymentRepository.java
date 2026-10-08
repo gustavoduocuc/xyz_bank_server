@@ -48,8 +48,8 @@ public class JpaPaymentRepository implements PaymentRepository {
     }
 
     private static PaymentJpaEntity toEntity(Payment payment) {
-        return new PaymentJpaEntity(payment.id(), payment.type().name(), payment.sourceAccountId(),
-                payment.destinationAccountId(), payment.amount(), payment.currency(), payment.status().name(),
+        return new PaymentJpaEntity(payment.id(), payment.type().name(), payment.sourceAccountId().orElse(null),
+                payment.destinationAccountId().orElse(null), payment.amount(), payment.currency(), payment.status().name(),
                 payment.idempotencyKey(), payment.createdAt(), payment.updatedAt());
     }
 

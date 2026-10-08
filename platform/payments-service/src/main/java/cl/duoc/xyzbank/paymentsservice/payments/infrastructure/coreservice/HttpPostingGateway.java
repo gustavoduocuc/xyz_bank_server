@@ -14,8 +14,9 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * A 4xx is core-service's refusal: it is returned, so neither the retry nor the breaker counts it.
@@ -56,20 +57,23 @@ public class HttpPostingGateway implements PostingGateway {
     }
 
     private static List<Entry> entriesOf(Payment payment) {
-        List<Entry> entries = new ArrayList<>();
-        if (payment.sourceAccountId() != null) {
-            entries.add(new Entry(payment.sourceAccountId().toString(), "DEBIT", payment.amount(), payment.currency()));
-        }
-        if (payment.destinationAccountId() != null) {
-            entries.add(new Entry(
-                    payment.destinationAccountId().toString(), "CREDIT", payment.amount(), payment.currency()));
-        }
-        return entries;
+        Stream<Entry> debit = payment.sourceAccountId().map(id -> Entry.of(id, Direction.DEBIT, payment)).stream();
+        Stream<Entry> credit = payment.destinationAccountId().map(id -> Entry.of(id, Direction.CREDIT, payment)).stream();
+        return Stream.concat(debit, credit).toList();
+    }
+
+    enum Direction {
+        DEBIT,
+        CREDIT
     }
 
     record PostingBody(String paymentId, List<Entry> entries) {
     }
 
-    record Entry(String accountId, String direction, BigDecimal amount, String currency) {
+    record Entry(String accountId, Direction direction, BigDecimal amount, String currency) {
+
+        static Entry of(UUID accountId, Direction direction, Payment payment) {
+            return new Entry(accountId.toString(), direction, payment.amount(), payment.currency());
+        }
     }
 }

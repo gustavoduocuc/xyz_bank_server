@@ -15,7 +15,8 @@ public class ProblemDetailHandler {
 
     private static final Map<PaymentException.Type, HttpStatus> STATUS_BY_TYPE = Map.of(
             PaymentException.Type.NOT_FOUND, HttpStatus.NOT_FOUND,
-            PaymentException.Type.VALIDATION, HttpStatus.BAD_REQUEST);
+            PaymentException.Type.VALIDATION, HttpStatus.BAD_REQUEST,
+            PaymentException.Type.CONFLICT, HttpStatus.CONFLICT);
 
     @ExceptionHandler(PaymentException.class)
     public ProblemDetail handlePaymentException(PaymentException exception) {

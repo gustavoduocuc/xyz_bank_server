@@ -62,7 +62,8 @@ class HttpPostingGatewayIT extends AbstractPostgresIT {
                         {"paymentId": "%s", "entries": [
                           {"accountId": "%s", "direction": "DEBIT", "amount": 100.00, "currency": "USD"},
                           {"accountId": "%s", "direction": "CREDIT", "amount": 100.00, "currency": "USD"}]}
-                        """.formatted(transfer.id(), transfer.sourceAccountId(), transfer.destinationAccountId()))));
+                        """.formatted(transfer.id(), transfer.sourceAccountId().orElseThrow(),
+                                transfer.destinationAccountId().orElseThrow()))));
     }
 
     @ParameterizedTest

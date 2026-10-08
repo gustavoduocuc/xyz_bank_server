@@ -3,8 +3,6 @@ package cl.duoc.xyzbank.paymentsservice.payments.application;
 import cl.duoc.xyzbank.paymentsservice.payments.domain.PaymentException;
 import cl.duoc.xyzbank.paymentsservice.payments.domain.PaymentRepository;
 
-import java.util.Objects;
-
 public class GetPaymentUseCase {
 
     private final PaymentRepository paymentRepository;
@@ -14,7 +12,7 @@ public class GetPaymentUseCase {
     }
 
     public PaymentResponse execute(String paymentId) {
-        return paymentRepository.findById(Objects.requireNonNull(Uuids.parse("paymentId", paymentId)))
+        return paymentRepository.findById(RequestIds.required("paymentId", paymentId))
                 .map(PaymentResponse::from)
                 .orElseThrow(() -> PaymentException.notFound(paymentId));
     }
