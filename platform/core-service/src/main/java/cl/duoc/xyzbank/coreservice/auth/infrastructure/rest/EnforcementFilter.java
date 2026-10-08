@@ -101,8 +101,7 @@ public class EnforcementFilter extends OncePerRequestFilter {
             reject(response, HttpStatus.FORBIDDEN, "The token's scope does not permit this operation");
             return;
         }
-        // Service channels act for no customer, so there is no ownership to check
-        if (token.get().channel() == Channel.INTERESTS || token.get().channel() == Channel.ACCOUNTS_ADMIN) {
+        if (actsForNoCustomer(token.get().channel())) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -127,6 +126,11 @@ public class EnforcementFilter extends OncePerRequestFilter {
         } catch (InvalidAccessTokenException exception) {
             return Optional.empty();
         }
+    }
+
+    // Service channels act for no customer, so there is no ownership to check
+    private boolean actsForNoCustomer(Channel channel) {
+        return channel == Channel.INTERESTS || channel == Channel.ACCOUNTS_ADMIN;
     }
 
     private Optional<String> actingCustomer(HttpServletRequest request, VerifiedAccessToken token) {

@@ -79,7 +79,6 @@ public final class Account {
         return create(id, accountNumber, customerId, balance, version, dailyWithdrawalUsage, AccountLifecycle.active());
     }
 
-    /** A new, empty, ACTIVE account. */
     public static Account open(Id id, AccountNumber accountNumber, Id customerId, String currency, String alias) {
         Money zero = Money.create(BigDecimal.ZERO.setScale(2), currency);
         return create(id, accountNumber, customerId, zero, 0L, DailyWithdrawalUsage.none(currency),
@@ -134,13 +133,12 @@ public final class Account {
         return Optional.ofNullable(lastCommandIdempotencyKey);
     }
 
-    /** True when this key is the one of the last update or closure applied: a retry of it. */
-    public boolean isLastCommand(String idempotencyKey) {
+    public boolean isRetryOfLastCommand(String idempotencyKey) {
         return idempotencyKey != null && idempotencyKey.equals(lastCommandIdempotencyKey);
     }
 
     public Money effectiveDailyLimit(Money defaultLimit) {
-        return dailyWithdrawalLimit == null ? defaultLimit : dailyWithdrawalLimit;
+        return getDailyWithdrawalLimit().orElse(defaultLimit);
     }
 
     /** Changes the alias and/or the account's own daily limit; a null argument keeps the current value. */
@@ -148,12 +146,7 @@ public final class Account {
         requireActive();
         requireVersion(expectedVersion);
         if (newDailyLimit != null) {
-            if (!newDailyLimit.getCurrency().equals(balance.getCurrency())) {
-                throw DomainException.validation("The daily limit must be in " + balance.getCurrency());
-            }
-            if (newDailyLimit.getAmount().signum() <= 0) {
-                throw DomainException.validation("The daily limit must be positive");
-            }
+            requireValidDailyLimit(newDailyLimit);
             this.dailyWithdrawalLimit = newDailyLimit;
         }
         if (newAlias != null) {
@@ -184,9 +177,26 @@ public final class Account {
         this.balance = this.balance.add(amount);
     }
 
+    public Map<String, Object> toPrimitives() {
+        return Map.of(
+                "id", id.getValue(),
+                "accountNumber", accountNumber.getValue(),
+                "customerId", customerId.getValue(),
+                "balance", balance.toPrimitives());
+    }
+
     private void requireActive() {
         if (status == AccountStatus.CLOSED) {
             throw DomainException.conflict("Account " + id.getValue() + " is CLOSED");
+        }
+    }
+
+    private void requireValidDailyLimit(Money dailyLimit) {
+        if (!dailyLimit.getCurrency().equals(balance.getCurrency())) {
+            throw DomainException.validation("The daily limit must be in " + balance.getCurrency());
+        }
+        if (dailyLimit.getAmount().signum() <= 0) {
+            throw DomainException.validation("The daily limit must be positive");
         }
     }
 
@@ -195,13 +205,5 @@ public final class Account {
             throw DomainException.conflict(
                     "Account " + id.getValue() + " is at version " + version + ", not " + expectedVersion);
         }
-    }
-
-    public Map<String, Object> toPrimitives() {
-        return Map.of(
-                "id", id.getValue(),
-                "accountNumber", accountNumber.getValue(),
-                "customerId", customerId.getValue(),
-                "balance", balance.toPrimitives());
     }
 }

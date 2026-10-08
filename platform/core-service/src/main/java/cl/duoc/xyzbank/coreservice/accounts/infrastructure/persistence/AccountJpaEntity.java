@@ -85,22 +85,6 @@ public class AccountJpaEntity {
         this.lastCommandIdempotencyKey = lastCommandIdempotencyKey;
     }
 
-    public String getStatus() {
-        return status;
-    }
-
-    public String getAlias() {
-        return alias;
-    }
-
-    public BigDecimal getDailyWithdrawalLimit() {
-        return dailyWithdrawalLimit;
-    }
-
-    public String getLastCommandIdempotencyKey() {
-        return lastCommandIdempotencyKey;
-    }
-
     public UUID getId() {
         return id;
     }
@@ -131,5 +115,21 @@ public class AccountJpaEntity {
 
     public LocalDate getDailyWithdrawnDate() {
         return dailyWithdrawnDate;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public String getAlias() {
+        return alias;
+    }
+
+    public BigDecimal getDailyWithdrawalLimit() {
+        return dailyWithdrawalLimit;
+    }
+
+    public String getLastCommandIdempotencyKey() {
+        return lastCommandIdempotencyKey;
     }
 }

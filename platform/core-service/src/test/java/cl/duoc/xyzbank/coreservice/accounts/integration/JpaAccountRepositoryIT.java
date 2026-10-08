@@ -139,7 +139,7 @@ class JpaAccountRepositoryIT extends AbstractCoreServiceIT {
         assertEquals(AccountStatus.CLOSED, found.getStatus());
         assertEquals(Optional.of("Viajes"), found.getAlias());
         assertEquals(Optional.of(Money.create(new BigDecimal("800.00"), "USD")), found.getDailyWithdrawalLimit());
-        assertTrue(found.isLastCommand("close-1"));
+        assertTrue(found.isRetryOfLastCommand("close-1"));
         assertEquals(2, found.getVersion());
         assertEquals(id, accountRepository.findByOpeningIdempotencyKey("open-" + id.getValue()).orElseThrow().getId());
     }
