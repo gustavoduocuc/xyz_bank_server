@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * A client that obtains tokens for itself (client_credentials), not for a logged-in
- * customer: bff-atm, interests-service, customers-admin and accounts-admin. Its scopes are its channel's scope set.
+ * customer: bff-atm, interests-service, customers-admin, accounts-admin, payments-admin and payments-service. Its scopes are its channel's scope set.
  */
 public final class ServiceClient {
 
@@ -20,7 +20,10 @@ public final class ServiceClient {
             Channel.INTERESTS, Set.of("core-service", "interests-service"),
             Channel.CUSTOMERS_ADMIN, Set.of("customers-service"),
             // accounts-admin's token is forwarded by core-service to customers-service on opening
-            Channel.ACCOUNTS_ADMIN, Set.of("core-service", "customers-service"));
+            Channel.ACCOUNTS_ADMIN, Set.of("core-service", "customers-service"),
+            Channel.PAYMENTS_ADMIN, Set.of("payments-service"),
+            // payments-service's own token, used only to post a payment's entries to core-service
+            Channel.PAYMENTS, Set.of("core-service"));
     private static final Set<Channel> SERVICE_CHANNELS = AUDIENCES.keySet();
 
     private final String clientId;
@@ -37,7 +40,7 @@ public final class ServiceClient {
         }
         if (!SERVICE_CHANNELS.contains(channel)) {
             throw DomainException.validation(
-                    "Only the ATM, interests, customers-admin and accounts-admin channels use service clients, not " + channel);
+                    "Only service channels (ATM, interests and the admin and payments channels) use service clients, not " + channel);
         }
         return new ServiceClient(clientId, channel);
     }

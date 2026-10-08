@@ -43,6 +43,9 @@ class AccountTest {
      * 18. Rejects closing an account with funds or one already closed
      * 19. A closed account accepts no withdrawal, credit or update
      * 20. Uses its own daily limit when set and the default otherwise
+     * 21. Debit lowers the balance with no daily limit
+     * 22. Debit rejects insufficient funds or another currency
+     * 23. Debit rejects a CLOSED account
      */
 
     @Test
@@ -329,6 +332,43 @@ class AccountTest {
         assertEquals(usd("5000.00"), account.effectiveDailyLimit(usd("5000.00")));
         account.updateDetails(null, usd("800.00"), 0, "upd-1");
         assertEquals(usd("800.00"), account.effectiveDailyLimit(usd("5000.00")));
+    }
+
+    @Test
+    @DisplayName("debit lowers the balance with no daily limit")
+    void debitLowersTheBalanceWithNoDailyLimit() {
+        Account account = openAccount(null);
+        account.credit(usd("20000.00"));
+
+        account.debit(usd("15000.00"));
+
+        assertEquals(usd("5000.00"), account.getBalance());
+    }
+
+    @Test
+    @DisplayName("debit rejects insufficient funds or another currency")
+    void debitRejectsInsufficientFundsOrAnotherCurrency() {
+        Account account = openAccount(null);
+        account.credit(usd("50.00"));
+
+        DomainException insufficient = assertThrows(DomainException.class, () -> account.debit(usd("100.00")));
+        DomainException currency = assertThrows(DomainException.class,
+                () -> account.debit(Money.create(new BigDecimal("10.00"), "CLP")));
+
+        assertEquals(DomainException.Type.VALIDATION, insufficient.getType());
+        assertEquals(DomainException.Type.VALIDATION, currency.getType());
+        assertEquals(usd("50.00"), account.getBalance());
+    }
+
+    @Test
+    @DisplayName("debit rejects a CLOSED account")
+    void debitRejectsAClosedAccount() {
+        Account account = openAccount(null);
+        account.close(0, "close-1");
+
+        DomainException exception = assertThrows(DomainException.class, () -> account.debit(usd("1.00")));
+
+        assertEquals(DomainException.Type.CONFLICT, exception.getType());
     }
 
     private static Account openAccount(String alias) {

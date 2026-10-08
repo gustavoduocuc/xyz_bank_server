@@ -60,7 +60,9 @@ class ServiceClientE2ETest extends AbstractAuthServerIT {
             "bff-atm, bff-atm-dev-secret",
             "interests-service, interests-service-dev-secret",
             "customers-admin, customers-admin-dev-secret",
-            "accounts-admin, accounts-admin-dev-secret"})
+            "accounts-admin, accounts-admin-dev-secret",
+            "payments-admin, payments-admin-dev-secret",
+            "payments-service, payments-service-dev-secret"})
     @DisplayName("issues an access token, and no refresh or ID token, to a service client with its secret")
     void issuesAnAccessTokenToAServiceClientWithItsSecret(String clientId, String secret) {
         Response response = clientCredentials(clientId, secret, null);
@@ -131,6 +133,8 @@ class ServiceClientE2ETest extends AbstractAuthServerIT {
             case "bff-atm" -> Set.of("atm:read-balance", "atm:withdraw");
             case "customers-admin" -> Set.of("customers:read", "customers:write");
             case "accounts-admin" -> Set.of("accounts:write", "customers:read");
+            case "payments-admin" -> Set.of("payments:write", "payments:read");
+            case "payments-service" -> Set.of("postings:write");
             default -> Set.of("interests:write");
         };
     }
