@@ -67,7 +67,6 @@ services:
       context: .
       dockerfile: data-migration/Dockerfile
     image: xyz-bank/data-migration:${TAG:-latest}
-    container_name: xyz-bank-data-migration
     restart: "on-failure:3"
     networks: [internal]
     depends_on:
@@ -86,7 +85,6 @@ services:
       context: .
       dockerfile: platform/config-server/Dockerfile
     image: xyz-bank/config-server:${TAG:-latest}
-    container_name: xyz-bank-config-server
     restart: unless-stopped
     networks: [internal]
     healthcheck:
@@ -101,7 +99,6 @@ services:
       context: .
       dockerfile: platform/eureka-server/Dockerfile
     image: xyz-bank/eureka-server:${TAG:-latest}
-    container_name: xyz-bank-eureka-server
     restart: unless-stopped
     networks: [internal]
     depends_on:
@@ -119,7 +116,6 @@ services:
       context: .
       dockerfile: platform/core-service/Dockerfile
     image: xyz-bank/core-service:${TAG:-latest}
-    container_name: xyz-bank-core-service
     restart: unless-stopped
     networks: [internal]
     depends_on:
@@ -127,6 +123,8 @@ services:
         condition: service_healthy
       data-migration:
         condition: service_completed_successfully
+      config-server:
+        condition: service_healthy
       eureka-server:
         condition: service_healthy
       kafka:
@@ -134,6 +132,7 @@ services:
       kafka-init:
         condition: service_completed_successfully
     environment:
+      CONFIG_SERVER_URL: http://config-server:8888
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: core_service
@@ -214,7 +213,6 @@ services:
       context: .
       dockerfile: platform/interests-service/Dockerfile
     image: xyz-bank/interests-service:${TAG:-latest}
-    container_name: xyz-bank-interests-service
     restart: unless-stopped
     networks: [internal]
     depends_on:
@@ -226,11 +224,19 @@ services:
         condition: service_healthy
       auth-server:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
       kafka:
         condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
     environment:
+      # Shared PostgreSQL; interests-service only uses its own interests schema
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: core_service
+      DB_USERNAME: core_service
+      DB_PASSWORD: ${CORE_DB_PASSWORD:?set CORE_DB_PASSWORD in .env}
       CONFIG_SERVER_URL: http://config-server:8888
       EUREKA_SERVER_URL: http://eureka-server:8761
       AUTH_ISSUER: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}
@@ -252,7 +258,6 @@ services:
       context: .
       dockerfile: platform/customers-service/Dockerfile
     image: xyz-bank/customers-service:${TAG:-latest}
-    container_name: xyz-bank-customers-service
     restart: unless-stopped
     networks: [internal]
     depends_on:
@@ -288,7 +293,6 @@ services:
       context: .
       dockerfile: platform/payments-service/Dockerfile
     image: xyz-bank/payments-service:${TAG:-latest}
-    container_name: xyz-bank-payments-service
     restart: unless-stopped
     networks: [internal]
     depends_on:
@@ -324,12 +328,34 @@ services:
       retries: 20
       start_period: 40s
 
+  api-gateway:
+    # Internal entry point of the BFFs to the platform services: no published port
+    build:
+      context: .
+      dockerfile: platform/api-gateway/Dockerfile
+    image: xyz-bank/api-gateway:${TAG:-latest}
+    restart: unless-stopped
+    networks: [internal]
+    depends_on:
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_SERVER_URL: http://eureka-server:8761
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8090/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
   auth-server:
     build:
       context: .
       dockerfile: platform/auth-server/Dockerfile
     image: xyz-bank/auth-server:${TAG:-latest}
-    container_name: xyz-bank-auth-server
     restart: unless-stopped
     networks: [public, internal]
     ports:
@@ -373,12 +399,17 @@ services:
       context: .
       dockerfile: bff/bff-web/Dockerfile
     image: xyz-bank/bff-web:${TAG:-latest}
-    container_name: xyz-bank-bff-web
     restart: unless-stopped
     networks: [public, internal]
     ports:
       - "8081:8081"
     depends_on:
+      api-gateway:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
       core-service:
         condition: service_healthy
       customers-service:
@@ -388,9 +419,10 @@ services:
       auth-server:
         condition: service_healthy
     environment:
-      CORE_SERVICE_BASE_URL: http://core-service:8080
-      CUSTOMERS_SERVICE_BASE_URL: http://customers-service:8085
-      INTERESTS_SERVICE_BASE_URL: http://interests-service:8084
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_SERVER_URL: http://eureka-server:8761
+      PLATFORM_GATEWAY_URL: http://api-gateway:8090
       FEATURE_USE_INTERESTS_SERVICE: ${FEATURE_USE_INTERESTS_SERVICE:-true}
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
       TLS_KEYSTORE_PASSWORD: ${TLS_KEYSTORE_PASSWORD:?set TLS_KEYSTORE_PASSWORD in .env}
@@ -418,18 +450,26 @@ services:
       context: .
       dockerfile: bff/bff-mobile/Dockerfile
     image: xyz-bank/bff-mobile:${TAG:-latest}
-    container_name: xyz-bank-bff-mobile
     restart: unless-stopped
     networks: [public, internal]
     ports:
       - "8082:8082"
     depends_on:
+      api-gateway:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
       core-service:
         condition: service_healthy
       auth-server:
         condition: service_healthy
     environment:
-      CORE_SERVICE_BASE_URL: http://core-service:8080
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_SERVER_URL: http://eureka-server:8761
+      PLATFORM_GATEWAY_URL: http://api-gateway:8090
       TLS_KEYSTORE_PATH: file:/certs/keystore.p12
       TLS_KEYSTORE_PASSWORD: ${TLS_KEYSTORE_PASSWORD:?set TLS_KEYSTORE_PASSWORD in .env}
       # OIDC against auth-server as a confidential client; same public/internal URL
@@ -455,18 +495,27 @@ services:
       context: .
       dockerfile: bff/bff-atm/Dockerfile
     image: xyz-bank/bff-atm:${TAG:-latest}
-    container_name: xyz-bank-bff-atm
     restart: unless-stopped
     networks: [public, internal]
     ports:
       - "8083:8083"
     depends_on:
+      api-gateway:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
       core-service:
         condition: service_healthy
       auth-server:
         condition: service_healthy
     environment:
-      CORE_SERVICE_BASE_URL: http://core-service:8080
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_SERVER_URL: http://eureka-server:8761
+      PLATFORM_GATEWAY_URL: http://api-gateway:8090
+      # PIN verification stays direct: mutual TLS to core-service's own connector
       CORE_SERVICE_PIN_VERIFICATION_BASE_URL: https://core-service:8453
       AUTH_TOKEN_URI: https://auth-server:9000/oauth2/token
       BFF_ATM_CLIENT_ID: bff-atm

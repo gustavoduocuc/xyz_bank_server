@@ -22,10 +22,13 @@ services:
     ports:
       - "8761:8761"
 
-  core-service:
+  # Dev tools reach the platform services through the gateway, on loopback only. core-service and
+  # payments-service publish no host ports of their own: replicas (--scale) cannot share them
+  api-gateway:
     ports:
-      - "8080:8080"
-      - "8453:8453"
+      - "127.0.0.1:8090:8090"
+
+  core-service:
     volumes:
       - ./dev/certs/core-service/keystore.p12:/certs/keystore.p12:ro
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
@@ -43,8 +46,6 @@ services:
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
   payments-service:
-    ports:
-      - "8086:8086"
     volumes:
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
