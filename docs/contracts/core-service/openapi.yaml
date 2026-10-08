@@ -76,6 +76,99 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+  /internal/accounts:
+    post:
+      summary: Open an account for an existing customer
+      description: >
+        Domain endpoint. Requires the `accounts:write` scope (accounts-admin
+        channel). core-service asks customers-service whether the customer
+        exists, forwarding the caller's token: an unknown customer answers 422;
+        customers-service unreachable, slow or behind an open circuit answers
+        503 and nothing is opened. Repeating an Idempotency-Key returns the
+        account the first request opened (201, same id).
+      operationId: openAccount
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenAccountRequest'
+      responses:
+        '201':
+          description: The account opened under this Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/accounts/{accountId}:
+    patch:
+      summary: Change an account's alias and its own daily withdrawal limit
+      description: >
+        Domain endpoint. Requires the `accounts:write` scope. `version` must be
+        the one the caller last read; a stale version, or a CLOSED account,
+        answers 409. Repeating the Idempotency-Key of the last change applied
+        returns the account as it is.
+      operationId: updateAccount
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAccountRequest'
+      responses:
+        '200':
+          description: The updated account, with the next version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /internal/accounts/{accountId}/closure:
+    post:
+      summary: Close an account with a zero balance
+      description: >
+        Domain endpoint. Requires the `accounts:write` scope. Moves the account
+        to CLOSED only when its balance is zero; a balance, an account already
+        CLOSED or a stale version answers 409. A CLOSED account rejects
+        withdrawals and interest credits with 409. Repeating the closure's
+        Idempotency-Key returns the closed account.
+      operationId: closeAccount
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseAccountRequest'
+      responses:
+        '200':
+          description: The closed account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
   /internal/accounts/{accountId}/balance:
     get:
       summary: Get an account's current balance
@@ -316,6 +409,13 @@ components:
       required: true
       schema:
         type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 64
     AtmSession:
       name: X-Atm-Session
       in: header
@@ -340,14 +440,85 @@ components:
             $ref: '#/components/schemas/ProblemDetail'
     Conflict:
       description: >
-        The request conflicts with the current state: either the same
-        Idempotency-Key was reused with different parameters, or the
-        account was updated concurrently by another request.
+        The request conflicts with the current state: the same
+        Idempotency-Key was reused with different parameters, the account
+        was updated concurrently or the caller's version is stale, the
+        account is CLOSED (no withdrawal, interest credit or change), or it
+        cannot be closed because its balance is not zero.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ServiceUnavailable:
+      description: customers-service could not confirm the customer; nothing was created
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
   schemas:
+    OpenAccountRequest:
+      type: object
+      required: [customerId, currency]
+      properties:
+        customerId:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        alias:
+          type: string
+          maxLength: 60
+    UpdateAccountRequest:
+      type: object
+      required: [version]
+      properties:
+        alias:
+          type: string
+          maxLength: 60
+        dailyWithdrawalLimit:
+          type: number
+          format: decimal
+          description: Positive, in the account's currency; omitted keeps the current limit
+        version:
+          type: integer
+          format: int64
+    CloseAccountRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          format: int64
+    AccountResponse:
+      type: object
+      required: [id, accountNumber, customerId, balance, currency, status, version]
+      properties:
+        id:
+          type: string
+        accountNumber:
+          type: string
+        customerId:
+          type: string
+        balance:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, CLOSED]
+        alias:
+          type: string
+          nullable: true
+        dailyWithdrawalLimit:
+          type: number
+          format: decimal
+          nullable: true
+          description: The account's own limit; null means the configured default applies
+        version:
+          type: integer
+          format: int64
     AccountSummaryResponse:
       type: object
       required: [id, accountNumber, balance, currency]
