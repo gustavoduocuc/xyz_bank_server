@@ -1,0 +1,47 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Configuración centralizada de api-gateway
+# ══════════════════════════════════════════════════════════════════════════════
+
+# One route per platform service: /<service-id>/** goes to a registered instance of that service
+# with the prefix removed. Authorization, X-Correlation-Id and Idempotency-Key pass through
+# unchanged. Timeouts are in milliseconds and match the BFFs' read timeouts for each service.
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: core-service
+          uri: lb://core-service
+          predicates:
+            - Path=/core-service/**
+          filters:
+            - StripPrefix=1
+          metadata:
+            connect-timeout: 1000
+            response-timeout: 3000
+        - id: customers-service
+          uri: lb://customers-service
+          predicates:
+            - Path=/customers-service/**
+          filters:
+            - StripPrefix=1
+          metadata:
+            connect-timeout: 1000
+            response-timeout: 2000
+        - id: payments-service
+          uri: lb://payments-service
+          predicates:
+            - Path=/payments-service/**
+          filters:
+            - StripPrefix=1
+          metadata:
+            connect-timeout: 1000
+            response-timeout: 5000
+        - id: interests-service
+          uri: lb://interests-service
+          predicates:
+            - Path=/interests-service/**
+          filters:
+            - StripPrefix=1
+          metadata:
+            connect-timeout: 1000
+            response-timeout: 3000
