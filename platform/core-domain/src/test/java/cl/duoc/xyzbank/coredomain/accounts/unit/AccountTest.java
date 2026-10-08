@@ -245,8 +245,8 @@ class AccountTest {
 
         assertEquals(Optional.of("Viajes"), account.getAlias());
         assertEquals(Optional.of(usd("800.00")), account.getDailyWithdrawalLimit());
-        assertTrue(account.isLastCommand("upd-1"));
-        assertFalse(account.isLastCommand("upd-2"));
+        assertTrue(account.isRetryOfLastCommand("upd-1"));
+        assertFalse(account.isRetryOfLastCommand("upd-2"));
     }
 
     @Test
@@ -284,7 +284,7 @@ class AccountTest {
         account.close(0, "close-1");
 
         assertEquals(AccountStatus.CLOSED, account.getStatus());
-        assertTrue(account.isLastCommand("close-1"));
+        assertTrue(account.isRetryOfLastCommand("close-1"));
     }
 
     @Test

@@ -18,14 +18,14 @@ public class UpdateAccountUseCase {
     public AccountResponse execute(String accountId, String idempotencyKey, UpdateAccountRequest request) {
         AccountCommands.requireIdempotencyKey(idempotencyKey);
         long version = AccountCommands.requireVersion(request.version());
-        Account account = AccountCommands.existing(accountRepository, accountId);
-        if (account.isLastCommand(idempotencyKey)) {
+        Account account = AccountCommands.findExistingAccount(accountRepository, accountId);
+        if (account.isRetryOfLastCommand(idempotencyKey)) {
             return AccountResponse.from(account);
         }
         Money dailyLimit = request.dailyWithdrawalLimit() == null
                 ? null
                 : Money.create(request.dailyWithdrawalLimit(), account.getBalance().getCurrency());
         account.updateDetails(request.alias(), dailyLimit, version, idempotencyKey);
-        return AccountResponse.from(AccountCommands.saved(accountRepository, account));
+        return AccountResponse.from(AccountCommands.saveAndReload(accountRepository, account));
     }
 }

@@ -23,13 +23,13 @@ final class AccountCommands {
         return version;
     }
 
-    static Account existing(AccountRepository accounts, String accountId) {
+    static Account findExistingAccount(AccountRepository accounts, String accountId) {
         return accounts.findById(Id.create(accountId))
                 .orElseThrow(() -> DomainException.notFound("Account " + accountId + " not found"));
     }
 
     /** Re-reads after saving, so the response carries the version persistence assigned. */
-    static Account saved(AccountRepository accounts, Account account) {
+    static Account saveAndReload(AccountRepository accounts, Account account) {
         accounts.save(account);
         return accounts.findById(account.getId()).orElseThrow();
     }

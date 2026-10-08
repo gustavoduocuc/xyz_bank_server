@@ -38,15 +38,23 @@ public class OpenAccountUseCase {
 
     private AccountResponse open(String idempotencyKey, OpenAccountRequest request) {
         Id customerId = Id.create(request.customerId());
-        if (request.currency() == null || !CURRENCY.matcher(request.currency()).matches()) {
-            throw DomainException.validation("currency must be a three-letter code");
-        }
-        if (!customerDirectory.exists(customerId.getValue())) {
-            throw DomainException.validation("Customer " + customerId.getValue() + " does not exist");
-        }
+        requireCurrencyCode(request.currency());
+        requireKnownCustomer(customerId);
         Account account = Account.open(
                 Id.generate(), newAccountNumber(), customerId, request.currency(), request.alias());
         return AccountResponse.from(accountRepository.saveOpened(account, idempotencyKey));
+    }
+
+    private void requireCurrencyCode(String currency) {
+        if (currency == null || !CURRENCY.matcher(currency).matches()) {
+            throw DomainException.validation("currency must be a three-letter code");
+        }
+    }
+
+    private void requireKnownCustomer(Id customerId) {
+        if (!customerDirectory.exists(customerId.getValue())) {
+            throw DomainException.validation("Customer " + customerId.getValue() + " does not exist");
+        }
     }
 
     private static AccountNumber newAccountNumber() {

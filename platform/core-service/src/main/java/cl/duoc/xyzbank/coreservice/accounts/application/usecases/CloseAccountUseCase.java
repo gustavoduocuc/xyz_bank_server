@@ -17,11 +17,11 @@ public class CloseAccountUseCase {
     public AccountResponse execute(String accountId, String idempotencyKey, CloseAccountRequest request) {
         AccountCommands.requireIdempotencyKey(idempotencyKey);
         long version = AccountCommands.requireVersion(request.version());
-        Account account = AccountCommands.existing(accountRepository, accountId);
-        if (account.isLastCommand(idempotencyKey)) {
+        Account account = AccountCommands.findExistingAccount(accountRepository, accountId);
+        if (account.isRetryOfLastCommand(idempotencyKey)) {
             return AccountResponse.from(account);
         }
         account.close(version, idempotencyKey);
-        return AccountResponse.from(AccountCommands.saved(accountRepository, account));
+        return AccountResponse.from(AccountCommands.saveAndReload(accountRepository, account));
     }
 }

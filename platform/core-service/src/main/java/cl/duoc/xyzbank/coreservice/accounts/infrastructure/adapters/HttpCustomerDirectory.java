@@ -22,7 +22,7 @@ public class HttpCustomerDirectory implements CustomerDirectory {
     }
 
     @Override
-    @CircuitBreaker(name = "customersService", fallbackMethod = "unavailable")
+    @CircuitBreaker(name = "customersService", fallbackMethod = "throwUnavailable")
     public boolean exists(String customerId) {
         try {
             customersServiceClient.get()
@@ -35,7 +35,7 @@ public class HttpCustomerDirectory implements CustomerDirectory {
         }
     }
 
-    private boolean unavailable(String customerId, Exception cause) {
+    private boolean throwUnavailable(String customerId, Exception cause) {
         throw new CustomerDirectoryUnavailableException("customers-service could not confirm customer " + customerId, cause);
     }
 }
