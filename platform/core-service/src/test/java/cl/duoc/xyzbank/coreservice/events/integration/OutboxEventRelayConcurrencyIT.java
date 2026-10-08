@@ -112,7 +112,7 @@ class OutboxEventRelayConcurrencyIT extends AbstractCoreServiceIT {
     private OutboxEventRelay newRelay() {
         return new OutboxEventRelay(
                 jdbcTemplate, sender, objectMapper, transactionManager,
-                "interests.credit-results", "transactions.confirmed");
+                "interests.credit-results", "transactions.confirmed", "security.alerts");
     }
 
     private List<String> insertPendingEvents(int count) {

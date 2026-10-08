@@ -150,6 +150,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       FEATURE_INTEREST_CREDIT_VIA_KAFKA: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:-true}
       FEATURE_TRANSACTION_CONFIRMED_EVENTS: ${FEATURE_TRANSACTION_CONFIRMED_EVENTS:-true}
+      FEATURE_SECURITY_ALERTS: ${FEATURE_SECURITY_ALERTS:-true}
     healthcheck:
       test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
       interval: 10s
@@ -198,7 +199,7 @@ services:
         set -euo pipefail
         kafka_topics=/opt/kafka/bin/kafka-topics.sh
         partitions=3
-        for topic in interests.calculated interests.credit-results transactions.confirmed; do
+        for topic in interests.calculated interests.credit-results transactions.confirmed security.alerts; do
           for name in "$$topic" "$$topic.DLT"; do
             $$kafka_topics --bootstrap-server kafka:9092 --create --if-not-exists --topic "$$name" --partitions $$partitions --replication-factor 1
             current=$$($$kafka_topics --bootstrap-server kafka:9092 --describe --topic "$$name" | grep -o 'PartitionCount: *[0-9]*' | grep -o '[0-9]*$$')
@@ -261,6 +262,10 @@ services:
     restart: unless-stopped
     networks: [internal]
     depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       config-server:
@@ -277,6 +282,8 @@ services:
       DB_USERNAME: core_service
       DB_PASSWORD: ${CORE_DB_PASSWORD:?set CORE_DB_PASSWORD in .env}
       CONFIG_SERVER_URL: http://config-server:8888
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FEATURE_NOTIFICATIONS_FEED: ${FEATURE_NOTIFICATIONS_FEED:-true}
       EUREKA_CLIENT_ENABLED: "true"
       EUREKA_SERVER_URL: http://eureka-server:8761
       AUTH_ISSUER: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}
@@ -361,9 +368,15 @@ services:
     ports:
       - "9000:9000"
     depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       auth-postgres:
         condition: service_healthy
     environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FEATURE_SECURITY_ALERTS: ${FEATURE_SECURITY_ALERTS:-true}
       AUTH_DB_URL: jdbc:postgresql://auth-postgres:5432/auth_server
       AUTH_DB_USERNAME: ${AUTH_DB_USERNAME:?set AUTH_DB_USERNAME in .env}
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}

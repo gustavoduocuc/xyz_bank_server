@@ -95,6 +95,7 @@ class TransactionConfirmedKafkaIT extends AbstractKafkaPostgresIT {
         assertEquals("TransactionConfirmed", event.get("eventType").asText());
         assertEquals(response.transactionId(), event.get("eventId").asText());
         assertEquals(accountId, event.get("accountId").asText());
+        assertEquals(account.getCustomerId().getValue(), event.get("customerId").asText());
         assertEquals("WITHDRAWAL", event.get("type").asText());
         assertEquals(0, new BigDecimal("100.00").compareTo(new BigDecimal(event.get("amount").asText())));
         assertEquals("USD", event.get("currency").asText());

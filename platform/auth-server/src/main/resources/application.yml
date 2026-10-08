@@ -24,6 +24,20 @@ spring:
     password: ${AUTH_DB_PASSWORD:auth_server}
   flyway:
     enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # A broker outage must not stall a refresh request: the alert is best effort
+      properties:
+        max.block.ms: 2000
+
+app:
+  events:
+    security-alerts:
+      enabled: ${FEATURE_SECURITY_ALERTS:false}
+      topic: security.alerts
 
 auth:
   issuer: ${AUTH_ISSUER:https://localhost:9000}
