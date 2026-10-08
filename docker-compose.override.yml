@@ -42,6 +42,12 @@ services:
     volumes:
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
+  payments-service:
+    ports:
+      - "8086:8086"
+    volumes:
+      - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
+
   auth-server:
     volumes:
       - ./dev/certs/auth-server/keystore.p12:/certs/keystore.p12:ro

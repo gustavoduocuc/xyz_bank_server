@@ -1,0 +1,243 @@
+openapi: 3.0.3
+info:
+  title: payments-service — payment processing
+  description: >
+    Internal endpoints for transfers, deposits and bill payments. payments-service
+    owns payment records (the payments schema of the shared PostgreSQL) and asks
+    core-service, which owns the balances, to apply each payment's entries exactly
+    once. Every endpoint requires a bearer access token issued by auth-server whose
+    audience includes payments-service and that carries the scope shown in the
+    operation's description. Every POST requires an Idempotency-Key: repeating a
+    key returns the payment recorded for it (same id) and never moves money twice;
+    while that payment is still PENDING the repeat asks core-service again.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8086
+security:
+  - BearerAuth: []
+paths:
+  /internal/transfers:
+    post:
+      summary: Transfer between two accounts
+      description: >
+        Requires the `payments:write` scope. Debits the source and credits the
+        destination atomically in core-service.
+      operationId: makeTransfer
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Payment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/deposits:
+    post:
+      summary: Deposit into an account
+      description: Requires the `payments:write` scope. Credits the destination account.
+      operationId: makeDeposit
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Payment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/bill-payments:
+    post:
+      summary: Pay a bill from an account
+      description: Requires the `payments:write` scope. Debits the source account.
+      operationId: makeBillPayment
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillPaymentRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Payment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/payments/{paymentId}:
+    get:
+      summary: Get a payment
+      description: Requires the `payments:read` scope.
+      operationId: getPayment
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: No payment has that id
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        RS256 access token issued by auth-server (aud payments-service), such as
+        the payments-admin client's. A missing or invalid token gets 401; a token
+        without the operation's scope gets 403.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 64
+  responses:
+    Payment:
+      description: >
+        The payment: COMPLETED when core-service applied it, REJECTED when
+        core-service refused it (insufficient funds, CLOSED or unknown account,
+        currency mismatch). A repeated key returns the recorded payment.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PaymentResponse'
+    BadRequest:
+      description: >
+        Missing Idempotency-Key, non-positive amount, malformed currency or id,
+        or a transfer to its own source account; nothing is recorded
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ServiceUnavailable:
+      description: >
+        core-service stayed unavailable after the retries, or its circuit is
+        open. The payment stays PENDING; repeating the request with the same
+        Idempotency-Key completes it.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+  schemas:
+    TransferRequest:
+      type: object
+      required: [sourceAccountId, destinationAccountId, amount, currency]
+      properties:
+        sourceAccountId:
+          type: string
+          format: uuid
+        destinationAccountId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+    DepositRequest:
+      type: object
+      required: [destinationAccountId, amount, currency]
+      properties:
+        destinationAccountId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+    BillPaymentRequest:
+      type: object
+      required: [sourceAccountId, amount, currency]
+      properties:
+        sourceAccountId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+    PaymentResponse:
+      type: object
+      required: [id, type, amount, currency, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [TRANSFER, DEPOSIT, BILL_PAYMENT]
+        sourceAccountId:
+          type: string
+          format: uuid
+          nullable: true
+        destinationAccountId:
+          type: string
+          format: uuid
+          nullable: true
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, REJECTED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProblemDetail:
+      type: object
+      description: RFC 7807 problem details
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri

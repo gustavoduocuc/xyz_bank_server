@@ -36,6 +36,7 @@ flowchart LR
     EurekaServer[eureka-server :8761]
     InterestsService[interests-service :8084]
     CustomersService[customers-service :8085]
+    PaymentsService[payments-service :8086]
   end
 
   CoreService[core-service :8080]
@@ -72,6 +73,10 @@ flowchart LR
   CustomersService -- "esquema customers" --> Postgres
   CustomersService --> ConfigServer
   CustomersService --> EurekaServer
+  PaymentsService -- "HTTP postings (Eureka)" --> CoreService
+  PaymentsService -- "esquema payments" --> Postgres
+  PaymentsService --> ConfigServer
+  PaymentsService --> EurekaServer
   CoreServicePin -.-> CoreService
   Migration --> MySQL
 ```
@@ -110,6 +115,7 @@ Eso levanta (los puertos marcados «override» solo los publica `docker-compose.
 | core-service | 8080 (override) | API interna de dominio |
 | interests-service | 8084 (override) | Cálculo/acreditación de intereses anuales |
 | customers-service | 8085 (override) | Gestión de Clientes: perfiles (esquema `customers`) |
+| payments-service | 8086 (override) | Procesamiento de Pagos: transferencias, depósitos y pagos de cuentas (esquema `payments`) |
 | bff-web | 8081 | Dashboard, historial e intereses |
 | bff-mobile | 8082 | Resumen aplanado de cuenta |
 | bff-atm | 8083 | Saldo y retiro |
@@ -138,6 +144,8 @@ El issuer es el valor de `AUTH_PUBLIC_ISSUER` en `.env` (`https://localhost:9000
 | `BFF_ATM_SESSION_SECRET` | valor de desarrollo | Firma HS256 de la sesión de terminal; solo `bff-atm` |
 | `INTERESTS_SERVICE_CLIENT_SECRET` | valor de desarrollo | Secreto de `interests-service` (`auth-server` e `interests-service`) |
 | `ACCOUNTS_ADMIN_CLIENT_SECRET` | valor de desarrollo | Secreto del cliente `accounts-admin` (`client_credentials`, scopes `accounts:write` y `customers:read`) en `auth-server` |
+| `PAYMENTS_ADMIN_CLIENT_SECRET` | valor de desarrollo | Secreto del cliente `payments-admin` (`client_credentials`, scopes `payments:write` y `payments:read`) en `auth-server` |
+| `PAYMENTS_SERVICE_CLIENT_SECRET` | valor de desarrollo | Secreto del cliente `payments-service` (`client_credentials`, scope `postings:write`, audiencia `core-service`) en `auth-server` y en `payments-service` |
 | `CUSTOMERS_ADMIN_CLIENT_SECRET` | valor de desarrollo | Secreto del cliente `customers-admin` (`client_credentials`, scopes `customers:read` y `customers:write`) en `auth-server` |
 | `AUTH_DB_USERNAME` / `AUTH_DB_PASSWORD` | `auth_server` / valor de desarrollo | Credenciales de `auth-postgres`, que solo usa `auth-server` |
 | `AUTH_PUBLIC_ISSUER`, `BFF_WEB_PUBLIC_URL`, `BFF_MOBILE_PUBLIC_URL` | `https://localhost:9000`, `:8081`, `:8082` | URLs públicas (issuer y redirect URIs) |
@@ -405,6 +413,31 @@ curl -sS -X POST http://localhost:8080/internal/accounts/<id>/closure -H "Author
   -H 'Content-Type: application/json' -H 'Idempotency-Key: cierre-001' -d '{"version":1}'
 ```
 
+**payments-service — transferencias, depósitos y pagos de cuentas** (ver [`docs/contracts/payments-service/openapi.yaml`](docs/contracts/payments-service/openapi.yaml); payments-service aplica cada pago en core-service con `POST /internal/postings`, por Eureka y con su propio token `postings:write`)
+
+```bash
+PAY_TOKEN=$(curl -sS --cacert dev/certs/ca.crt -u "payments-admin:$(grep ^PAYMENTS_ADMIN_CLIENT_SECRET= .env | cut -d= -f2)" \
+  -d grant_type=client_credentials https://localhost:9000/oauth2/token | jq -r .access_token)
+
+# Depósito a una cuenta: 201 COMPLETED
+curl -sS -X POST http://localhost:8086/internal/deposits -H "Authorization: Bearer $PAY_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: deposito-001' \
+  -d '{"destinationAccountId":"<cuenta>","amount":200.00,"currency":"USD"}'
+
+# Transferencia: repetir la misma Idempotency-Key devuelve el mismo pago y no mueve saldo dos veces
+curl -sS -X POST http://localhost:8086/internal/transfers -H "Authorization: Bearer $PAY_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: transferencia-001' \
+  -d '{"sourceAccountId":"<origen>","destinationAccountId":"<destino>","amount":50.00,"currency":"USD"}'
+
+# Fondos insuficientes o cuenta CLOSED: 201 con status REJECTED. core-service caído: 503 y el pago queda
+# PENDING; repetir la misma Idempotency-Key cuando vuelva lo completa
+curl -sS -X POST http://localhost:8086/internal/bill-payments -H "Authorization: Bearer $PAY_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: pago-001' \
+  -d '{"sourceAccountId":"<origen>","amount":999999.00,"currency":"USD"}'
+
+curl -sS http://localhost:8086/internal/payments/<id> -H "Authorization: Bearer $PAY_TOKEN"
+```
+
 **auth-server — un cliente no puede pedir scopes de otro canal**
 
 ```bash
@@ -419,6 +452,7 @@ Health y OpenAPI:
 curl -sS http://localhost:8080/actuator/health
 curl -sS http://localhost:8084/actuator/health
 curl -sS http://localhost:8085/actuator/health
+curl -sS http://localhost:8086/actuator/health
 curl -sS http://localhost:8888/actuator/health
 curl -sS http://localhost:8761/actuator/health
 curl -sS --cacert dev/certs/ca.crt https://localhost:9000/actuator/health
