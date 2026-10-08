@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: core-service
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
   cloud:
     compatibility-verifier:
       enabled: false
@@ -91,13 +93,6 @@ auth:
     INTERESTS: interests-service
     ACCOUNTS_ADMIN: accounts-admin
     PAYMENTS: payments-service
-
-# Opening an account asks customers-service whether the customer exists. The lookup is one
-# indexed read: 1 s to connect and 2 s to read bound it; the breaker turns an outage into 503
-customers-service:
-  base-url: ${CUSTOMERS_SERVICE_BASE_URL:http://localhost:8085}
-  connect-timeout-ms: 1000
-  read-timeout-ms: 2000
 
 resilience4j:
   circuitbreaker:

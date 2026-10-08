@@ -1,0 +1,11 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Configuración centralizada de bff-mobile
+# ══════════════════════════════════════════════════════════════════════════════
+
+# core-service is reached through api-gateway. A connect to a live container takes ms, so 1 s
+# fails fast when it is gone; reads are indexed lookups, and 2 s keeps the worst case with
+# retries (3 x 2 s + backoff) under ~7 s
+core-service:
+  base-url: ${PLATFORM_GATEWAY_URL:http://localhost:8090}/core-service
+  connect-timeout-ms: 1000
+  read-timeout-ms: 2000
