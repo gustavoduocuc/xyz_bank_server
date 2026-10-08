@@ -20,6 +20,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/internal/customers/*/notifications")
+                        .hasAnyAuthority("SCOPE_web:customers:read", "SCOPE_customers:read")
                         .requestMatchers(HttpMethod.GET, "/internal/customers/*")
                         .hasAnyAuthority("SCOPE_web:customers:read", "SCOPE_customers:read")
                         .requestMatchers(HttpMethod.POST, "/internal/customers").hasAuthority("SCOPE_customers:write")
