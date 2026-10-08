@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -43,6 +44,9 @@ class OutboxEventRelayFailureIT extends AbstractCoreServiceIT {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     private final RecordingKafkaTemplate sender = new RecordingKafkaTemplate();
     private OutboxEventRelay relay;
 
@@ -50,7 +54,7 @@ class OutboxEventRelayFailureIT extends AbstractCoreServiceIT {
     void isolateFromOtherTests() {
         jdbcTemplate.update("UPDATE outbox_events SET published = TRUE");
         relay = new OutboxEventRelay(
-                jdbcTemplate, sender, objectMapper, "interests.credit-results", "transactions.confirmed");
+                jdbcTemplate, sender, objectMapper, transactionManager, "interests.credit-results", "transactions.confirmed");
     }
 
     @Test

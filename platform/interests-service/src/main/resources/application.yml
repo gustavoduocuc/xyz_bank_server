@@ -9,6 +9,15 @@ spring:
   cloud:
     compatibility-verifier:
       enabled: false
+  # One shared PostgreSQL; interests-service reads and writes only the interests schema
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:core_service}
+    username: ${DB_USERNAME:core_service}
+    password: ${DB_PASSWORD:core_service}
+  flyway:
+    enabled: true
+    schemas: interests
+    default-schema: interests
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     listener:

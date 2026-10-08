@@ -1,6 +1,9 @@
 spring:
   config:
     import: "optional:configserver:"
+  flyway:
+    schemas: interests
+    default-schema: interests
   cloud:
     compatibility-verifier:
       enabled: false
