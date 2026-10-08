@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,8 +39,8 @@ class PaymentTest {
                 new BigDecimal("100.00"), "USD", "t-1", NOW);
 
         assertEquals(PaymentStatus.PENDING, payment.status());
-        assertEquals(source, payment.sourceAccountId());
-        assertEquals(destination, payment.destinationAccountId());
+        assertEquals(Optional.of(source), payment.sourceAccountId());
+        assertEquals(Optional.of(destination), payment.destinationAccountId());
         assertEquals("t-1", payment.idempotencyKey());
         assertEquals(NOW, payment.createdAt());
         assertEquals(NOW, payment.updatedAt());
@@ -86,8 +87,9 @@ class PaymentTest {
         assertEquals(PaymentStatus.COMPLETED, completed.status());
         assertEquals(LATER, completed.updatedAt());
         assertEquals(PaymentStatus.REJECTED, rejected.status());
-        assertThrows(IllegalStateException.class, () -> completed.reject(LATER));
-        assertThrows(IllegalStateException.class, () -> rejected.complete(LATER));
+        PaymentException settledAgain = assertThrows(PaymentException.class, () -> completed.reject(LATER));
+        assertEquals(PaymentException.Type.CONFLICT, settledAgain.type());
+        assertThrows(PaymentException.class, () -> rejected.complete(LATER));
     }
 
     private static Payment create(PaymentType type, UUID source, UUID destination) {

@@ -3,6 +3,7 @@ package cl.duoc.xyzbank.paymentsservice.payments.domain;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -108,7 +109,7 @@ public final class Payment {
 
     private Payment settle(PaymentStatus outcome, Instant now) {
         if (status != PaymentStatus.PENDING) {
-            throw new IllegalStateException("Payment " + id + " is already " + status);
+            throw PaymentException.alreadySettled(id, status);
         }
         return new Payment(id, type, sourceAccountId, destinationAccountId, amount, currency, outcome,
                 idempotencyKey, createdAt, now);
@@ -122,12 +123,12 @@ public final class Payment {
         return type;
     }
 
-    public UUID sourceAccountId() {
-        return sourceAccountId;
+    public Optional<UUID> sourceAccountId() {
+        return Optional.ofNullable(sourceAccountId);
     }
 
-    public UUID destinationAccountId() {
-        return destinationAccountId;
+    public Optional<UUID> destinationAccountId() {
+        return Optional.ofNullable(destinationAccountId);
     }
 
     public BigDecimal amount() {

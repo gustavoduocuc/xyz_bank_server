@@ -8,7 +8,9 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("The Money")
 class MoneyTest {
@@ -24,6 +26,8 @@ class MoneyTest {
      * 7. Subtracts two amounts with the same currency
      * 8. Rejects subtracting amounts with different currencies
      * 9. Rejects a subtraction that would produce a negative amount
+     * 10. Compares two amounts with the same currency
+     * 11. Rejects comparing amounts with different currencies
      */
 
     @Test
@@ -116,6 +120,28 @@ class MoneyTest {
         Money tooMuch = Money.create(new BigDecimal("100.00"), "USD");
 
         DomainException exception = assertThrows(DomainException.class, () -> balance.subtract(tooMuch));
+
+        assertEquals(DomainException.Type.VALIDATION, exception.getType());
+    }
+
+    @Test
+    @DisplayName("compares two amounts with the same currency")
+    void comparesTwoAmountsWithTheSameCurrency() {
+        Money less = Money.create(new BigDecimal("50.00"), "USD");
+        Money more = Money.create(new BigDecimal("100.00"), "USD");
+
+        assertTrue(less.isLessThan(more));
+        assertFalse(more.isLessThan(less));
+        assertFalse(less.isLessThan(Money.create(new BigDecimal("50"), "USD")));
+    }
+
+    @Test
+    @DisplayName("rejects comparing amounts with different currencies")
+    void rejectsComparingAmountsWithDifferentCurrencies() {
+        Money usd = Money.create(new BigDecimal("100.00"), "USD");
+        Money clp = Money.create(new BigDecimal("50.00"), "CLP");
+
+        DomainException exception = assertThrows(DomainException.class, () -> usd.isLessThan(clp));
 
         assertEquals(DomainException.Type.VALIDATION, exception.getType());
     }

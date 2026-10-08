@@ -1,10 +1,13 @@
 package cl.duoc.xyzbank.paymentsservice.payments.domain;
 
+import java.util.UUID;
+
 public class PaymentException extends RuntimeException {
 
     public enum Type {
         NOT_FOUND,
-        VALIDATION
+        VALIDATION,
+        CONFLICT
     }
 
     private final Type type;
@@ -20,6 +23,10 @@ public class PaymentException extends RuntimeException {
 
     public static PaymentException validation(String message) {
         return new PaymentException(Type.VALIDATION, message);
+    }
+
+    public static PaymentException alreadySettled(UUID paymentId, PaymentStatus status) {
+        return new PaymentException(Type.CONFLICT, "Payment " + paymentId + " is already " + status);
     }
 
     public Type type() {

@@ -34,7 +34,7 @@ public class PaymentController {
     public ResponseEntity<PaymentResponse> transfer(
             @RequestHeader(value = IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @RequestBody TransferBody body) {
-        return created(idempotencyKey, new PaymentRequest(PaymentType.TRANSFER,
+        return makePayment(idempotencyKey, new PaymentRequest(PaymentType.TRANSFER,
                 body.sourceAccountId(), body.destinationAccountId(), body.amount(), body.currency()));
     }
 
@@ -42,7 +42,7 @@ public class PaymentController {
     public ResponseEntity<PaymentResponse> deposit(
             @RequestHeader(value = IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @RequestBody DepositBody body) {
-        return created(idempotencyKey, new PaymentRequest(PaymentType.DEPOSIT,
+        return makePayment(idempotencyKey, new PaymentRequest(PaymentType.DEPOSIT,
                 null, body.destinationAccountId(), body.amount(), body.currency()));
     }
 
@@ -50,7 +50,7 @@ public class PaymentController {
     public ResponseEntity<PaymentResponse> billPayment(
             @RequestHeader(value = IDEMPOTENCY_KEY, required = false) String idempotencyKey,
             @RequestBody BillPaymentBody body) {
-        return created(idempotencyKey, new PaymentRequest(PaymentType.BILL_PAYMENT,
+        return makePayment(idempotencyKey, new PaymentRequest(PaymentType.BILL_PAYMENT,
                 body.sourceAccountId(), null, body.amount(), body.currency()));
     }
 
@@ -59,7 +59,7 @@ public class PaymentController {
         return getPaymentUseCase.execute(paymentId);
     }
 
-    private ResponseEntity<PaymentResponse> created(String idempotencyKey, PaymentRequest request) {
+    private ResponseEntity<PaymentResponse> makePayment(String idempotencyKey, PaymentRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(makePaymentUseCase.execute(idempotencyKey, request));
     }
 

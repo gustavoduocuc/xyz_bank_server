@@ -34,17 +34,22 @@ public class JpaPostingRepository implements PostingRepository {
     @Transactional
     public void persistPosting(List<Account> accounts, List<Transaction> transactions) {
         accounts.forEach(accountRepository::save);
-        for (Transaction transaction : transactions) {
+        transactions.forEach(transaction -> {
             transactionRepository.save(transaction);
-            transactionConfirmedPublisher.publish(new TransactionConfirmed(
-                    transaction.getId().getValue(),
-                    transaction.getAccountId().getValue(),
-                    transaction.getType() == TransactionType.DEBIT
-                            ? ConfirmedMovementType.PAYMENT_DEBIT
-                            : ConfirmedMovementType.PAYMENT_CREDIT,
-                    transaction.getAmount().getAmount(),
-                    transaction.getAmount().getCurrency(),
-                    transaction.getOccurredOn()));
-        }
+            transactionConfirmedPublisher.publish(confirmationOf(transaction));
+        });
+    }
+
+    private static TransactionConfirmed confirmationOf(Transaction transaction) {
+        ConfirmedMovementType movementType = transaction.getType() == TransactionType.DEBIT
+                ? ConfirmedMovementType.PAYMENT_DEBIT
+                : ConfirmedMovementType.PAYMENT_CREDIT;
+        return new TransactionConfirmed(
+                transaction.getId().getValue(),
+                transaction.getAccountId().getValue(),
+                movementType,
+                transaction.getAmount().getAmount(),
+                transaction.getAmount().getCurrency(),
+                transaction.getOccurredOn());
     }
 }

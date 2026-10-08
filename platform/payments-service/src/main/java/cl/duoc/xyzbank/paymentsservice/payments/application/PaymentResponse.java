@@ -21,16 +21,12 @@ public record PaymentResponse(
         return new PaymentResponse(
                 payment.id().toString(),
                 payment.type().name(),
-                text(payment.sourceAccountId()),
-                text(payment.destinationAccountId()),
+                payment.sourceAccountId().map(UUID::toString).orElse(null),
+                payment.destinationAccountId().map(UUID::toString).orElse(null),
                 payment.amount(),
                 payment.currency(),
                 payment.status().name(),
                 payment.createdAt(),
                 payment.updatedAt());
-    }
-
-    private static String text(UUID id) {
-        return id == null ? null : id.toString();
     }
 }

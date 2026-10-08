@@ -175,8 +175,7 @@ public final class Account {
     /** A debit ordered by a payment: unlike an ATM withdrawal, no daily limit applies. */
     public void debit(Money amount) {
         requireActive();
-        if (amount.getCurrency().equals(balance.getCurrency())
-                && balance.getAmount().compareTo(amount.getAmount()) < 0) {
+        if (balance.isLessThan(amount)) {
             throw DomainException.validation("Insufficient funds in account " + id.getValue());
         }
         this.balance = this.balance.subtract(amount);
