@@ -18,7 +18,8 @@ import java.util.Set;
 public class IssueTokenClaimsUseCase {
 
     private static final Set<Channel> SERVICE_CHANNELS =
-            Set.of(Channel.ATM, Channel.INTERESTS, Channel.CUSTOMERS_ADMIN, Channel.ACCOUNTS_ADMIN);
+            Set.of(Channel.ATM, Channel.INTERESTS, Channel.CUSTOMERS_ADMIN, Channel.ACCOUNTS_ADMIN,
+                    Channel.PAYMENTS_ADMIN, Channel.PAYMENTS);
 
     private final ClientProfileLookup clientProfileLookup;
     private final CustomerIdLookup customerIdLookup;

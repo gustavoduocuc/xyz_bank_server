@@ -9,7 +9,9 @@ public enum Channel {
     ATM(Set.of("atm:read-balance", "atm:withdraw")),
     INTERESTS(Set.of("interests:write")),
     CUSTOMERS_ADMIN(Set.of("customers:read", "customers:write")),
-    ACCOUNTS_ADMIN(Set.of("accounts:write", "customers:read"));
+    ACCOUNTS_ADMIN(Set.of("accounts:write", "customers:read")),
+    PAYMENTS_ADMIN(Set.of("payments:write", "payments:read")),
+    PAYMENTS(Set.of("postings:write"));
 
     private final Set<String> scopes;
 

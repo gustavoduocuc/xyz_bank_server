@@ -53,6 +53,12 @@ auth:
     accounts-admin:
       client-id: accounts-admin
       client-secret: ${ACCOUNTS_ADMIN_CLIENT_SECRET:accounts-admin-dev-secret}
+    payments-admin:
+      client-id: payments-admin
+      client-secret: ${PAYMENTS_ADMIN_CLIENT_SECRET:payments-admin-dev-secret}
+    payments-service:
+      client-id: payments-service
+      client-secret: ${PAYMENTS_SERVICE_CLIENT_SECRET:payments-service-dev-secret}
   demo-customer:
     username: demo
     password: ${AUTH_DEMO_PASSWORD:demo-password}
