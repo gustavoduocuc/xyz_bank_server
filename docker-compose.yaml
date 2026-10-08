@@ -283,6 +283,46 @@ services:
       timeout: 5s
       retries: 20
       start_period: 40s
+  payments-service:
+    build:
+      context: .
+      dockerfile: platform/payments-service/Dockerfile
+    image: xyz-bank/payments-service:${TAG:-latest}
+    container_name: xyz-bank-payments-service
+    restart: unless-stopped
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+    environment:
+      # Shared PostgreSQL; payments-service only uses its own payments schema
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: core_service
+      DB_USERNAME: core_service
+      DB_PASSWORD: ${CORE_DB_PASSWORD:?set CORE_DB_PASSWORD in .env}
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_CLIENT_ENABLED: "true"
+      EUREKA_SERVER_URL: http://eureka-server:8761
+      AUTH_ISSUER: ${AUTH_PUBLIC_ISSUER:?set AUTH_PUBLIC_ISSUER in .env}
+      AUTH_JWK_SET_URI: https://auth-server:9000/oauth2/jwks
+      AUTH_TOKEN_URI: https://auth-server:9000/oauth2/token
+      # Resolved through Eureka by the load-balanced client
+      CORE_SERVICE_BASE_URL: http://core-service
+      PAYMENTS_SERVICE_CLIENT_SECRET: ${PAYMENTS_SERVICE_CLIENT_SECRET:?set PAYMENTS_SERVICE_CLIENT_SECRET in .env}
+      JAVA_TOOL_OPTIONS: *truststore-opts
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8086/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
 
   auth-server:
     build:
@@ -316,6 +356,8 @@ services:
       INTERESTS_SERVICE_CLIENT_SECRET: ${INTERESTS_SERVICE_CLIENT_SECRET:?set INTERESTS_SERVICE_CLIENT_SECRET in .env}
       CUSTOMERS_ADMIN_CLIENT_SECRET: ${CUSTOMERS_ADMIN_CLIENT_SECRET:?set CUSTOMERS_ADMIN_CLIENT_SECRET in .env}
       ACCOUNTS_ADMIN_CLIENT_SECRET: ${ACCOUNTS_ADMIN_CLIENT_SECRET:?set ACCOUNTS_ADMIN_CLIENT_SECRET in .env}
+      PAYMENTS_ADMIN_CLIENT_SECRET: ${PAYMENTS_ADMIN_CLIENT_SECRET:?set PAYMENTS_ADMIN_CLIENT_SECRET in .env}
+      PAYMENTS_SERVICE_CLIENT_SECRET: ${PAYMENTS_SERVICE_CLIENT_SECRET:?set PAYMENTS_SERVICE_CLIENT_SECRET in .env}
       BFF_WEB_REDIRECT_URI: ${BFF_WEB_PUBLIC_URL:?set BFF_WEB_PUBLIC_URL in .env}/login/oauth2/code/oidc
       BFF_MOBILE_REDIRECT_URI: ${BFF_MOBILE_PUBLIC_URL:?set BFF_MOBILE_PUBLIC_URL in .env}/login/oauth2/code/oidc
       AUTH_DEMO_PASSWORD: ${AUTH_DEMO_PASSWORD:?set AUTH_DEMO_PASSWORD in .env}

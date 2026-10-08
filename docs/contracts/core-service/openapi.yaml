@@ -385,6 +385,47 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+  /internal/postings:
+    post:
+      summary: Apply a payment's debit and/or credit entries
+      description: >
+        Called only by payments-service. Applies one or two entries (with two,
+        one DEBIT and one CREDIT on different accounts) in one database
+        transaction with optimistic locking on every account; when any entry
+        cannot be applied, none is. A debit has no ATM daily limit. Each entry
+        is recorded as a transaction and publishes TransactionConfirmed
+        (PAYMENT_DEBIT or PAYMENT_CREDIT). Idempotent by paymentId: repeating
+        it returns the original transactions and moves nothing. 404 for an
+        unknown account; 409 for a CLOSED account or a concurrent change; 422
+        for insufficient funds, a currency different from the account's, or a
+        malformed request. Domain endpoint. Requires the `postings:write` scope
+        (payments-service channel only).
+      operationId: applyPostings
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostingRequest'
+      responses:
+        '201':
+          description: The entries were applied (or replayed for a repeated paymentId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostingResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: Insufficient funds, a currency mismatch, or a malformed request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
 components:
   securitySchemes:
     BearerAuth:
@@ -709,6 +750,61 @@ components:
         atmSessionId:
           type: string
           description: Opaque id the ATM channel sends back as X-Atm-Session
+    PostingRequest:
+      type: object
+      required: [paymentId, entries]
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/PostingEntry'
+    PostingEntry:
+      type: object
+      required: [accountId, direction, amount, currency]
+      properties:
+        accountId:
+          type: string
+        direction:
+          type: string
+          enum: [DEBIT, CREDIT]
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+    PostingResponse:
+      type: object
+      required: [paymentId, entries]
+      properties:
+        paymentId:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            required: [transactionId, accountId, direction, amount, currency, balance]
+            properties:
+              transactionId:
+                type: string
+              accountId:
+                type: string
+              direction:
+                type: string
+                enum: [DEBIT, CREDIT]
+              amount:
+                type: number
+                format: decimal
+              currency:
+                type: string
+              balance:
+                type: number
+                format: decimal
+                description: The account's current balance
     ProblemDetail:
       type: object
       description: RFC 7807 problem details
