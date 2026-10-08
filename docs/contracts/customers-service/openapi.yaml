@@ -48,6 +48,33 @@ paths:
           description: Missing, expired or invalid token
         '403':
           description: The token lacks `customers:write`
+  /internal/customers/{customerId}/notifications:
+    get:
+      summary: A customer's notification feed
+      description: >
+        Requires `web:customers:read` (own customer only) or `customers:read`
+        (any customer). Returns the latest 50 entries, newest first, built from
+        the `transactions.confirmed` and `security.alerts` topics (one entry per
+        event id). Another customer's id answers 404, like an unknown customer.
+      operationId: getCustomerNotifications
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: The customer's feed (empty when there is nothing yet)
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 50
+                items:
+                  $ref: '#/components/schemas/NotificationResponse'
+        '401':
+          description: Missing, expired or invalid token
+        '403':
+          description: The token lacks a read scope
+        '404':
+          $ref: '#/components/responses/NotFound'
   /internal/customers/{customerId}:
     get:
       summary: Get a customer's profile
@@ -137,6 +164,31 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
   schemas:
+    NotificationResponse:
+      type: object
+      required: [eventId, kind, occurredAt]
+      properties:
+        eventId:
+          type: string
+          description: Id of the event that produced the entry; one entry per event id
+        kind:
+          type: string
+          enum: [TRANSACTION_CONFIRMED, CARD_LOCKED, REFRESH_TOKEN_REUSE]
+        occurredAt:
+          type: string
+          format: date-time
+        accountId:
+          type: string
+          description: Only on TRANSACTION_CONFIRMED
+        type:
+          type: string
+          description: Only on TRANSACTION_CONFIRMED (WITHDRAWAL, INTEREST_CREDIT, PAYMENT_DEBIT or PAYMENT_CREDIT)
+        amount:
+          type: number
+          description: Only on TRANSACTION_CONFIRMED
+        currency:
+          type: string
+          description: Only on TRANSACTION_CONFIRMED
     CreateCustomerRequest:
       type: object
       required: [fullName, email]

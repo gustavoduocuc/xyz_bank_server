@@ -27,3 +27,13 @@ Registered clients and what each may obtain:
 | `interests-service` | confidential (`client_secret_basic`) | `client_credentials` | — | `interests:write` | `INTERESTS` |
 
 User access tokens have `iss = https://localhost:9000` and `sub` = the customer id. `bff-atm` and `interests-service` tokens have no customer subject. Audience is `core-service`, plus `interests-service` on `bff-web` and `interests-service` tokens. See [`docs/architecture.md`](../../architecture.md#authorization-server) for the reasoning behind the public/internal URL split.
+
+## Events
+
+When `FEATURE_SECURITY_ALERTS` is `true` (the Compose default), `auth-server` publishes a `SecurityAlertRaised` event on the `security.alerts` topic (key `customerId`, 3 partitions, dead-letter topic `security.alerts.DLT`) each time it detects a rotated refresh token being replayed and revokes the login:
+
+```json
+{"eventId":"<uuid>","eventType":"SecurityAlertRaised","schemaVersion":1,"alertType":"REFRESH_TOKEN_REUSE","customerId":"<customer id>","occurredAt":"<ISO-8601 instant>"}
+```
+
+Publication is best effort and asynchronous: if the broker is unreachable the login is still revoked and the caller still receives `invalid_grant`. The event carries no token, device id or username. The event catalogue is in [`docs/adr/002-event-architecture.md`](../../adr/002-event-architecture.md).
