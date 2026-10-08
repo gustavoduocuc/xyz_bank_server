@@ -112,16 +112,35 @@ Eso levanta (los puertos marcados «override» solo los publica `docker-compose.
 | config-server | 8888 (override) | Configuración nativa (`config-repo/`) |
 | eureka-server | 8761 (override) | Service discovery |
 | Kafka (KRaft) | 9092 (override) | Broker de la saga de intereses |
-| core-service | 8080 (override) | API interna de dominio |
+| core-service | (interno; vía gateway) | API interna de dominio |
 | interests-service | 8084 (override) | Cálculo/acreditación de intereses anuales |
 | customers-service | 8085 (override) | Gestión de Clientes: perfiles (esquema `customers`) |
-| payments-service | 8086 (override) | Procesamiento de Pagos: transferencias, depósitos y pagos de cuentas (esquema `payments`) |
+| payments-service | (interno; vía gateway) | Procesamiento de Pagos: transferencias, depósitos y pagos de cuentas (esquema `payments`) |
+| api-gateway | 8090 (override, solo loopback) | Entrada interna de los BFFs a la plataforma: enruta `lb://` a `core-service`, `customers-service`, `payments-service` e `interests-service` |
 | bff-web | 8081 | Dashboard, historial e intereses |
 | bff-mobile | 8082 | Resumen aplanado de cuenta |
 | bff-atm | 8083 | Saldo y retiro |
 | auth-server | 9000 | Servidor OAuth 2.0 / OIDC (login web y mobile), solo HTTPS |
 
 El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos y sus tres `.DLT` con 3 particiones cada uno. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. `customers-service` espera a PostgreSQL, `config-server`, `eureka-server` y `auth-server`, y `bff-web` espera a `customers-service`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`, `bff-mobile`, `bff-atm` e `interests-service` esperan a que `auth-server` esté sano.
+
+### Gateway, Eureka y escalado horizontal
+
+Los tres BFFs llaman a la plataforma por `api-gateway` con una sola variable, `PLATFORM_GATEWAY_URL` (en Compose, `http://api-gateway:8090`): `/<servicio>/**` se enruta a una instancia registrada en Eureka de ese servicio y el prefijo se quita (`/core-service/internal/accounts/<id>/balance` llega como `/internal/accounts/<id>/balance`). El gateway reenvía `Authorization`, `X-Correlation-Id` e `Idempotency-Key` sin tocarlos y aplica un timeout por ruta (`config-repo/api-gateway.yml`); no valida tokens, eso lo siguen haciendo los servicios. En un despliegue no publica puertos; el override lo expone solo en `127.0.0.1:8090` para las llamadas `curl` de este README. `bff-atm` verifica el PIN directo contra el conector TLS de `core-service` (`https://core-service:8453`): es mTLS con su propio keystore, no una ruta HTTP, y pasarlo por el gateway ampliaría el borde de confianza.
+
+Todos los servicios de plataforma, el gateway y los BFFs se registran en Eureka y leen su configuración de `config-server` (un archivo por servicio en `config-repo/`). Para correr réplicas:
+
+```bash
+docker compose up -d --scale core-service=2 --scale payments-service=2
+```
+
+Abre Eureka en http://localhost:8761 (override): `CORE-SERVICE` y `PAYMENTS-SERVICE` aparecen con dos instancias `UP` cada una. Por consola:
+
+```bash
+curl -sS -H 'Accept: application/json' http://localhost:8761/eureka/apps/CORE-SERVICE | jq '.application.instance | length'
+```
+
+Los servicios de aplicación no fijan `container_name`, así que Compose puede crear las réplicas; `core-service` y `payments-service` no publican puertos de host (las réplicas no pueden compartirlos) y se alcanzan por el gateway. Los relays del outbox de varias réplicas de `core-service` toman cada evento con `SELECT ... FOR UPDATE SKIP LOCKED`, así que ninguno se publica dos veces; el orden por cuenta está garantizado dentro de un relay, y entre réplicas un evento posterior de la misma cuenta podría salir antes si el anterior está bloqueado por el otro relay (los consumidores son idempotentes por `eventId`). `interests-service` guarda sus cálculos en el esquema `interests` de PostgreSQL, no en memoria. Comprobación rápida con dos réplicas: `./scripts/smoke-atm-scaled.sh`.
 
 ### Servidor de autorización (`auth-server`)
 
@@ -399,17 +418,17 @@ ACC_TOKEN=$(curl -sS --cacert dev/certs/ca.crt -u "accounts-admin:$(grep ^ACCOUN
 
 # Apertura idempotente para el cliente demo: repetir la Idempotency-Key devuelve la misma cuenta (201).
 # Cliente inexistente -> 422; customers-service caído -> 503 y no se crea nada
-curl -sS -X POST http://localhost:8080/internal/accounts -H "Authorization: Bearer $ACC_TOKEN" \
+curl -sS -X POST http://localhost:8090/core-service/internal/accounts -H "Authorization: Bearer $ACC_TOKEN" \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: apertura-001' \
   -d '{"customerId":"11111111-1111-1111-1111-111111111111","currency":"USD","alias":"Ahorro"}'
 
 # Alias y límite diario propio (bloqueo optimista por version; una versión vieja -> 409)
-curl -sS -X PATCH http://localhost:8080/internal/accounts/<id> -H "Authorization: Bearer $ACC_TOKEN" \
+curl -sS -X PATCH http://localhost:8090/core-service/internal/accounts/<id> -H "Authorization: Bearer $ACC_TOKEN" \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: cambio-001' \
   -d '{"alias":"Viajes","dailyWithdrawalLimit":800.00,"version":0}'
 
 # Cierre: solo con saldo cero (si no, 409). Una cuenta CLOSED rechaza retiros y créditos de interés con 409
-curl -sS -X POST http://localhost:8080/internal/accounts/<id>/closure -H "Authorization: Bearer $ACC_TOKEN" \
+curl -sS -X POST http://localhost:8090/core-service/internal/accounts/<id>/closure -H "Authorization: Bearer $ACC_TOKEN" \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: cierre-001' -d '{"version":1}'
 ```
 
@@ -420,22 +439,22 @@ PAY_TOKEN=$(curl -sS --cacert dev/certs/ca.crt -u "payments-admin:$(grep ^PAYMEN
   -d grant_type=client_credentials https://localhost:9000/oauth2/token | jq -r .access_token)
 
 # Depósito a una cuenta: 201 COMPLETED
-curl -sS -X POST http://localhost:8086/internal/deposits -H "Authorization: Bearer $PAY_TOKEN" \
+curl -sS -X POST http://localhost:8090/payments-service/internal/deposits -H "Authorization: Bearer $PAY_TOKEN" \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: deposito-001' \
   -d '{"destinationAccountId":"<cuenta>","amount":200.00,"currency":"USD"}'
 
 # Transferencia: repetir la misma Idempotency-Key devuelve el mismo pago y no mueve saldo dos veces
-curl -sS -X POST http://localhost:8086/internal/transfers -H "Authorization: Bearer $PAY_TOKEN" \
+curl -sS -X POST http://localhost:8090/payments-service/internal/transfers -H "Authorization: Bearer $PAY_TOKEN" \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: transferencia-001' \
   -d '{"sourceAccountId":"<origen>","destinationAccountId":"<destino>","amount":50.00,"currency":"USD"}'
 
 # Fondos insuficientes o cuenta CLOSED: 201 con status REJECTED. core-service caído: 503 y el pago queda
 # PENDING; repetir la misma Idempotency-Key cuando vuelva lo completa
-curl -sS -X POST http://localhost:8086/internal/bill-payments -H "Authorization: Bearer $PAY_TOKEN" \
+curl -sS -X POST http://localhost:8090/payments-service/internal/bill-payments -H "Authorization: Bearer $PAY_TOKEN" \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: pago-001' \
   -d '{"sourceAccountId":"<origen>","amount":999999.00,"currency":"USD"}'
 
-curl -sS http://localhost:8086/internal/payments/<id> -H "Authorization: Bearer $PAY_TOKEN"
+curl -sS http://localhost:8090/payments-service/internal/payments/<id> -H "Authorization: Bearer $PAY_TOKEN"
 ```
 
 **auth-server — un cliente no puede pedir scopes de otro canal**
@@ -449,10 +468,10 @@ curl -sS --cacert dev/certs/ca.crt -H "Accept: text/html" -o /dev/null -w '%{red
 Health y OpenAPI:
 
 ```bash
-curl -sS http://localhost:8080/actuator/health
+curl -sS http://localhost:8090/core-service/actuator/health
 curl -sS http://localhost:8084/actuator/health
 curl -sS http://localhost:8085/actuator/health
-curl -sS http://localhost:8086/actuator/health
+curl -sS http://localhost:8090/payments-service/actuator/health
 curl -sS http://localhost:8888/actuator/health
 curl -sS http://localhost:8761/actuator/health
 curl -sS --cacert dev/certs/ca.crt https://localhost:9000/actuator/health
@@ -534,7 +553,7 @@ El mecanismo preferido son los secretos de la plataforma (Swarm/Compose `secrets
 - **Un BFF responde `503` sin llamar a `core-service`.** Su circuito `coreService` está abierto tras varios fallos seguidos. Revisa `curl -sS http://127.0.0.1:908x/actuator/circuitbreakers`: tras 15 s pasa solo a `HALF_OPEN` y vuelve a `CLOSED` cuando las llamadas de prueba salen bien. La health del BFF sigue en UP mientras tanto, a propósito.
 - **El seed de demo desapareció o el dashboard da 404.** Flyway no reinserta filas de una versión ya aplicada. Reset: `docker compose down -v` y vuelve a `up --build`.
 - **La migración falló y core-service no arranca.** Compose espera `service_completed_successfully`. Revisa `docker compose logs data-migration`.
-- **PostgreSQL cae con el stack ya arriba.** `GET http://localhost:8080/actuator/health` deja de reportar UP (Actuator incluye el datasource). Los BFFs no tienen base propia: su health sigue UP aunque Postgres esté caído.
+- **PostgreSQL cae con el stack ya arriba.** `GET http://localhost:8090/core-service/actuator/health` deja de reportar UP (Actuator incluye el datasource). Los BFFs no tienen base propia: su health sigue UP aunque Postgres esté caído.
 - **Testcontainers skipped.** Arranca Docker Desktop y vuelve a `mvn verify`.
 - **Solo quieres experimentar el job CSV.** Sigue usando [`data-migration/docker-compose.yml`](data-migration/docker-compose.yml) (MySQL aislado). El camino soportado de plataforma completa es el Compose de la raíz (`docker-compose.yaml`).
 - **`curl` falla el handshake TLS contra `bff-atm` con un certificado de cliente (`error:...SSL routines:ST_CONNECT:tlsv1 alert protocol version` o similar).** El `curl`/LibreSSL que trae macOS de fábrica tiene problemas negociando TLS con certificados de cliente P12 contra este stack. Instala una build de `curl` enlazada con OpenSSL (p. ej. `brew install curl`) o usa `openssl s_client` para depurar la conexión.
