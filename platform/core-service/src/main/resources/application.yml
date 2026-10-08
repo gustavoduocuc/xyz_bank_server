@@ -9,6 +9,14 @@ spring:
   cloud:
     compatibility-verifier:
       enabled: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH_ISSUER:https://localhost:9000}
+          jwk-set-uri: ${AUTH_JWK_SET_URI:https://localhost:9000/oauth2/jwks}
+          audiences:
+            - core-service
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:core_service}
     username: ${DB_USERNAME:core_service}
@@ -77,15 +85,10 @@ security:
     keystore-path: ${TLS_PIN_KEYSTORE_PATH:classpath:tls/keystore.p12}
     keystore-password: ${TLS_PIN_KEYSTORE_PASSWORD:xyzbank-dev}
     keystore-type: PKCS12
-  enforcement:
-    enabled: true
 
 # Access tokens are issued by auth-server and verified here with its public keys only
 # (adopt-oauth2-tokens-between-services design.md Decision 4): core-service holds no signing secret.
 auth:
-  issuer: ${AUTH_ISSUER:https://localhost:9000}
-  jwk-set-uri: ${AUTH_JWK_SET_URI:https://localhost:9000/oauth2/jwks}
-  audience: core-service
   channel-clients:
     WEB: bff-web
     MOBILE: bff-mobile

@@ -15,10 +15,17 @@ interests:
 # Access tokens (adopt-oauth2-tokens-between-services): incoming ones are verified with
 # auth-server's public keys only; outgoing calls to core-service use interests-service's own
 # client_credentials token. No signing secret is configured here.
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH_ISSUER:https://localhost:9000}
+          jwk-set-uri: ${AUTH_JWK_SET_URI:https://localhost:9000/oauth2/jwks}
+          audiences:
+            - interests-service
+
 auth:
-  issuer: ${AUTH_ISSUER:https://localhost:9000}
-  jwk-set-uri: ${AUTH_JWK_SET_URI:https://localhost:9000/oauth2/jwks}
-  audience: interests-service
   channel-clients:
     WEB: bff-web
     MOBILE: bff-mobile

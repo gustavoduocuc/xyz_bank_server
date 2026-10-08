@@ -20,7 +20,7 @@ public class InterestController {
     public InterestSummaryResponse getInterestSummary(
             @PathVariable String accountId,
             @RequestParam String year) {
-        // Authorization is stashed in MDC by CallerContextInterceptor for outbound forwarding
+        // The caller's token is relayed to core-service by BearerTokenClientInterceptor
         return getInterestSummaryUseCase.execute(accountId, year);
     }
 }

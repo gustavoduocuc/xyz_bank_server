@@ -55,6 +55,10 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
      * 10. An unknown, expired or missing ATM session is rejected with 401
      * 11. An ATM session cannot reach another customer's account (404)
      * 12. PIN verification refuses a call without a token (401) and another channel's token (403)
+     * 13. A web token reaches its own account and customer accounts
+     * 14. A web token gets 404 for someone else's account, someone else's customer accounts, an unknown
+     *     account and an unknown transaction, and for a withdrawal against someone else's account
+     * 15. A blank identifier is a malformed request (400 from the controller), not an unowned resource (404)
      */
 
     private static final String ANY_ACCOUNT = UUID.randomUUID().toString();
@@ -207,6 +211,44 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
                 .post("/internal/auth/atm/pin-verifications").then().statusCode(401);
         overPinConnector(bearer(TestAccessTokens.web(ANY_CUSTOMER))).contentType(ContentType.JSON).body(body)
                 .post("/internal/auth/atm/pin-verifications").then().statusCode(403);
+    }
+
+    @Test
+    @DisplayName("lets a web token reach its own account and its own customer accounts")
+    void letsAWebTokenReachItsOwnAccountAndItsOwnCustomerAccounts() {
+        Id customer = aCustomer();
+        Id account = anAccountOf(customer);
+
+        bearer(TestAccessTokens.web(customer.getValue()))
+                .get("/internal/accounts/{id}/balance", account.getValue()).then().statusCode(200);
+        bearer(TestAccessTokens.web(customer.getValue()))
+                .get("/internal/customers/{id}/accounts", customer.getValue()).then().statusCode(200);
+    }
+
+    @Test
+    @DisplayName("answers 404 to a web token for someone else's or an unknown resource")
+    void answers404ToAWebTokenForSomeoneElsesOrAnUnknownResource() {
+        Id caller = aCustomer();
+        Id othersAccount = anAccountOf(aCustomer());
+        String token = TestAccessTokens.web(caller.getValue());
+
+        bearer(token).get("/internal/accounts/{id}/balance", othersAccount.getValue()).then().statusCode(404);
+        bearer(token).get("/internal/customers/{id}/accounts", aCustomer().getValue()).then().statusCode(404);
+        bearer(token).get("/internal/accounts/{id}/balance", Id.generate().getValue()).then().statusCode(404);
+        bearer(token).get("/internal/transactions/{id}", Id.generate().getValue()).then().statusCode(404);
+        bearer(TestAccessTokens.atm())
+                .header("X-Atm-Session", anAtmSessionOf(caller, Instant.now()).getId().getValue())
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .body("{\"amount\":10.00,\"currency\":\"USD\"}")
+                .post("/internal/accounts/{id}/withdrawals", othersAccount.getValue())
+                .then().statusCode(404);
+    }
+
+    @Test
+    @DisplayName("treats a blank account id as malformed, not as an unowned resource")
+    void treatsABlankAccountIdAsMalformedNotAsAnUnownedResource() {
+        bearer(TestAccessTokens.web(ANY_CUSTOMER)).get("/internal/accounts/%20/balance").then().statusCode(400);
     }
 
     private static RequestSpecification overPinConnector(RequestSpecification request) {

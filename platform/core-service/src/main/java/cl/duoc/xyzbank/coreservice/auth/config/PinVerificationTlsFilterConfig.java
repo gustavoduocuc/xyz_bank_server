@@ -13,7 +13,8 @@ public class PinVerificationTlsFilterConfig {
         FilterRegistrationBean<PinVerificationTlsFilter> registration =
                 new FilterRegistrationBean<>(new PinVerificationTlsFilter());
         registration.addUrlPatterns("/internal/auth/atm/pin-verifications");
-        registration.setOrder(1);
+        // Before Spring Security's filter chain (order -100): a non-TLS call is refused before any token is read
+        registration.setOrder(-101);
         return registration;
     }
 }

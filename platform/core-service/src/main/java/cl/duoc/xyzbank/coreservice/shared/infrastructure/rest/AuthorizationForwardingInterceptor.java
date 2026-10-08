@@ -15,7 +15,7 @@ import java.io.IOException;
 /**
  * Forwards the bearer token of the request being served to a downstream call, so the caller's
  * own scopes and audience decide what the downstream service allows. Credential propagation
- * only: authorization decisions stay in EnforcementFilter.
+ * only: authorization decisions stay in the security filter chain.
  */
 public class AuthorizationForwardingInterceptor implements ClientHttpRequestInterceptor {
 
