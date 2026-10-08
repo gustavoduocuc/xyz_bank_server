@@ -12,6 +12,7 @@ import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.sharedsecurity.callercontext.Channel;
 import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
 import cl.duoc.xyzbank.testsupport.TestAccessTokens;
+import cl.duoc.xyzbank.testsupport.TestCustomersService;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.http.Fault;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -19,15 +20,12 @@ import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -37,7 +35,6 @@ import java.util.UUID;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -60,16 +57,7 @@ class AccountLifecycleE2ETest extends AbstractCoreServiceIT {
      * 10. Answers 401 without a token and 403 to a token without accounts:write
      */
 
-    private static final WireMockServer CUSTOMERS_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
-
-    static {
-        CUSTOMERS_SERVICE.start();
-    }
-
-    @DynamicPropertySource
-    static void customersService(DynamicPropertyRegistry registry) {
-        registry.add("customers-service.base-url", CUSTOMERS_SERVICE::baseUrl);
-    }
+    private static final WireMockServer CUSTOMERS_SERVICE = TestCustomersService.server();
 
     @LocalServerPort
     private int port;
@@ -99,10 +87,6 @@ class AccountLifecycleE2ETest extends AbstractCoreServiceIT {
                         .withBody("{\"id\":\"" + customerId + "\"}")));
     }
 
-    @AfterAll
-    static void stopCustomersService() {
-        CUSTOMERS_SERVICE.stop();
-    }
 
     @Test
     @DisplayName("opens an account with 201 for a customer customers-service knows")

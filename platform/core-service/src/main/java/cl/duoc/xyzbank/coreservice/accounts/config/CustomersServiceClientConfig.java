@@ -1,18 +1,14 @@
 package cl.duoc.xyzbank.coreservice.accounts.config;
 
-import jakarta.servlet.http.HttpServletRequest;
+import cl.duoc.xyzbank.coreservice.shared.infrastructure.rest.AuthorizationForwardingInterceptor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
  * The client core-service uses to ask customers-service whether a customer exists. With
@@ -48,21 +44,8 @@ public class CustomersServiceClientConfig {
         return customersServiceClientBuilder
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
-                .requestInterceptor(forwardCallerAuthorization())
+                // The accounts-admin token that opened the request also carries customers:read
+                .requestInterceptor(new AuthorizationForwardingInterceptor())
                 .build();
-    }
-
-    /** The accounts-admin token that opened the request also carries customers:read for customers-service. */
-    private static ClientHttpRequestInterceptor forwardCallerAuthorization() {
-        return (request, body, execution) -> {
-            if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
-                HttpServletRequest incoming = attributes.getRequest();
-                String authorization = incoming.getHeader(HttpHeaders.AUTHORIZATION);
-                if (authorization != null) {
-                    request.getHeaders().set(HttpHeaders.AUTHORIZATION, authorization);
-                }
-            }
-            return execution.execute(request, body);
-        };
     }
 }

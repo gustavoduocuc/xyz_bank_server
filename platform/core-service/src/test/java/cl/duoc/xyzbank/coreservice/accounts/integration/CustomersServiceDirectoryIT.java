@@ -3,25 +3,22 @@ package cl.duoc.xyzbank.coreservice.accounts.integration;
 import cl.duoc.xyzbank.coreservice.accounts.application.ports.CustomerDirectory;
 import cl.duoc.xyzbank.coreservice.accounts.application.ports.CustomerDirectoryUnavailableException;
 import cl.duoc.xyzbank.testsupport.AbstractCoreServiceIT;
+import cl.duoc.xyzbank.testsupport.TestCustomersService;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.http.Fault;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,23 +32,13 @@ class CustomersServiceDirectoryIT extends AbstractCoreServiceIT {
      * 1. An existing customer (200) exists
      * 2. An unknown customer (404) does not exist
      * 3. A reset connection or a 503 makes the directory unavailable
-     * 4. An answer slower than the read timeout makes the directory unavailable
+     * 4. An answer slower than the read timeout (2 s) makes the directory unavailable
      * 5. An open circuit makes the directory unavailable without calling customers-service
      */
 
     private static final String CUSTOMER = "11111111-1111-1111-1111-111111111111";
     private static final String PATH = "/internal/customers/" + CUSTOMER;
-    private static final WireMockServer CUSTOMERS_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
-
-    static {
-        CUSTOMERS_SERVICE.start();
-    }
-
-    @DynamicPropertySource
-    static void customersService(DynamicPropertyRegistry registry) {
-        registry.add("customers-service.base-url", CUSTOMERS_SERVICE::baseUrl);
-        registry.add("customers-service.read-timeout-ms", () -> "300");
-    }
+    private static final WireMockServer CUSTOMERS_SERVICE = TestCustomersService.server();
 
     @Autowired
     private CustomerDirectory customers;
@@ -65,10 +52,6 @@ class CustomersServiceDirectoryIT extends AbstractCoreServiceIT {
         circuitBreakers.circuitBreaker("customersService").reset();
     }
 
-    @AfterAll
-    static void stop() {
-        CUSTOMERS_SERVICE.stop();
-    }
 
     @Test
     @DisplayName("an existing customer exists")
@@ -100,7 +83,7 @@ class CustomersServiceDirectoryIT extends AbstractCoreServiceIT {
     @Test
     @DisplayName("an answer slower than the read timeout makes the directory unavailable")
     void anAnswerSlowerThanTheReadTimeoutMakesTheDirectoryUnavailable() {
-        CUSTOMERS_SERVICE.stubFor(get(urlEqualTo(PATH)).willReturn(aResponse().withStatus(200).withFixedDelay(2_000)));
+        CUSTOMERS_SERVICE.stubFor(get(urlEqualTo(PATH)).willReturn(aResponse().withStatus(200).withFixedDelay(3_000)));
 
         assertThrows(CustomerDirectoryUnavailableException.class, () -> customers.exists(CUSTOMER));
     }
