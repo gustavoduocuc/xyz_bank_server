@@ -47,6 +47,10 @@ public final class TestTokens {
         return sign("customers-admin", List.of("customers:read", "customers:write"));
     }
 
+    public static String withScopes(String subject, List<String> scopes) {
+        return sign(subject, scopes);
+    }
+
     private static String sign(String subject, List<String> scopes) {
         Instant now = Instant.now();
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
