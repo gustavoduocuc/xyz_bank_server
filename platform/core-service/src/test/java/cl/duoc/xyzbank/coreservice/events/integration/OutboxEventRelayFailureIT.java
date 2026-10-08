@@ -54,7 +54,7 @@ class OutboxEventRelayFailureIT extends AbstractCoreServiceIT {
     void isolateFromOtherTests() {
         jdbcTemplate.update("UPDATE outbox_events SET published = TRUE");
         relay = new OutboxEventRelay(
-                jdbcTemplate, sender, objectMapper, transactionManager, "interests.credit-results", "transactions.confirmed");
+                jdbcTemplate, sender, objectMapper, transactionManager, "interests.credit-results", "transactions.confirmed", "security.alerts");
     }
 
     @Test

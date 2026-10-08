@@ -35,6 +35,7 @@ public class JpaWithdrawalRepository implements WithdrawalRepository {
         transactionConfirmedPublisher.publish(new TransactionConfirmed(
                 transaction.getId().getValue(),
                 account.getId().getValue(),
+                account.getCustomerId().getValue(),
                 ConfirmedMovementType.WITHDRAWAL,
                 transaction.getAmount().getAmount(),
                 transaction.getAmount().getCurrency(),

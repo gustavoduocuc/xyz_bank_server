@@ -8,12 +8,15 @@ import cl.duoc.xyzbank.coredomain.cards.unit.InMemoryAtmSessionRepository;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.auth.application.dto.PinVerificationOutcome;
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.VerifyPinUseCase;
+import cl.duoc.xyzbank.coreservice.events.application.ports.SecurityAlertPublisher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -31,6 +34,8 @@ class VerifyPinUseCaseTest {
      * 5. A locked card rejects a subsequent correct PIN
      * 6. A correct PIN opens a 120-second ATM session for the card's customer and reports its id
      * 7. An incorrect PIN or a locked card opens no ATM session
+     * 8. The failure that locks a card raises one CARD_LOCKED alert for the card's customer
+     * 9. An incorrect PIN that does not lock, and any attempt on an already-locked card, raise none
      */
 
     private final cl.duoc.xyzbank.sharedsecurity.callercontext.PinHasher bcryptHasher =
@@ -39,8 +44,10 @@ class VerifyPinUseCaseTest {
     private final InMemoryCardRepository cardRepository = new InMemoryCardRepository();
     private static final Instant NOW = Instant.parse("2026-09-29T12:00:00Z");
     private final InMemoryAtmSessionRepository atmSessionRepository = new InMemoryAtmSessionRepository();
+    private final List<String> lockedCustomers = new ArrayList<>();
+    private final SecurityAlertPublisher alerts = lockedCustomers::add;
     private final VerifyPinUseCase useCase = new VerifyPinUseCase(
-            cardRepository, hasher, atmSessionRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+            cardRepository, hasher, atmSessionRepository, alerts, Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
     @DisplayName("a correct pin succeeds, resets the card's failure count, and reports the owning customer id")
@@ -132,5 +139,33 @@ class VerifyPinUseCaseTest {
         assertNull(incorrect.atmSessionId());
         assertNull(locked.atmSessionId());
         assertTrue(atmSessionRepository.all().isEmpty());
+    }
+
+    @Test
+    @DisplayName("the failure that locks a card raises one card-locked alert for the card's customer")
+    void theFailureThatLocksACardRaisesOneAlertForItsCustomer() {
+        Id cardNumber = Id.generate();
+        Id customerId = Id.generate();
+        cardRepository.save(Card.create(cardNumber, customerId, bcryptHasher.hash("1234"), 2, false, 0L));
+
+        PinVerificationOutcome outcome = useCase.execute(cardNumber.getValue(), "0000");
+
+        assertEquals(PinVerificationOutcome.Result.LOCKED, outcome.result());
+        assertEquals(List.of(customerId.getValue()), lockedCustomers);
+    }
+
+    @Test
+    @DisplayName("raises no alert for an incorrect pin that does not lock or for attempts on an already-locked card")
+    void raisesNoAlertWhenNothingWasLocked() {
+        Id openCard = Id.generate();
+        Id lockedCard = Id.generate();
+        cardRepository.save(Card.create(openCard, Id.generate(), bcryptHasher.hash("1234"), 0, false, 0L));
+        cardRepository.save(Card.create(lockedCard, Id.generate(), bcryptHasher.hash("1234"), 3, true, 0L));
+
+        useCase.execute(openCard.getValue(), "0000");
+        useCase.execute(lockedCard.getValue(), "0000");
+        useCase.execute(lockedCard.getValue(), "1234");
+
+        assertTrue(lockedCustomers.isEmpty());
     }
 }

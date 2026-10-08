@@ -6,6 +6,7 @@ import cl.duoc.xyzbank.coreservice.auth.application.dto.PinVerificationResponse;
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.VerifyPinUseCase;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,6 +20,8 @@ public class PinVerificationController {
         this.verifyPinUseCase = verifyPinUseCase;
     }
 
+    // One transaction: the card's failure count and a CARD_LOCKED outbox row commit together
+    @Transactional
     @PostMapping("/internal/auth/atm/pin-verifications")
     public ResponseEntity<PinVerificationResponse> verify(@RequestBody PinVerificationRequest request) {
         PinVerificationOutcome outcome = verifyPinUseCase.execute(request.cardNumber(), request.pin());

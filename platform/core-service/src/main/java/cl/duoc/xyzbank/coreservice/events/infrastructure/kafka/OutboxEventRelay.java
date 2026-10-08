@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -24,11 +25,13 @@ import java.util.concurrent.TimeUnit;
 
 @Component
 @ConditionalOnExpression(
-        "${interests.kafka.enabled:false} || ${app.events.transaction-confirmed.enabled:false}")
+        "${interests.kafka.enabled:false} || ${app.events.transaction-confirmed.enabled:false}"
+                + " || ${app.events.security-alerts.enabled:false}")
 public class OutboxEventRelay {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxEventRelay.class);
     private static final String TRANSACTION_CONFIRMED = "TransactionConfirmed";
+    private static final String SECURITY_ALERT_RAISED = "SecurityAlertRaised";
     private static final Set<String> INTEREST_CREDIT_RESULTS = Set.of(
             "InterestCreditApplied",
             "InterestCreditRejected");
@@ -39,6 +42,7 @@ public class OutboxEventRelay {
     private final TransactionTemplate transactionTemplate;
     private final String creditResultsTopic;
     private final String transactionsConfirmedTopic;
+    private final String securityAlertsTopic;
 
     public OutboxEventRelay(
             JdbcTemplate jdbcTemplate,
@@ -46,18 +50,20 @@ public class OutboxEventRelay {
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager,
             @Value("${interests.kafka.credit-results-topic}") String creditResultsTopic,
-            @Value("${app.events.transaction-confirmed.topic}") String transactionsConfirmedTopic) {
+            @Value("${app.events.transaction-confirmed.topic}") String transactionsConfirmedTopic,
+            @Value("${app.events.security-alerts.topic:security.alerts}") String securityAlertsTopic) {
         this.jdbcTemplate = jdbcTemplate;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.creditResultsTopic = creditResultsTopic;
         this.transactionsConfirmedTopic = transactionsConfirmedTopic;
+        this.securityAlertsTopic = securityAlertsTopic;
     }
 
     /**
      * Sends pending events oldest first. When an event fails to send, the later events of the
-     * same account wait for the next run so they cannot overtake it (per-account order on the
+     * same key (account, or customer for alerts) wait for the next run so they cannot overtake it (per-account order on the
      * topics); events of other accounts keep flowing. Rows are locked with SKIP LOCKED until they
      * are marked published, so relays of several replicas never send the same event twice.
      */
@@ -65,13 +71,13 @@ public class OutboxEventRelay {
     public void publishPending() {
         try {
             transactionTemplate.executeWithoutResult(status -> {
-                Set<String> accountsWithAFailedSend = new HashSet<>();
+                Set<String> keysWithAFailedSend = new HashSet<>();
                 for (PendingOutboxEvent pending : pendingEvents()) {
-                    if (accountsWithAFailedSend.contains(pending.accountId())) {
+                    if (keysWithAFailedSend.contains(pending.key())) {
                         continue;
                     }
                     if (!publish(pending)) {
-                        accountsWithAFailedSend.add(pending.accountId());
+                        keysWithAFailedSend.add(pending.key());
                     }
                 }
             });
@@ -83,7 +89,7 @@ public class OutboxEventRelay {
     private boolean publish(PendingOutboxEvent pending) {
         try {
             String payload = objectMapper.writeValueAsString(pending.message());
-            kafkaTemplate.send(pending.topic(), pending.accountId(), payload).get(5, TimeUnit.SECONDS);
+            kafkaTemplate.send(pending.topic(), pending.key(), payload).get(5, TimeUnit.SECONDS);
             jdbcTemplate.update(
                     "UPDATE outbox_events SET published = TRUE WHERE id = ? AND published = FALSE",
                     pending.id());
@@ -101,7 +107,7 @@ public class OutboxEventRelay {
     private List<PendingOutboxEvent> pendingEvents() {
         return jdbcTemplate.query(
                 """
-                SELECT id, event_id, event_type, schema_version, account_id, period,
+                SELECT id, event_id, event_type, schema_version, account_id, customer_id, alert_type, occurred_at, period,
                        amount, currency, interest_rate, opening_balance, closing_balance,
                        occurred_on, reason, movement_type
                 FROM outbox_events
@@ -119,7 +125,22 @@ public class OutboxEventRelay {
         String eventType = row.getString("event_type");
         String eventId = row.getString("event_id");
         String accountId = row.getString("account_id");
+        String customerId = row.getString("customer_id");
         UUID id = row.getObject("id", UUID.class);
+        if (SECURITY_ALERT_RAISED.equals(eventType)) {
+            return new PendingOutboxEvent(
+                    id,
+                    eventId,
+                    customerId,
+                    securityAlertsTopic,
+                    new SecurityAlertMessage(
+                            eventId,
+                            eventType,
+                            row.getInt("schema_version"),
+                            row.getString("alert_type"),
+                            customerId,
+                            row.getObject("occurred_at", OffsetDateTime.class)));
+        }
         if (TRANSACTION_CONFIRMED.equals(eventType)) {
             return new PendingOutboxEvent(
                     id,
@@ -131,6 +152,7 @@ public class OutboxEventRelay {
                             eventType,
                             row.getInt("schema_version"),
                             accountId,
+                            customerId,
                             row.getString("movement_type"),
                             row.getBigDecimal("amount"),
                             row.getString("currency"),
@@ -163,8 +185,7 @@ public class OutboxEventRelay {
         return null;
     }
 
-    private record PendingOutboxEvent(
-            UUID id, String eventId, String accountId, String topic, Object message) {
+    private record PendingOutboxEvent(UUID id, String eventId, String key, String topic, Object message) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -184,11 +205,22 @@ public class OutboxEventRelay {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record SecurityAlertMessage(
+            String eventId,
+            String eventType,
+            int schemaVersion,
+            String alertType,
+            String customerId,
+            OffsetDateTime occurredAt) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private record TransactionConfirmedMessage(
             String eventId,
             String eventType,
             int schemaVersion,
             String accountId,
+            String customerId,
             String type,
             BigDecimal amount,
             String currency,

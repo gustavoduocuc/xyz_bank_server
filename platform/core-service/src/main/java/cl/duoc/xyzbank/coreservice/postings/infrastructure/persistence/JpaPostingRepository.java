@@ -13,6 +13,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Repository
 public class JpaPostingRepository implements PostingRepository {
@@ -34,19 +36,23 @@ public class JpaPostingRepository implements PostingRepository {
     @Transactional
     public void persistPosting(List<Account> accounts, List<Transaction> transactions) {
         accounts.forEach(accountRepository::save);
+        Map<String, String> customersByAccount = accounts.stream()
+                .collect(Collectors.toMap(account -> account.getId().getValue(), account -> account.getCustomerId().getValue()));
         transactions.forEach(transaction -> {
             transactionRepository.save(transaction);
-            transactionConfirmedPublisher.publish(confirmationOf(transaction));
+            transactionConfirmedPublisher.publish(
+                    confirmationOf(transaction, customersByAccount.get(transaction.getAccountId().getValue())));
         });
     }
 
-    private static TransactionConfirmed confirmationOf(Transaction transaction) {
+    private static TransactionConfirmed confirmationOf(Transaction transaction, String customerId) {
         ConfirmedMovementType movementType = transaction.getType() == TransactionType.DEBIT
                 ? ConfirmedMovementType.PAYMENT_DEBIT
                 : ConfirmedMovementType.PAYMENT_CREDIT;
         return new TransactionConfirmed(
                 transaction.getId().getValue(),
                 transaction.getAccountId().getValue(),
+                customerId,
                 movementType,
                 transaction.getAmount().getAmount(),
                 transaction.getAmount().getCurrency(),

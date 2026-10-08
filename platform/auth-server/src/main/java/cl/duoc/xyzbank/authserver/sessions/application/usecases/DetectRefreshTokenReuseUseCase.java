@@ -3,7 +3,9 @@ package cl.duoc.xyzbank.authserver.sessions.application.usecases;
 import cl.duoc.xyzbank.authserver.sessions.application.dto.RefreshTokenVerdict;
 import cl.duoc.xyzbank.authserver.sessions.application.ports.CurrentRefreshTokens;
 import cl.duoc.xyzbank.authserver.sessions.application.ports.LoginRevoker;
+import cl.duoc.xyzbank.authserver.sessions.application.ports.SecurityAlertPublisher;
 import cl.duoc.xyzbank.authserver.sessions.application.ports.RotatedRefreshTokenRepository;
+import cl.duoc.xyzbank.authserver.tokens.application.ports.CustomerIdLookup;
 
 /**
  * Classifies a presented refresh token. A token that was already rotated out means someone is
@@ -16,12 +18,20 @@ public class DetectRefreshTokenReuseUseCase {
     private final CurrentRefreshTokens currentTokens;
     private final RotatedRefreshTokenRepository rotatedTokens;
     private final LoginRevoker loginRevoker;
+    private final CustomerIdLookup customerIds;
+    private final SecurityAlertPublisher alerts;
 
     public DetectRefreshTokenReuseUseCase(
-            CurrentRefreshTokens currentTokens, RotatedRefreshTokenRepository rotatedTokens, LoginRevoker loginRevoker) {
+            CurrentRefreshTokens currentTokens,
+            RotatedRefreshTokenRepository rotatedTokens,
+            LoginRevoker loginRevoker,
+            CustomerIdLookup customerIds,
+            SecurityAlertPublisher alerts) {
         this.currentTokens = currentTokens;
         this.rotatedTokens = rotatedTokens;
         this.loginRevoker = loginRevoker;
+        this.customerIds = customerIds;
+        this.alerts = alerts;
     }
 
     public RefreshTokenVerdict execute(String refreshToken) {
@@ -30,7 +40,9 @@ public class DetectRefreshTokenReuseUseCase {
         }
         return rotatedTokens.authorizationIdOf(refreshToken)
                 .map(authorizationId -> {
-                    loginRevoker.revoke(authorizationId);
+                    loginRevoker.revoke(authorizationId)
+                            .flatMap(customerIds::customerIdOf)
+                            .ifPresent(alerts::refreshTokenReuse);
                     return RefreshTokenVerdict.REUSED;
                 })
                 .orElse(RefreshTokenVerdict.UNKNOWN);

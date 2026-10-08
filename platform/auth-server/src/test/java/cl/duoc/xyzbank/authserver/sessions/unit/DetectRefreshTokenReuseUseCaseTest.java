@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,9 +28,12 @@ class DetectRefreshTokenReuseUseCaseTest {
      * 1. A login's current refresh token is accepted and revokes nothing
      * 2. A refresh token that was rotated out is recognised as reuse and revokes its login
      * 3. A refresh token never seen is rejected without revoking anything
+     * 4. Reuse raises one REFRESH_TOKEN_REUSE alert for the revoked login's customer; the other
+     *    verdicts raise none
      */
 
     private final List<String> revokedLogins = new ArrayList<>();
+    private final List<String> alertedCustomers = new ArrayList<>();
     private InMemoryRotatedRefreshTokenRepository rotatedTokens;
     private DetectRefreshTokenReuseUseCase useCase;
 
@@ -37,7 +41,15 @@ class DetectRefreshTokenReuseUseCaseTest {
     void setUp() {
         rotatedTokens = new InMemoryRotatedRefreshTokenRepository();
         Set<String> currentTokens = Set.of("R2");
-        useCase = new DetectRefreshTokenReuseUseCase(currentTokens::contains, rotatedTokens, revokedLogins::add);
+        useCase = new DetectRefreshTokenReuseUseCase(
+                currentTokens::contains,
+                rotatedTokens,
+                login -> {
+                    revokedLogins.add(login);
+                    return Optional.of("demo");
+                },
+                username -> Optional.of("customer-of-" + username),
+                alertedCustomers::add);
     }
 
     @Test
@@ -47,6 +59,7 @@ class DetectRefreshTokenReuseUseCaseTest {
 
         assertEquals(RefreshTokenVerdict.ACCEPTED, verdict);
         assertTrue(revokedLogins.isEmpty());
+        assertTrue(alertedCustomers.isEmpty());
     }
 
     @Test
@@ -58,6 +71,7 @@ class DetectRefreshTokenReuseUseCaseTest {
 
         assertEquals(RefreshTokenVerdict.REUSED, verdict);
         assertEquals(List.of("login-1"), revokedLogins);
+        assertEquals(List.of("customer-of-demo"), alertedCustomers);
     }
 
     @Test
@@ -67,5 +81,6 @@ class DetectRefreshTokenReuseUseCaseTest {
 
         assertEquals(RefreshTokenVerdict.UNKNOWN, verdict);
         assertTrue(revokedLogins.isEmpty());
+        assertTrue(alertedCustomers.isEmpty());
     }
 }

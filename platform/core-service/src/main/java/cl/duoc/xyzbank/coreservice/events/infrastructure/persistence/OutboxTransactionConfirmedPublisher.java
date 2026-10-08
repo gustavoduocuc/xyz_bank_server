@@ -25,15 +25,16 @@ public class OutboxTransactionConfirmedPublisher implements TransactionConfirmed
         jdbcTemplate.update(
                 """
                 INSERT INTO outbox_events (
-                    id, event_id, event_type, schema_version, account_id,
+                    id, event_id, event_type, schema_version, account_id, customer_id,
                     amount, currency, occurred_on, movement_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 UUID.randomUUID(),
                 event.eventId(),
                 "TransactionConfirmed",
                 1,
                 UUID.fromString(event.accountId()),
+                UUID.fromString(event.customerId()),
                 event.amount(),
                 event.currency(),
                 event.occurredAt(),

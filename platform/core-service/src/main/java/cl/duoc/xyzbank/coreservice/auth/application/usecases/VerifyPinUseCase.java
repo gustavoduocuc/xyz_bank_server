@@ -7,6 +7,7 @@ import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
 import cl.duoc.xyzbank.coredomain.cards.domain.services.PinHasher;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.auth.application.dto.PinVerificationOutcome;
+import cl.duoc.xyzbank.coreservice.events.application.ports.SecurityAlertPublisher;
 
 import java.time.Clock;
 
@@ -15,13 +16,19 @@ public class VerifyPinUseCase {
     private final CardRepository cardRepository;
     private final PinHasher pinHasher;
     private final AtmSessionRepository atmSessionRepository;
+    private final SecurityAlertPublisher securityAlerts;
     private final Clock clock;
 
     public VerifyPinUseCase(
-            CardRepository cardRepository, PinHasher pinHasher, AtmSessionRepository atmSessionRepository, Clock clock) {
+            CardRepository cardRepository,
+            PinHasher pinHasher,
+            AtmSessionRepository atmSessionRepository,
+            SecurityAlertPublisher securityAlerts,
+            Clock clock) {
         this.cardRepository = cardRepository;
         this.pinHasher = pinHasher;
         this.atmSessionRepository = atmSessionRepository;
+        this.securityAlerts = securityAlerts;
         this.clock = clock;
     }
 
@@ -32,8 +39,12 @@ public class VerifyPinUseCase {
     }
 
     private PinVerificationOutcome verify(Card card, String pin) {
+        boolean wasLocked = card.isLocked();
         Card.PinVerificationResult cardResult = card.verifyPin(pin, pinHasher);
         cardRepository.save(card);
+        if (!wasLocked && card.isLocked()) {
+            securityAlerts.cardLocked(card.getCustomerId().getValue());
+        }
         PinVerificationOutcome.Result result = toOutcomeResult(cardResult);
         if (result != PinVerificationOutcome.Result.SUCCESS) {
             return new PinVerificationOutcome(result, null, null);
