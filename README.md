@@ -137,6 +137,7 @@ El issuer es el valor de `AUTH_PUBLIC_ISSUER` en `.env` (`https://localhost:9000
 | `BFF_ATM_CLIENT_SECRET` | valor de desarrollo | Secreto de `bff-atm` (`auth-server` y `bff-atm`) |
 | `BFF_ATM_SESSION_SECRET` | valor de desarrollo | Firma HS256 de la sesión de terminal; solo `bff-atm` |
 | `INTERESTS_SERVICE_CLIENT_SECRET` | valor de desarrollo | Secreto de `interests-service` (`auth-server` e `interests-service`) |
+| `ACCOUNTS_ADMIN_CLIENT_SECRET` | valor de desarrollo | Secreto del cliente `accounts-admin` (`client_credentials`, scopes `accounts:write` y `customers:read`) en `auth-server` |
 | `CUSTOMERS_ADMIN_CLIENT_SECRET` | valor de desarrollo | Secreto del cliente `customers-admin` (`client_credentials`, scopes `customers:read` y `customers:write`) en `auth-server` |
 | `AUTH_DB_USERNAME` / `AUTH_DB_PASSWORD` | `auth_server` / valor de desarrollo | Credenciales de `auth-postgres`, que solo usa `auth-server` |
 | `AUTH_PUBLIC_ISSUER`, `BFF_WEB_PUBLIC_URL`, `BFF_MOBILE_PUBLIC_URL` | `https://localhost:9000`, `:8081`, `:8082` | URLs públicas (issuer y redirect URIs) |
@@ -380,6 +381,28 @@ READ_TOKEN=$(curl -sS --cacert dev/certs/ca.crt -u "customers-admin:$(grep ^CUST
 curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8085/internal/customers \
   -H "Authorization: Bearer $READ_TOKEN" -H 'Content-Type: application/json' -H 'Idempotency-Key: alta-002' \
   -d '{"fullName":"X","email":"x@xyzbank.cl"}'
+```
+
+**core-service — apertura, mantenimiento y cierre de cuentas** (scope `accounts:write`; core-service consulta a `customers-service` por Eureka antes de abrir)
+
+```bash
+ACC_TOKEN=$(curl -sS --cacert dev/certs/ca.crt -u "accounts-admin:$(grep ^ACCOUNTS_ADMIN_CLIENT_SECRET= .env | cut -d= -f2)" \
+  -d grant_type=client_credentials https://localhost:9000/oauth2/token | jq -r .access_token)
+
+# Apertura idempotente para el cliente demo: repetir la Idempotency-Key devuelve la misma cuenta (201).
+# Cliente inexistente -> 422; customers-service caído -> 503 y no se crea nada
+curl -sS -X POST http://localhost:8080/internal/accounts -H "Authorization: Bearer $ACC_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: apertura-001' \
+  -d '{"customerId":"11111111-1111-1111-1111-111111111111","currency":"USD","alias":"Ahorro"}'
+
+# Alias y límite diario propio (bloqueo optimista por version; una versión vieja -> 409)
+curl -sS -X PATCH http://localhost:8080/internal/accounts/<id> -H "Authorization: Bearer $ACC_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: cambio-001' \
+  -d '{"alias":"Viajes","dailyWithdrawalLimit":800.00,"version":0}'
+
+# Cierre: solo con saldo cero (si no, 409). Una cuenta CLOSED rechaza retiros y créditos de interés con 409
+curl -sS -X POST http://localhost:8080/internal/accounts/<id>/closure -H "Authorization: Bearer $ACC_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: cierre-001' -d '{"version":1}'
 ```
 
 **auth-server — un cliente no puede pedir scopes de otro canal**
