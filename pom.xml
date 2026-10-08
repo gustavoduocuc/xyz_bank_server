@@ -20,6 +20,7 @@
         <module>platform/interests-service</module>
         <module>platform/core-service</module>
         <module>platform/customers-service</module>
+        <module>platform/payments-service</module>
         <module>platform/auth-server</module>
         <module>bff/bff-web</module>
         <module>bff/bff-mobile</module>

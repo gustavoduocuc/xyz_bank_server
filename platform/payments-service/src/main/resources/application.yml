@@ -1,0 +1,100 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: payments-service
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+  cloud:
+    compatibility-verifier:
+      enabled: false
+  # One shared PostgreSQL; payments-service reads and writes only the payments schema
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:core_service}
+    username: ${DB_USERNAME:core_service}
+    password: ${DB_PASSWORD:core_service}
+  flyway:
+    enabled: true
+    schemas: payments
+    default-schema: payments
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: payments
+  security:
+    oauth2:
+      # Callers' access tokens are issued by auth-server and verified here with its public keys only
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH_ISSUER:https://localhost:9000}
+          jwk-set-uri: ${AUTH_JWK_SET_URI:https://localhost:9000/oauth2/jwks}
+          audiences:
+            - payments-service
+      # payments-service's own token for posting a payment's entries to core-service
+      client:
+        registration:
+          core-service:
+            provider: auth-server
+            client-id: payments-service
+            client-secret: ${PAYMENTS_SERVICE_CLIENT_SECRET:payments-service-dev-secret}
+            authorization-grant-type: client_credentials
+            client-authentication-method: client_secret_basic
+            scope: postings:write
+        provider:
+          auth-server:
+            token-uri: ${AUTH_TOKEN_URI:https://localhost:9000/oauth2/token}
+
+# Posting is a few indexed writes: 1 s to connect and 3 s to read bound it
+core-service:
+  base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000
+
+# Retrying a posting is safe because core-service applies a paymentId at most once.
+# Only unavailability is retried; a 4xx is a refusal, returned rather than thrown.
+resilience4j:
+  retry:
+    instances:
+      coreServicePosting:
+        maxAttempts: 3
+        waitDuration: 200ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+  circuitbreaker:
+    instances:
+      coreService:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        permittedNumberOfCallsInHalfOpenState: 2
+        # An open breaker must not turn payments-service's health DOWN
+        registerHealthIndicator: false
+
+eureka:
+  client:
+    enabled: ${EUREKA_CLIENT_ENABLED:false}
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761}/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
