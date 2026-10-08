@@ -3,13 +3,14 @@ package cl.duoc.xyzbank.interestsservice.interests.config;
 import cl.duoc.xyzbank.interestsservice.interests.application.ports.InterestCalculatedPublisher;
 import cl.duoc.xyzbank.interestsservice.interests.application.usecases.ApplyAnnualInterestUseCase;
 import cl.duoc.xyzbank.interestsservice.interests.application.usecases.RecordInterestCreditResultUseCase;
-import cl.duoc.xyzbank.interestsservice.interests.domain.repositories.InMemoryInterestCalculationRepository;
 import cl.duoc.xyzbank.interestsservice.interests.domain.repositories.InterestCalculationRepository;
 import cl.duoc.xyzbank.interestsservice.interests.domain.services.InterestRatePolicy;
+import cl.duoc.xyzbank.interestsservice.interests.infrastructure.persistence.JdbcInterestCalculationRepository;
 import cl.duoc.xyzbank.interestsservice.interestview.application.ports.CoreServicePort;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Configuration;
 
 import java.math.BigDecimal;
@@ -24,8 +25,8 @@ public class InterestsConfig {
     }
 
     @Bean
-    public InterestCalculationRepository interestCalculationRepository() {
-        return new InMemoryInterestCalculationRepository();
+    public InterestCalculationRepository interestCalculationRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcInterestCalculationRepository(jdbcTemplate);
     }
 
     @Bean

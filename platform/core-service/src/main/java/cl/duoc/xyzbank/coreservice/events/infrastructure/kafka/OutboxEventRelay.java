@@ -10,6 +10,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -34,6 +36,7 @@ public class OutboxEventRelay {
     private final JdbcTemplate jdbcTemplate;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
     private final String creditResultsTopic;
     private final String transactionsConfirmedTopic;
 
@@ -41,11 +44,13 @@ public class OutboxEventRelay {
             JdbcTemplate jdbcTemplate,
             KafkaTemplate<String, String> kafkaTemplate,
             ObjectMapper objectMapper,
+            PlatformTransactionManager transactionManager,
             @Value("${interests.kafka.credit-results-topic}") String creditResultsTopic,
             @Value("${app.events.transaction-confirmed.topic}") String transactionsConfirmedTopic) {
         this.jdbcTemplate = jdbcTemplate;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.creditResultsTopic = creditResultsTopic;
         this.transactionsConfirmedTopic = transactionsConfirmedTopic;
     }
@@ -53,20 +58,23 @@ public class OutboxEventRelay {
     /**
      * Sends pending events oldest first. When an event fails to send, the later events of the
      * same account wait for the next run so they cannot overtake it (per-account order on the
-     * topics); events of other accounts keep flowing.
+     * topics); events of other accounts keep flowing. Rows are locked with SKIP LOCKED until they
+     * are marked published, so relays of several replicas never send the same event twice.
      */
     @Scheduled(fixedDelayString = "${app.outbox.relay-delay-ms:1000}")
     public void publishPending() {
         try {
-            Set<String> accountsWithAFailedSend = new HashSet<>();
-            for (PendingOutboxEvent pending : pendingEvents()) {
-                if (accountsWithAFailedSend.contains(pending.accountId())) {
-                    continue;
+            transactionTemplate.executeWithoutResult(status -> {
+                Set<String> accountsWithAFailedSend = new HashSet<>();
+                for (PendingOutboxEvent pending : pendingEvents()) {
+                    if (accountsWithAFailedSend.contains(pending.accountId())) {
+                        continue;
+                    }
+                    if (!publish(pending)) {
+                        accountsWithAFailedSend.add(pending.accountId());
+                    }
                 }
-                if (!publish(pending)) {
-                    accountsWithAFailedSend.add(pending.accountId());
-                }
-            }
+            });
         } catch (Exception exception) {
             log.warn("Outbox relay will retry on the next tick", exception);
         }
@@ -99,6 +107,8 @@ public class OutboxEventRelay {
                 FROM outbox_events
                 WHERE published = FALSE
                 ORDER BY seq
+                LIMIT 100
+                FOR UPDATE SKIP LOCKED
                 """,
                 (row, rowNumber) -> mapPending(row)).stream()
                 .filter(Objects::nonNull)
