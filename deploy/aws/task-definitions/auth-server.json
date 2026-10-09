@@ -1,0 +1,146 @@
+{
+  "family": "xyz-bank-auth-server",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "operatingSystemFamily": "LINUX",
+    "cpuArchitecture": "X86_64"
+  },
+  "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-execution",
+  "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-task",
+  "containerDefinitions": [
+    {
+      "name": "auth-server",
+      "image": "${ECR_REGISTRY}/xyz-bank/auth-server:${TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 9000,
+          "protocol": "tcp"
+        },
+        {
+          "containerPort": 9100,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "AUTH_DB_URL",
+          "value": "jdbc:postgresql://${RDS_AUTH_POSTGRES_HOST}:5432/auth_server"
+        },
+        {
+          "name": "AUTH_DB_USERNAME",
+          "value": "auth_server"
+        },
+        {
+          "name": "AUTH_ISSUER",
+          "value": "${AUTH_PUBLIC_ISSUER}"
+        },
+        {
+          "name": "AUTH_SIGNING_KEYSTORE_PATH",
+          "value": "file:/certs/signing.p12"
+        },
+        {
+          "name": "AUTH_SIGNING_KEY_ALIAS",
+          "value": "auth-server-signing"
+        },
+        {
+          "name": "BFF_MOBILE_REDIRECT_URI",
+          "value": "${BFF_MOBILE_PUBLIC_URL}/login/oauth2/code/oidc"
+        },
+        {
+          "name": "BFF_WEB_REDIRECT_URI",
+          "value": "${BFF_WEB_PUBLIC_URL}/login/oauth2/code/oidc"
+        },
+        {
+          "name": "FEATURE_SECURITY_ALERTS",
+          "value": "true"
+        },
+        {
+          "name": "KAFKA_BOOTSTRAP_SERVERS",
+          "value": "${MSK_BOOTSTRAP_SERVERS}"
+        },
+        {
+          "name": "TLS_KEYSTORE_PATH",
+          "value": "file:/certs/keystore.p12"
+        },
+        {
+          "name": "TRACING_SAMPLING_PROBABILITY",
+          "value": "0.1"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "ACCOUNTS_ADMIN_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/ACCOUNTS_ADMIN_CLIENT_SECRET"
+        },
+        {
+          "name": "AUTH_DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/AUTH_DB_PASSWORD"
+        },
+        {
+          "name": "AUTH_DEMO_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/AUTH_DEMO_PASSWORD"
+        },
+        {
+          "name": "AUTH_SIGNING_KEYSTORE_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/AUTH_SIGNING_KEYSTORE_PASSWORD"
+        },
+        {
+          "name": "BFF_ATM_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/BFF_ATM_CLIENT_SECRET"
+        },
+        {
+          "name": "BFF_MOBILE_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/BFF_MOBILE_CLIENT_SECRET"
+        },
+        {
+          "name": "BFF_WEB_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/BFF_WEB_CLIENT_SECRET"
+        },
+        {
+          "name": "CUSTOMERS_ADMIN_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/CUSTOMERS_ADMIN_CLIENT_SECRET"
+        },
+        {
+          "name": "INTERESTS_SERVICE_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/INTERESTS_SERVICE_CLIENT_SECRET"
+        },
+        {
+          "name": "PAYMENTS_ADMIN_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/PAYMENTS_ADMIN_CLIENT_SECRET"
+        },
+        {
+          "name": "PAYMENTS_SERVICE_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/PAYMENTS_SERVICE_CLIENT_SECRET"
+        },
+        {
+          "name": "TLS_KEYSTORE_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/TLS_KEYSTORE_PASSWORD"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/xyz-bank/auth-server",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget --no-check-certificate -qO- https://127.0.0.1:9000/actuator/health | grep -q UP"
+        ],
+        "interval": 10,
+        "timeout": 5,
+        "retries": 10,
+        "startPeriod": 30
+      }
+    }
+  ]
+}
