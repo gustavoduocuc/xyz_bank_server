@@ -26,7 +26,7 @@ Registered clients and what each may obtain:
 | `bff-atm` | confidential (`client_secret_basic`) | `client_credentials` | — | `atm:read-balance atm:withdraw` | `ATM` |
 | `interests-service` | confidential (`client_secret_basic`) | `client_credentials` | — | `interests:write` | `INTERESTS` |
 
-User access tokens have `iss = https://localhost:9000` and `sub` = the customer id. `bff-atm` and `interests-service` tokens have no customer subject. Audience is `core-service`, plus `interests-service` on `bff-web` and `interests-service` tokens. See [`docs/architecture.md`](../../architecture.md#authorization-server) for the reasoning behind the public/internal URL split.
+User access tokens have `iss = https://localhost:9000` and `sub` = the customer id. `bff-atm` and `interests-service` tokens have no customer subject. Audience is `core-service`, plus `interests-service` on `bff-web` and `interests-service` tokens. See [`docs/architecture.md`](../../architecture.md#servidor-de-autorización) for the reasoning behind the public/internal URL split.
 
 ## Events
 

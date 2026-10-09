@@ -1,86 +1,86 @@
-# Architecture
+# Arquitectura
 
-XYZ Bank exposes three channel-specific backends for frontend (BFFs) in front of an internal platform reached through `api-gateway`. The platform has three business microservices — `core-service` (Account Management), `customers-service` (Customer Management) and `payments-service` (Payment Processing) — plus `interests-service` for annual interest, `auth-server` (the only OAuth 2.0 / OIDC token issuer), `config-server` and `eureka-server`. The services share one PostgreSQL with one schema per service. A single Apache Kafka broker in KRaft mode carries the interest-credit saga, confirmed transactions and security alerts. The legacy batch processes run as Spring Batch jobs (`data-migration`) that write their reports to a separate MySQL instance; those reports are not loaded into the platform's tables.
+XYZ Bank expone tres backends por canal (BFFs) frente a una plataforma interna a la que se entra por `api-gateway`. La plataforma tiene tres microservicios de negocio — `core-service` (Gestión de Cuentas), `customers-service` (Gestión de Clientes) y `payments-service` (Procesamiento de Pagos) — más `interests-service` para los intereses anuales, `auth-server` (el único emisor de tokens OAuth 2.0 / OIDC), `config-server` y `eureka-server`. Los servicios comparten una PostgreSQL con un esquema por servicio. Un único broker Apache Kafka en modo KRaft transporta la saga de acreditación de intereses, las transacciones confirmadas y las alertas de seguridad. Los procesos batch legacy corren como jobs de Spring Batch (`data-migration`) que escriben sus reportes en una instancia MySQL aparte; esos reportes no se cargan en las tablas de la plataforma.
 
-## Critical migration processes
+## Procesos críticos de la migración
 
-The move from the COBOL/Shell mainframe system to microservices rests on five processes. Each one replaces a legacy limitation and maps to a part of this repository.
+El paso del sistema mainframe COBOL/Shell a microservicios descansa en cinco procesos. Cada uno elimina una limitación del legacy y corresponde a una parte de este repositorio.
 
-| # | Process | Legacy limitation it removes | Where it lives | Decision records |
+| # | Proceso | Limitación del legacy que elimina | Dónde vive | Registros de decisión |
 |---|---|---|---|---|
-| 1 | Migrating the batch processes to Spring Batch | Shell/COBOL jobs with no restart, no partial retry and no parallelism | `data-migration`: `dailyTransactionsJob`, `monthlyInterestsJob`, `annualGenerationJob` | [`data-migration/docs/jobs.md`](../data-migration/docs/jobs.md) |
-| 2 | Splitting the monolith into microservices | One deployable where a fault in any module takes down the whole system and scaling is all-or-nothing | `core-service`, `customers-service`, `payments-service`, `interests-service`, with Eureka, Config Server and `api-gateway` | [ADR 004](adr/004-service-decomposition.md) |
-| 3 | Backend for Frontend per channel | Web, mobile and ATM receiving the same payloads from one backend, and frontend teams bound to its release train | `bff-web`, `bff-mobile`, `bff-atm` | [ADR 001](adr/001-bff-strategy.md) |
-| 4 | Distributed security with Spring Security / Spring Cloud | Centralized, perimeter-only security that does not hold in a distributed system | `auth-server` (Spring Authorization Server), resource servers in every service, channel credentials in each BFF, TLS and mTLS | [Authorization server](#authorization-server) |
-| 5 | Asynchronous messaging with Apache Kafka | Synchronous coupling: a credit or a notification fails whenever the other side is down | Topics `interests.calculated`, `interests.credit-results`, `transactions.confirmed`, `security.alerts`, each with a `.DLT` | [ADR 002](adr/002-event-architecture.md), [ADR 003](adr/003-kafka-default-and-dead-letter-topics.md) |
+| 1 | Migración de los procesos batch a Spring Batch | Jobs Shell/COBOL sin reinicio, sin reintento parcial y sin paralelismo | `data-migration`: `dailyTransactionsJob`, `monthlyInterestsJob`, `annualGenerationJob` | [`data-migration/docs/jobs.md`](../data-migration/docs/jobs.md) |
+| 2 | División del monolito en microservicios | Un único deployable en el que una falla de cualquier módulo tumba todo el sistema y escalar es todo o nada | `core-service`, `customers-service`, `payments-service`, `interests-service`, con Eureka, Config Server y `api-gateway` | [ADR 004](adr/004-service-decomposition.md) |
+| 3 | Backend for Frontend por canal | Web, móvil y cajero reciben los mismos payloads de un solo backend, y los equipos de frontend quedan atados a su ciclo de releases | `bff-web`, `bff-mobile`, `bff-atm` | [ADR 001](adr/001-bff-strategy.md) |
+| 4 | Seguridad distribuida con Spring Security / Spring Cloud | Seguridad centralizada y solo perimetral, que no se sostiene en un sistema distribuido | `auth-server` (Spring Authorization Server), resource servers en cada servicio, credenciales por canal en cada BFF, TLS y mTLS | [Servidor de autorización](#servidor-de-autorización) |
+| 5 | Mensajería asíncrona con Apache Kafka | Acoplamiento síncrono: un crédito o una notificación falla cada vez que el otro lado está caído | Tópicos `interests.calculated`, `interests.credit-results`, `transactions.confirmed` y `security.alerts`, cada uno con su `.DLT` | [ADR 002](adr/002-event-architecture.md), [ADR 003](adr/003-kafka-default-and-dead-letter-topics.md) |
 
-### Batch processes in detail
+### Procesos batch en detalle
 
-- **Jobs.** Each job is a guard step (skip when the ledger `migration_executions` already holds SUCCESS), a partitioned chunk step (read CSV, process, write), and a closing step: the daily job publishes its reports and rebuilds `daily_transaction_summaries`, the annual job consolidates `annual_audit_reports` from the staged movements.
-- **Errors.** A skip policy drops invalid records (domain errors, unparseable lines) up to `skip-limit`. A retry policy retries transient database errors with exponential backoff (1 s, ×2, up to 10 s).
-- **Restart.** `JobRestartLauncher` restarts the last FAILED execution of a job instance from its last committed chunk, up to `max-restarts`; Compose restarts the container on failure up to 3 times.
-- **Parallelism and scale.** Every job is partitioned by CSV line range over a bounded thread pool (`throttle-limit`), with configurable chunk size and batched upserts.
-- **Integrity.** Writes are idempotent upserts keyed by business key, so a restarted or repeated run converges to the same rows. Tests compare the results with golden files captured from the legacy output, and prove that an interrupted run ends equal to a clean one.
+- **Jobs.** Cada job es un step de guarda (se salta si el ledger `migration_executions` ya registra SUCCESS), un step chunk particionado (leer el CSV, procesar, escribir) y un step de cierre: el job diario publica sus reportes y reconstruye `daily_transaction_summaries`, y el job anual consolida `annual_audit_reports` a partir de los movimientos en staging.
+- **Errores.** Una política de skip descarta los registros inválidos (errores de dominio, líneas que no se pueden parsear) hasta `skip-limit`. Una política de reintento reintenta los errores transitorios de base de datos con backoff exponencial (1 s, ×2, hasta 10 s).
+- **Reinicio.** `JobRestartLauncher` reinicia la última ejecución FAILED de una instancia del job desde su último chunk confirmado, hasta `max-restarts` veces; Compose reinicia el contenedor ante una falla hasta 3 veces.
+- **Paralelismo y escala.** Cada job se particiona por rango de líneas del CSV sobre un pool de hilos acotado (`throttle-limit`), con tamaño de chunk configurable y upserts en lote.
+- **Integridad.** Las escrituras son upserts idempotentes por clave de negocio, así que una corrida reiniciada o repetida converge a las mismas filas. Los tests comparan los resultados con archivos de referencia (golden files) capturados de la salida legacy, y prueban que una corrida interrumpida termina igual que una limpia.
 
-## Business requirements and architecture decisions
+## Requerimientos de negocio y decisiones de arquitectura
 
-The architecture answers three business requirements stated by the bank. Each decision below is justified by the requirement it serves.
+La arquitectura responde a tres requerimientos de negocio planteados por el banco. Cada decisión se justifica por el requerimiento al que sirve.
 
-### 1. Scale and evolve each capability independently
+### 1. Escalar y evolucionar cada capacidad por separado
 
-The mainframe could only grow as a whole, and any change shipped the entire system.
+El mainframe solo podía crecer como un todo, y cualquier cambio obligaba a desplegar el sistema completo.
 
-- **Decision: microservices per business capability with one schema each** ([ADR 004](adr/004-service-decomposition.md)). Accounts, customers and payments are deployed, scaled and versioned separately. Each service writes only its own schema, so a change in one cannot break another's data.
-- **Decision: stateless services behind Eureka and `api-gateway`.** Nothing is kept in process memory, the outbox is claimed with `SELECT ... FOR UPDATE SKIP LOCKED` and consumers are idempotent by `eventId`, so `docker compose up --scale` (or an ECS service's desired count, see [`deploy/aws/README.md`](../deploy/aws/README.md)) adds instances on demand.
-- **Decision: centralized configuration in `config-server`.** One file per service in `config-repo/` changes timeouts, rates and flags without rebuilding images.
+- **Decisión: microservicios por capacidad de negocio, con un esquema cada uno** ([ADR 004](adr/004-service-decomposition.md)). Cuentas, clientes y pagos se despliegan, escalan y versionan por separado. Cada servicio escribe solo en su propio esquema, así que un cambio en uno no puede romper los datos de otro.
+- **Decisión: servicios sin estado detrás de Eureka y `api-gateway`.** Nada se guarda en la memoria del proceso, el outbox se reclama con `SELECT ... FOR UPDATE SKIP LOCKED` y los consumidores son idempotentes por `eventId`. Por eso `docker compose up --scale` (o la cantidad deseada de tareas de un servicio ECS, ver [`deploy/aws/README.md`](../deploy/aws/README.md)) agrega instancias según la demanda.
+- **Decisión: configuración centralizada en `config-server`.** Un archivo por servicio en `config-repo/` cambia timeouts, tasas y flags sin reconstruir imágenes.
 
-### 2. Keep critical operations available and data consistent when a part fails
+### 2. Mantener disponibles las operaciones críticas y los datos consistentes cuando una parte falla
 
-A fault in one legacy module stopped every operation, and a banking system cannot lose or duplicate money.
+Una falla en un módulo legacy detenía todas las operaciones, y un sistema bancario no puede perder ni duplicar dinero.
 
-- **Decision: Resilience4j around every remote call.** Timeouts, circuit breakers, retries only on idempotent operations, and explicit alternatives: a BFF answers 503 instead of stale balances, an account is not opened if `customers-service` is down, a payment stays `PENDING` when `core-service` is down and completes when the same `Idempotency-Key` is repeated.
-- **Decision: idempotent writes with optimistic locking.** Every write takes an `Idempotency-Key` and locks the affected aggregate, so a retry never moves money twice.
-- **Decision: Kafka with a transactional outbox, bounded retries and dead-letter topics.** An event is written in the same database transaction as the change it reports and is never lost or reordered per account. A record that keeps failing goes to `<topic>.DLT` instead of blocking its partition.
-- **Decision: restartable, idempotent batch jobs.** An interrupted migration resumes and produces the same result as the legacy process.
-- **Decision: observability.** Prometheus metrics, distributed traces over HTTP and Kafka (Zipkin), and one log pattern with `traceId`, `spanId` and `correlationId` on every service, to find and fix failures across services.
+- **Decisión: Resilience4j en cada llamada remota.** Timeouts, circuit breakers, reintentos solo en operaciones idempotentes, y alternativas explícitas: un BFF responde 503 en vez de devolver saldos viejos, una cuenta no se abre si `customers-service` está caído, y un pago queda `PENDING` cuando `core-service` está caído y se completa al repetir la misma `Idempotency-Key`.
+- **Decisión: escrituras idempotentes con bloqueo optimista.** Cada escritura recibe una `Idempotency-Key` y bloquea el agregado afectado, así que un reintento nunca mueve dinero dos veces.
+- **Decisión: Kafka con outbox transaccional, reintentos acotados y dead-letter topics.** Un evento se escribe en la misma transacción de base de datos que el cambio que informa, y nunca se pierde ni se desordena dentro de una cuenta. Un registro que sigue fallando va a `<tópico>.DLT` en vez de bloquear su partición.
+- **Decisión: jobs batch reiniciables e idempotentes.** Una migración interrumpida se reanuda y produce el mismo resultado que el proceso legacy.
+- **Decisión: observabilidad.** Métricas de Prometheus, trazas distribuidas sobre HTTP y Kafka (Zipkin), y un patrón de log común con `traceId`, `spanId` y `correlationId` en todos los servicios, para encontrar y corregir fallas que cruzan servicios.
 
-### 3. Serve each channel securely and efficiently
+### 3. Atender cada canal de forma segura y eficiente
 
-Web, mobile and ATM received the same data, with security limited to the perimeter.
+Web, móvil y cajero recibían los mismos datos, con una seguridad limitada al perímetro.
 
-- **Decision: one BFF per channel** ([ADR 001](adr/001-bff-strategy.md)). Web gets complete, aggregated payloads; mobile gets minimal ones to save bandwidth; the ATM gets only PIN verification, balance and withdrawal.
-- **Decision: a credential per channel and tokens everywhere.** OIDC with PKCE and an HttpOnly session cookie for web, a device-bound JWT for mobile, and mTLS plus card PIN for the ATM. `auth-server` refuses scopes from another channel, and every service is an OAuth2 resource server that checks signature, issuer, audience and scope.
-- **Decision: TLS on every client-facing edge.** The BFFs and `auth-server` serve HTTPS only, and the PIN travels only over the TLS connector of `core-service`.
-- **Decision: security events.** A locked card or a reused refresh token publishes `security.alerts`, and the customer sees it in the notification feed.
+- **Decisión: un BFF por canal** ([ADR 001](adr/001-bff-strategy.md)). Web recibe payloads completos y agregados; móvil, payloads mínimos para ahorrar ancho de banda; el cajero, solo verificación de PIN, saldo y retiro.
+- **Decisión: una credencial por canal y tokens en todas partes.** OIDC con PKCE y cookie de sesión HttpOnly para web, JWT ligado al dispositivo para móvil, y mTLS más PIN de tarjeta para el cajero. `auth-server` rechaza scopes de otro canal, y cada servicio es un resource server OAuth2 que verifica firma, emisor, audiencia y scope.
+- **Decisión: TLS en todo borde de cara al cliente.** Los BFFs y `auth-server` solo sirven HTTPS, y el PIN viaja únicamente por el conector TLS de `core-service`.
+- **Decisión: eventos de seguridad.** Una tarjeta bloqueada o un refresh token reutilizado publica en `security.alerts`, y el cliente lo ve en su feed de notificaciones.
 
-## Topology
+## Topología
 
-Each channel proves who the caller is with a real credential instead of a trusted header: OAuth2/OIDC session cookie for web, a device-bound JWT for mobile, and mTLS plus a PIN-verified session for ATM. Every client-facing edge is TLS; BFF→platform edges stay plain HTTP except the one call that carries a raw PIN, which is TLS-only by design.
+Cada canal prueba quién es el llamante con una credencial real en vez de una cabecera de confianza: cookie de sesión OAuth2/OIDC para web, JWT ligado al dispositivo para móvil, y mTLS más una sesión verificada por PIN para el cajero. Todo borde de cara al cliente es TLS; los bordes BFF→plataforma siguen en HTTP plano, salvo la única llamada que transporta un PIN, que es TLS-only por diseño.
 
-The three BFFs reach the platform through `api-gateway` (Spring Cloud Gateway, one `PLATFORM_GATEWAY_URL`): `/<service>/**` is routed with `lb://` to an instance registered in Eureka, and `Authorization`, `X-Correlation-Id` and `Idempotency-Key` are forwarded untouched. The gateway does not validate tokens; every service does. The only exception is `bff-atm`'s PIN verification, which goes straight to the TLS connector of `core-service`. Every platform service, the gateway and the BFFs register with Eureka and load their configuration from `config-server`. `bff-web` reads the profile and the notification feed from `customers-service`, accounts and transactions from `core-service`, and interest summaries from `interests-service` (feature flag on by default). `payments-service` takes transfers, deposits and bill payments from internal clients holding `payments:write` (no BFF exposes them yet) and applies them through `core-service`'s `/internal/postings`. `interests-service` discovers `core-service` by service id (LoadBalancer) and wraps outbound HTTP calls to core with a Resilience4j circuit breaker. The annual interest summary GET stays synchronous and forwards the user bearer. Interest credit travels by the Kafka saga by default in Compose (`FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`): the calculation is published as `InterestCalculated` and `core-service` credits the account, then publishes the result. With the flag `false` the credit is the synchronous HTTP path instead, where `interests-service` authenticates to `core-service` with its own client-credentials access token (scope `interests:write`). Decision record: [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
+Los tres BFFs llegan a la plataforma por `api-gateway` (Spring Cloud Gateway, una sola `PLATFORM_GATEWAY_URL`): `/<servicio>/**` se enruta con `lb://` a una instancia registrada en Eureka, y `Authorization`, `X-Correlation-Id` e `Idempotency-Key` se reenvían sin cambios. El gateway no valida tokens; eso lo hace cada servicio. La única excepción es la verificación de PIN de `bff-atm`, que va directa al conector TLS de `core-service`. Todos los servicios de plataforma, el gateway y los BFFs se registran en Eureka y cargan su configuración desde `config-server`. `bff-web` lee el perfil y el feed de notificaciones desde `customers-service`, las cuentas y movimientos desde `core-service`, y los resúmenes de intereses desde `interests-service` (feature flag encendida por defecto). `payments-service` recibe transferencias, depósitos y pagos de cuentas de clientes internos con `payments:write` (todavía ningún BFF los expone) y los aplica mediante `/internal/postings` de `core-service`. `interests-service` descubre `core-service` por nombre de servicio (LoadBalancer) y protege sus llamadas HTTP a core con un circuit breaker de Resilience4j. El GET del resumen anual de intereses sigue siendo síncrono y reenvía el bearer del usuario. Por defecto en Compose, el crédito de intereses viaja por la saga de Kafka (`FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`): el cálculo se publica como `InterestCalculated`, `core-service` acredita la cuenta y luego publica el resultado. Con la flag en `false`, el crédito usa en cambio el camino HTTP síncrono, en el que `interests-service` se autentica ante `core-service` con su propio access token de client credentials (scope `interests:write`). Registro de decisión: [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
 
 ```mermaid
 flowchart LR
-  subgraph clients [Clients]
-    WebClient[Web client]
-    MobileClient[Mobile client]
-    AtmClient[ATM client]
+  subgraph clients [Clientes]
+    WebClient[Cliente web]
+    MobileClient[Cliente móvil]
+    AtmClient[Cajero automático]
   end
 
-  subgraph bffs [BFFs - channel auth]
-    BffWeb[bff-web OAuth2/OIDC session cookie]
-    BffMobile[bff-mobile device-bound JWT]
-    BffAtm[bff-atm mTLS + PIN session]
+  subgraph bffs [BFFs - autenticación por canal]
+    BffWeb[bff-web cookie de sesión OAuth2/OIDC]
+    BffMobile[bff-mobile JWT ligado al dispositivo]
+    BffAtm[bff-atm mTLS + sesión por PIN]
   end
 
   AuthServer[auth-server OAuth2/OIDC]
-  Gateway[api-gateway lb:// routes]
+  Gateway[api-gateway rutas lb://]
 
-  subgraph services [Microservices - OAuth2 resource servers]
-    CoreService[core-service Account Management]
-    CoreServicePin[core-service PIN-verification connector]
-    CustomersService[customers-service Customer Management]
-    PaymentsService[payments-service Payment Processing]
+  subgraph services [Microservicios - OAuth2 resource servers]
+    CoreService[core-service Gestión de Cuentas]
+    CoreServicePin[core-service conector de verificación de PIN]
+    CustomersService[customers-service Gestión de Clientes]
+    PaymentsService[payments-service Procesamiento de Pagos]
     InterestsService[interests-service]
   end
 
@@ -90,15 +90,15 @@ flowchart LR
   end
 
   Kafka[(Kafka KRaft)]
-  Postgres[(PostgreSQL 16, one schema per service)]
+  Postgres[(PostgreSQL 16, un esquema por servicio)]
   MySQL[(MySQL 8.4)]
   Migration[data-migration Spring Batch]
 
   WebClient -- HTTPS --> BffWeb
   MobileClient -- HTTPS --> BffMobile
   AtmClient -- HTTPS + mTLS --> BffAtm
-  WebClient -- "HTTPS login" --> AuthServer
-  MobileClient -- "HTTPS login" --> AuthServer
+  WebClient -- "login HTTPS" --> AuthServer
+  MobileClient -- "login HTTPS" --> AuthServer
   BffWeb -- "HTTPS token + JWKS" --> AuthServer
   BffMobile -- "HTTPS token + JWKS" --> AuthServer
   BffWeb -- HTTP --> Gateway
@@ -109,17 +109,17 @@ flowchart LR
   Gateway --> CustomersService
   Gateway --> PaymentsService
   Gateway --> InterestsService
-  CoreService -- "open account: customer exists?" --> CustomersService
+  CoreService -- "apertura: ¿existe el cliente?" --> CustomersService
   PaymentsService -- "postings" --> CoreService
-  InterestsService -- "summary, balance" --> CoreService
+  InterestsService -- "resumen, saldo" --> CoreService
   InterestsService -- "InterestCalculated" --> Kafka
   Kafka -- "InterestCalculated" --> CoreService
-  CoreService -- "credit result, TransactionConfirmed, SecurityAlertRaised" --> Kafka
+  CoreService -- "resultado del crédito, TransactionConfirmed, SecurityAlertRaised" --> Kafka
   AuthServer -- "SecurityAlertRaised" --> Kafka
-  Kafka -- "credit result" --> InterestsService
+  Kafka -- "resultado del crédito" --> InterestsService
   Kafka -- "transactions.confirmed, security.alerts" --> CustomersService
-  services -. "register / config" .-> infra
-  Gateway -. "discovery" .-> EurekaServer
+  services -. "registro / config" .-> infra
+  Gateway -. "descubrimiento" .-> EurekaServer
   CoreService --> Postgres
   CustomersService --> Postgres
   PaymentsService --> Postgres
@@ -128,43 +128,43 @@ flowchart LR
   Migration --> MySQL
 ```
 
-`core-service`'s PIN-verification connector (`CoreServicePin` above) is a second Tomcat connector on the same service, not a separate deployable — it shares `core-service`'s process and database access, drawn separately here only to show it terminates TLS while every other `core-service` endpoint stays plain HTTP.
+El conector de verificación de PIN de `core-service` (`CoreServicePin` arriba) es un segundo conector Tomcat del mismo servicio, no un deployable aparte: comparte el proceso y el acceso a base de datos de `core-service`. Se dibuja por separado solo para mostrar que ese conector termina TLS, mientras todos los demás endpoints de `core-service` siguen en HTTP plano.
 
-## Authorization server
+## Servidor de autorización
 
-`auth-server` (`platform/auth-server`, Spring Authorization Server, HTTPS on `:9000`) is the only issuer on the platform. It registers four confidential clients. `bff-web` and `bff-mobile` use `authorization_code` with mandatory PKCE plus `refresh_token`. `bff-atm` and `interests-service` use `client_credentials` only. Each channel client may request only `openid`, `profile` and its own channel's scope set, taken from `shared-security`'s `Channel` — a request with any other scope is rejected as a whole (`invalid_scope`). User access tokens carry `sub` = the customer id and `channel` = `WEB` or `MOBILE`, decided by the client the token is issued to. Service tokens carry `channel` = `ATM` or `INTERESTS` and no customer subject. Tokens are RS256-signed with a key loaded from a provisioned PKCS12 keystore (`AUTH_SIGNING_KEYSTORE_*`); the public key is published at `/oauth2/jwks` under its RFC 7638 thumbprint. The server refuses to start without that keystore, so a restart never invalidates issued tokens. No service shares a signing secret with another.
+`auth-server` (`platform/auth-server`, Spring Authorization Server, HTTPS en `:9000`) es el único emisor de la plataforma. Registra cuatro clientes confidenciales. `bff-web` y `bff-mobile` usan `authorization_code` con PKCE obligatorio más `refresh_token`. `bff-atm` e `interests-service` usan solo `client_credentials`. Cada cliente de canal puede pedir únicamente `openid`, `profile` y los scopes de su propio canal, tomados de `Channel` en `shared-security`; una solicitud con cualquier otro scope se rechaza completa (`invalid_scope`). Los access tokens de usuario llevan `sub` = el id del cliente del banco y `channel` = `WEB` o `MOBILE`, según el cliente al que se emite el token. Los tokens de servicio llevan `channel` = `ATM` o `INTERESTS` y no tienen un cliente del banco como sujeto. Los tokens se firman con RS256 usando una clave cargada desde un keystore PKCS12 provisto (`AUTH_SIGNING_KEYSTORE_*`); la clave pública se publica en `/oauth2/jwks` bajo su huella RFC 7638. El servidor no arranca sin ese keystore, así que un reinicio nunca invalida los tokens emitidos. Ningún servicio comparte un secreto de firma con otro.
 
-**State.** Authorizations (codes and the tokens issued from them), consents and registered clients are stored through Spring Authorization Server's JDBC services in `auth-server`'s own PostgreSQL (`auth-postgres`: own container, database `auth_server`, user and volume, not published on the host). `auth-server` has no credentials for `core_service` and the platform services none for `auth_server`; banking data stays in the platform services' schemas. Flyway owns the schema (Spring Authorization Server's bundled tables, `blob` → `text` for PostgreSQL). The four clients are upserted into the store on every startup; each secret is stored only as a bcrypt hash. Refresh-token rotation and mobile device revocation live here too (`rotated_refresh_tokens`, device registrations), not in `core-service`. Nothing OAuth-related is kept in process memory, so restarts are invisible to clients holding valid codes.
+**Estado.** Las autorizaciones (códigos y los tokens emitidos a partir de ellos), los consentimientos y los clientes registrados se guardan, mediante los servicios JDBC de Spring Authorization Server, en la PostgreSQL propia de `auth-server` (`auth-postgres`: contenedor, base `auth_server`, usuario y volumen propios, sin puerto publicado en el host). `auth-server` no tiene credenciales para `core_service`, ni los servicios de plataforma para `auth_server`; los datos bancarios quedan en los esquemas de los servicios de plataforma. Flyway es dueño del esquema (las tablas que trae Spring Authorization Server, con `blob` → `text` para PostgreSQL). Los cuatro clientes se insertan o actualizan en cada arranque, y cada secreto se guarda solo como hash bcrypt. La rotación de refresh tokens y la revocación de dispositivos móviles también viven aquí (`rotated_refresh_tokens`, registros de dispositivos), no en `core-service`. Nada relacionado con OAuth se guarda en la memoria del proceso, así que los reinicios son invisibles para los clientes que tienen códigos válidos.
 
-**One issuer, two network paths.** The browser reaches `auth-server` as `localhost:9000`; the BFF containers reach it on the Docker network as `auth-server:9000`. The issuer is pinned to the public URL (`AUTH_PUBLIC_ISSUER` in `.env`, `https://localhost:9000` in `.env.example`; every verifier and both BFFs read that one value), so tokens and the discovery document carry it whichever host name a request used. Each BFF is configured with the endpoints split by who calls them — the browser-facing `authorization-uri` on `localhost`, the back-channel `token-uri` and `jwk-set-uri` on `auth-server` — instead of OIDC discovery (whose advertised endpoints are all on `localhost` and unreachable from a container). Because that explicit-endpoint mode disables Spring's own issuer check, each BFF validates the ID token's `iss` against `OIDC_ISSUER` itself. The TLS certificate names both hosts and chains to the dev CA, which the BFF containers trust through their JVM trust store. `auth-server` keeps its login session in the `XYZ_AUTH_SESSION` cookie: cookies are scoped by host, not port, and a `JSESSIONID` on `localhost` would overwrite the BFFs' session holding the pending authorization request.
+**Un emisor, dos caminos de red.** El navegador llega a `auth-server` como `localhost:9000`; los contenedores de los BFFs llegan por la red de Docker como `auth-server:9000`. El emisor está fijado a la URL pública (`AUTH_PUBLIC_ISSUER` en `.env`, `https://localhost:9000` en `.env.example`; todos los verificadores y ambos BFFs leen ese mismo valor), así que los tokens y el documento de discovery lo llevan sin importar el nombre de host que usó la solicitud. Cada BFF se configura con los endpoints separados según quién los llama — la `authorization-uri` de cara al navegador en `localhost`, y la `token-uri` y `jwk-set-uri` de back-channel en `auth-server` — en vez de usar OIDC discovery (cuyos endpoints anunciados están todos en `localhost` y no se alcanzan desde un contenedor). Como ese modo de endpoints explícitos desactiva la verificación de emisor de Spring, cada BFF valida por su cuenta el `iss` del ID token contra `OIDC_ISSUER`. El certificado TLS nombra ambos hosts y encadena a la CA de desarrollo, en la que los contenedores de los BFFs confían mediante el trust store de su JVM. `auth-server` guarda su sesión de login en la cookie `XYZ_AUTH_SESSION`: las cookies se acotan por host, no por puerto, y un `JSESSIONID` en `localhost` sobrescribiría la sesión de los BFFs que guarda la solicitud de autorización pendiente.
 
-After login the BFF keeps the auth-server access token as the session and relays it unchanged. `bff-web` stores it in the `session` cookie and the refresh token in `refresh_token`. `bff-mobile` returns both in the login body, with `device_id` bound into the access token. `core-service` and `interests-service` verify those tokens against the JWKS (issuer `https://localhost:9000`, audience, expiry, `azp` matching `channel`). They do not hold a signing key.
+Tras el login, el BFF conserva el access token de auth-server como sesión y lo reenvía sin cambios. `bff-web` lo guarda en la cookie `session`, y el refresh token en `refresh_token`. `bff-mobile` devuelve ambos en el cuerpo del login, con el `device_id` ligado dentro del access token. `core-service` e `interests-service` verifican esos tokens contra el JWKS (emisor `https://localhost:9000`, audiencia, expiración y `azp` que coincida con `channel`). No guardan ninguna clave de firma.
 
-`bff-atm` does not relay a user token. It calls `core-service` with its own `client_credentials` token. A successful PIN verification returns `atmSessionId`; `bff-atm` embeds that id in a terminal-bound HS256 session that only `bff-atm` can sign (`BFF_ATM_SESSION_SECRET`) and sends the id back as `X-Atm-Session`. `core-service` resolves the customer from the session row it created. The BFF test suites keep using their WireMock `MockOidcProvider` and do not depend on a running `auth-server`.
+`bff-atm` no reenvía un token de usuario. Llama a `core-service` con su propio token de `client_credentials`. Una verificación de PIN exitosa devuelve `atmSessionId`; `bff-atm` mete ese id en una sesión HS256 ligada al terminal que solo `bff-atm` puede firmar (`BFF_ATM_SESSION_SECRET`) y devuelve el id como `X-Atm-Session`. `core-service` obtiene el cliente a partir de la fila de sesión que él mismo creó. Las suites de tests de los BFFs siguen usando su `MockOidcProvider` de WireMock y no dependen de un `auth-server` en ejecución.
 
-What stays constant regardless of channel: one BFF per channel, banking data owned by the platform services (each in its own schema, never by a BFF), MySQL reserved for migration reports, and the existing BFF payload contracts. What each channel's credential proves and how it's validated is documented in `docs/contracts/*/openapi.yaml`. Kafka coordinates the interest credit when the feature flag is on. It does not own account state.
+Lo que se mantiene igual en todos los canales: un BFF por canal, los datos bancarios en manos de los servicios de plataforma (cada uno en su esquema, nunca en un BFF), MySQL reservado para los reportes de migración, y los contratos de payload existentes de los BFFs. Qué prueba la credencial de cada canal y cómo se valida está documentado en `docs/contracts/*/openapi.yaml`. Kafka coordina el crédito de intereses cuando la feature flag está encendida. No es dueño del estado de las cuentas.
 
-## Fault tolerance (BFFs)
+## Tolerancia a fallos (BFFs)
 
-Each BFF bounds every outbound call with a connect and read timeout set on the HTTP client (`core-service` reads 1 s / 2 s, bff-atm's core calls and every `auth-server` or `interests-service` call 1 s / 3 s). Resilience4j `TimeLimiter` is not used: it abandons a blocking call without stopping it, which would let a retried withdrawal overlap the original.
+Cada BFF acota todas sus llamadas salientes con un timeout de conexión y de lectura configurado en el cliente HTTP (lecturas a `core-service` 1 s / 2 s; las llamadas a core de bff-atm y todas las llamadas a `auth-server` o `interests-service` 1 s / 3 s). No se usa el `TimeLimiter` de Resilience4j: abandona una llamada bloqueante sin detenerla, lo que permitiría que un retiro reintentado se superponga con el original.
 
-There is one circuit breaker per downstream per BFF: `coreService`, `authServer`, and `interestsService` in bff-web. A breaker counts only connection failures, timeouts, answers cut off mid-read, and 5xx. A 4xx never opens it. The core and interests breakers use a 20-call window, a 10-call minimum and a 50 % failure rate; `authServer` uses a 10-call window and a 5-call minimum. Each waits 15 s open before half-opening. An open breaker answers the existing 503 ProblemDetail. It never serves cached data, and it never turns health DOWN.
+Hay un circuit breaker por dependencia en cada BFF: `coreService`, `authServer` y, en bff-web, `interestsService`. Un breaker cuenta solo fallas de conexión, timeouts, respuestas cortadas a mitad de lectura y 5xx; un 4xx nunca lo abre. Los breakers de core e intereses usan una ventana de 20 llamadas, un mínimo de 10 llamadas y una tasa de falla del 50 %; `authServer` usa una ventana de 10 llamadas y un mínimo de 5. Cada uno espera 15 s abierto antes de pasar a semiabierto. Un breaker abierto responde el ProblemDetail 503 de siempre. Nunca sirve datos en caché y nunca pone la health en DOWN.
 
-Retries apply only to idempotent operations, only after unreachable, timed out, cut off, 502, 503 or 504, never after a 4xx, a 500 or an open circuit:
+Los reintentos aplican solo a operaciones idempotentes, solo después de un destino inalcanzable, un timeout, una respuesta cortada, 502, 503 o 504, y nunca después de un 4xx, un 500 o con el circuito abierto:
 
-| Retried (attempts, backoff) | Never retried, and why |
+| Se reintenta (intentos, backoff) | Nunca se reintenta, y por qué |
 |---|---|
-| `GET` reads to `core-service` / `interests-service` (3, ~200 ms then ~400 ms, jittered) | PIN verification: an extra attempt can count as another wrong PIN and lock the card |
-| ATM withdrawal, same `Idempotency-Key` and body (2, 300 ms) | Refresh grant: a resend after a completed rotation is reuse, and `auth-server` revokes the login |
-| `client_credentials` token, `bff-atm` and `interests-service` (3, ~300 ms then ~600 ms) | Authorization-code exchange (single-use) and device revocation |
+| Lecturas `GET` a `core-service` / `interests-service` (3, ~200 ms y luego ~400 ms, con jitter) | Verificación de PIN: un intento extra puede contar como otro PIN incorrecto y bloquear la tarjeta |
+| Retiro ATM, misma `Idempotency-Key` y mismo cuerpo (2, 300 ms) | Grant de refresh: un reenvío tras una rotación completada es una reutilización, y `auth-server` revoca el login |
+| Token `client_credentials` de `bff-atm` e `interests-service` (3, ~300 ms y luego ~600 ms) | Canje del código de autorización (de un solo uso) y revocación de dispositivo |
 
-A withdrawal is debited at most once however many attempts arrive: `core-service` replays a known `Idempotency-Key`, and the key is unique in `transactions`, so an attempt that overlaps a still-running original gets a replay or a 409. When `auth-server` is unavailable, every BFF path answers 503 rather than 401/422 and issues or clears no session. That covers login, refresh, device revocation, signing-key fetch and service token. bff-atm's and interests-service's token outages count against `authServer` only, never against `core-service`'s breaker.
+Un retiro se debita como máximo una vez, sin importar cuántos intentos lleguen: `core-service` repite la respuesta de una `Idempotency-Key` conocida, y la clave es única en `transactions`, así que un intento que se superpone con un original todavía en curso recibe la respuesta repetida o un 409. Cuando `auth-server` no está disponible, todos los caminos de los BFFs responden 503 en vez de 401/422, y no emiten ni borran ninguna sesión. Eso cubre login, refresh, revocación de dispositivo, obtención de la clave de firma y token de servicio. Las caídas del token de bff-atm y de interests-service cuentan solo contra `authServer`, nunca contra el breaker de `core-service`.
 
-Actuator (health, `circuitbreakers`, `circuitbreakerevents`) is served on each BFF's internal plain-HTTP management port (9081 / 9082 / 9083), published on loopback only by `docker-compose.override.yml` (the deployable `docker-compose.yaml` publishes only the BFFs and `auth-server`, on a `public` network, while everything else sits on a no-egress `internal` network). The customer-facing port keeps answering `/actuator/health` with the overall status only. The compose healthchecks use the management ports.
+Actuator (health, `circuitbreakers`, `circuitbreakerevents`) se sirve en el puerto de administración interno, en HTTP plano, de cada BFF (9081 / 9082 / 9083), publicado solo en loopback por `docker-compose.override.yml` (el `docker-compose.yaml` desplegable publica solo los BFFs y `auth-server`, en una red `public`, mientras todo lo demás queda en una red `internal` sin salida). El puerto de cara al cliente sigue respondiendo `/actuator/health` solo con el estado general. Los healthchecks de Compose usan los puertos de administración.
 
-## Interest flows
+## Flujos de intereses
 
-### Query — annual interest summary
+### Consulta — resumen anual de intereses
 
 ```mermaid
 sequenceDiagram
@@ -174,50 +174,50 @@ sequenceDiagram
   participant Db as PostgreSQL
 
   Web->>Interests: GET /accounts/{id}/interest-summary
-  Note over Web,Interests: user JWT + channel session
+  Note over Web,Interests: JWT del usuario + sesión del canal
   Interests->>Core: GET /internal/accounts/{id}/interest-summary
-  Note over Interests,Core: relayed user access token
-  Core->>Db: read annual_interest_summaries
-  Db-->>Core: row
-  Core-->>Interests: summary
-  Interests-->>Web: summary
+  Note over Interests,Core: access token del usuario reenviado
+  Core->>Db: lee annual_interest_summaries
+  Db-->>Core: fila
+  Core-->>Interests: resumen
+  Interests-->>Web: resumen
 ```
 
-### Command — apply annual interest (HTTP)
+### Comando — aplicar el interés anual (HTTP)
 
-`FEATURE_INTEREST_CREDIT_VIA_KAFKA=false`. This is the fallback: Compose starts with the saga, and a service run outside Compose also defaults to this path. The HTTP-path tests exercise it.
+`FEATURE_INTEREST_CREDIT_VIA_KAFKA=false`. Es el camino alternativo: Compose arranca con la saga, y un servicio que corre fuera de Compose también usa este camino por defecto. Los tests del camino HTTP lo ejercitan.
 
 ```mermaid
 sequenceDiagram
-  participant Caller as interests-service client
+  participant Caller as cliente de interests-service
   participant Interests as interests-service
   participant Core as core-service
   participant Db as PostgreSQL
 
   Caller->>Interests: POST /accounts/{id}/interest-applications?year=
   Interests->>Core: GET /internal/accounts/{id}/balance
-  Note over Interests,Core: interests-service client token (interests:write)
-  Core->>Db: read accounts
-  Db-->>Core: balance
-  Core-->>Interests: balance
-  Note over Interests: rate from Config Server, compute amount
+  Note over Interests,Core: token de cliente de interests-service (interests:write)
+  Core->>Db: lee accounts
+  Db-->>Core: saldo
+  Core-->>Interests: saldo
+  Note over Interests: tasa desde Config Server, calcula el monto
   Interests->>Core: POST /internal/accounts/{id}/interest-credits
   Note over Interests,Core: Idempotency-Key interest-{id}-{year}
-  Core->>Db: credit balance, CREDIT txn, summary
-  Db-->>Core: ok or 409
+  Core->>Db: acredita saldo, transacción CREDIT, resumen
+  Db-->>Core: ok o 409
   Core-->>Interests: InterestCreditResponse
   Interests-->>Caller: InterestSummaryResponse
 ```
 
-Optimistic locking on `accounts.version` and the unique `(account_id, year)` on summaries prevent double application; repeating the same `Idempotency-Key` replays the original credit. Outbound calls from `interests-service` to `core-service` use Resilience4j circuit breaker/retry so repeated core failures open the breaker and fail fast. With the Kafka flag on, `creditInterest` is not called, so that breaker no longer covers the credit. `fetchInterestSummary` and `fetchAccountBalance` stay on it.
+El bloqueo optimista sobre `accounts.version` y la restricción única `(account_id, year)` en los resúmenes evitan la doble aplicación; repetir la misma `Idempotency-Key` repite el crédito original. Las llamadas salientes de `interests-service` a `core-service` usan circuit breaker y reintento de Resilience4j, así que las fallas repetidas de core abren el breaker y fallan rápido. Con la flag de Kafka encendida no se llama a `creditInterest`, así que ese breaker ya no cubre el crédito. `fetchInterestSummary` y `fetchAccountBalance` siguen bajo él.
 
-### Command — apply annual interest (Kafka saga, default in Compose)
+### Comando — aplicar el interés anual (saga de Kafka, por defecto en Compose)
 
-`FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`, the default of `docker compose up`. A `200` from the POST therefore means the calculation was published, not that the account was credited. The POST returns the calculated summary as soon as `InterestCalculated` is published. The calculation stays `PENDING` in the `interests` schema until `interests.credit-results` closes it. The HTTP credit endpoint remains available for the flag-off path.
+`FEATURE_INTEREST_CREDIT_VIA_KAFKA=true`, el valor por defecto de `docker compose up`. Por eso un `200` del POST significa que el cálculo se publicó, no que la cuenta ya esté acreditada. El POST devuelve el resumen calculado en cuanto `InterestCalculated` se publica. El cálculo queda `PENDING` en el esquema `interests` hasta que `interests.credit-results` lo cierra. El endpoint HTTP de crédito sigue disponible para el camino con la flag apagada.
 
 ```mermaid
 sequenceDiagram
-  participant Caller as interests-service client
+  participant Caller as cliente de interests-service
   participant Interests as interests-service
   participant Calculated as interests.calculated
   participant Core as core-service
@@ -226,30 +226,30 @@ sequenceDiagram
 
   Caller->>Interests: POST /accounts/{id}/interest-applications?year=
   Interests->>Core: GET /internal/accounts/{id}/balance
-  Core-->>Interests: balance
-  Note over Interests: compute amount, save PENDING
-  Interests->>Calculated: InterestCalculated key accountId
+  Core-->>Interests: saldo
+  Note over Interests: calcula el monto, guarda PENDING
+  Interests->>Calculated: InterestCalculated con clave accountId
   Interests-->>Caller: InterestSummaryResponse
   Core->>Calculated: consume
-  Core->>Db: credit plus InterestCreditApplied and TransactionConfirmed in one transaction
-  Core->>Results: relay publishes InterestCreditApplied or InterestCreditRejected
+  Core->>Db: crédito más InterestCreditApplied y TransactionConfirmed en una transacción
+  Core->>Results: el relay publica InterestCreditApplied o InterestCreditRejected
   Interests->>Results: consume
-  Note over Interests: close calculation APPLIED or REJECTED, idempotent by eventId
+  Note over Interests: cierra el cálculo APPLIED o REJECTED, idempotente por eventId
 ```
 
-The partition key is `accountId`, and each topic has 3 partitions with one consumer thread per partition (see [Failed messages](#failed-messages-and-ordering)). Delivery is at-least-once. An `InterestCalculated` whose event id was already processed is acknowledged without a second result, even if its amount was recalculated from a higher balance. `eventId` is `interest:{accountId}:{year}`. The HTTP idempotency key on the synchronous path stays `interest-{accountId}-{year}`. A duplicate `eventId` does not credit the balance twice. A failed credit transaction leaves no outbox row. A business rejection (`VALIDATION`, `NOT_FOUND`, or `CONFLICT`) publishes `InterestCreditRejected` with `reason`, does not change the balance, and commits the consumer offset so the single partition is not blocked. With the Kafka flag off, an HTTP credit does not write interest-result outbox rows. `core-service` is the only service with an outbox, because it is the only service with a local database transaction around the credit. See [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
+La clave de partición es `accountId`, y cada tópico tiene 3 particiones con un hilo consumidor por partición (ver [Mensajes fallidos y orden](#mensajes-fallidos-y-orden)). La entrega es at-least-once. Un `InterestCalculated` cuyo id de evento ya se procesó se confirma sin un segundo resultado, aunque su monto se haya recalculado desde un saldo mayor. El `eventId` es `interest:{accountId}:{year}`. La clave de idempotencia HTTP del camino síncrono sigue siendo `interest-{accountId}-{year}`. Un `eventId` duplicado no acredita el saldo dos veces. Una transacción de crédito fallida no deja fila en el outbox. Un rechazo de negocio (`VALIDATION`, `NOT_FOUND` o `CONFLICT`) publica `InterestCreditRejected` con `reason`, no cambia el saldo y confirma el offset del consumidor para no bloquear la partición. Con la flag de Kafka apagada, un crédito HTTP no escribe filas de resultado de intereses en el outbox. `core-service` es el único servicio con outbox, porque es el único con una transacción local de base de datos alrededor del crédito. Ver [`docs/adr/002-event-architecture.md`](adr/002-event-architecture.md).
 
-### Failed messages and ordering
+### Mensajes fallidos y orden
 
-**Partitions and concurrency.** `interests.calculated`, `interests.credit-results`, `transactions.confirmed` and `security.alerts` have 3 partitions (`kafka-init` creates them, and raises existing topics that have fewer). Every producer keys by `accountId`, so one account's records stay on one partition in order, while different accounts run in parallel on the 3 listener threads each service starts. Raising the partition count of a topic that still holds unconsumed records re-maps keys; drain such a topic first.
+**Particiones y concurrencia.** `interests.calculated`, `interests.credit-results`, `transactions.confirmed` y `security.alerts` tienen 3 particiones (`kafka-init` los crea, y sube a 3 los tópicos existentes que tengan menos). Todos los productores usan `accountId` como clave, así que los registros de una cuenta quedan en una partición y en orden, mientras cuentas distintas se procesan en paralelo en los 3 hilos de listener que arranca cada servicio. Subir la cantidad de particiones de un tópico que todavía tiene registros sin consumir reasigna las claves; antes hay que vaciarlo.
 
-**Retries, then a dead-letter topic.** When a consumer (`core-service` on `interests.calculated`, `interests-service` on `interests.credit-results`) fails to process a record, it retries 3 times with 1 s, 2 s and 4 s delays and then publishes the record to `<topic>.DLT` with its key, payload and the failure in headers, commits the offset and moves on. A permanently bad record therefore frees its partition after about 7 s, and the records behind it are processed normally. The retries block the partition rather than going through retry topics, because retry topics would let later records of the same account overtake the failing one. Redelivery is safe: crediting is idempotent on the event id. A business rejection (unknown account, year already credited) is not a failure: it is reported as `InterestCreditRejected`. If publishing to the DLT itself fails, the record is redelivered rather than dropped. Nothing replays a DLT automatically; an operator inspects it with Kafka tooling, and a dead-lettered `InterestCalculated` leaves its calculation `PENDING` and the account uncredited. `customers-service` consumes `transactions.confirmed` and `security.alerts` with the same policy (3 retries, then `.DLT`) to build each customer's notification feed, idempotent by `eventId`.
+**Reintentos y luego un dead-letter topic.** Cuando un consumidor (`core-service` en `interests.calculated`, `interests-service` en `interests.credit-results`) no logra procesar un registro, lo reintenta 3 veces con esperas de 1 s, 2 s y 4 s, y luego lo publica en `<tópico>.DLT` con su clave, su payload y la falla en las cabeceras, confirma el offset y sigue. Así, un registro irrecuperable libera su partición en unos 7 s, y los registros que vienen detrás se procesan con normalidad. Los reintentos bloquean la partición en vez de pasar por tópicos de reintento, porque esos tópicos dejarían que registros posteriores de la misma cuenta adelanten al que está fallando. Reenviar es seguro: el crédito es idempotente por id de evento. Un rechazo de negocio (cuenta desconocida, año ya acreditado) no es una falla: se informa como `InterestCreditRejected`. Si falla la propia publicación en el DLT, el registro se vuelve a entregar en vez de descartarse. Nada reprocesa un DLT automáticamente; un operador lo inspecciona con las herramientas de Kafka, y un `InterestCalculated` que cae en el DLT deja su cálculo `PENDING` y la cuenta sin acreditar. `customers-service` consume `transactions.confirmed` y `security.alerts` con la misma política (3 reintentos y luego `.DLT`) para armar el feed de notificaciones de cada cliente, idempotente por `eventId`.
 
-**Order from the outbox.** The relay publishes outbox rows in the order they were written (`outbox_events.seq`, Flyway `V13`), not by date and id, so the events of one account reach `interests.credit-results` and `transactions.confirmed` in the order they were confirmed. If a send fails, the account's later events wait for the next run so they cannot overtake it, and other accounts keep flowing.
+**Orden desde el outbox.** El relay publica las filas del outbox en el orden en que se escribieron (`outbox_events.seq`, Flyway `V13`), no por fecha e id, así que los eventos de una cuenta llegan a `interests.credit-results` y a `transactions.confirmed` en el orden en que se confirmaron. Si un envío falla, los eventos posteriores de esa cuenta esperan a la siguiente corrida para no adelantarlo, y las demás cuentas siguen fluyendo.
 
-### Event — TransactionConfirmed (every confirmed money movement)
+### Evento — TransactionConfirmed (cada movimiento de dinero confirmado)
 
-When `FEATURE_TRANSACTION_CONFIRMED_EVENTS` is on, every confirmed withdrawal and every confirmed interest credit writes a `TransactionConfirmed` row into the same transactional outbox used by the interest saga. The outbox relay publishes it to `transactions.confirmed` with partition key `accountId`. The ATM withdrawal HTTP contract is unchanged: the event is a side effect of `persistWithdrawal`. An idempotent withdrawal retry does not insert a second event. A rejected withdrawal or a rejected interest credit does not insert `TransactionConfirmed`.
+Cuando `FEATURE_TRANSACTION_CONFIRMED_EVENTS` está encendida, cada retiro confirmado y cada crédito de interés confirmado escriben una fila `TransactionConfirmed` en el mismo outbox transaccional que usa la saga de intereses. El relay del outbox la publica en `transactions.confirmed` con clave de partición `accountId`. El contrato HTTP del retiro ATM no cambia: el evento es un efecto secundario de `persistWithdrawal`. Un reintento idempotente de retiro no inserta un segundo evento. Un retiro rechazado o un crédito de interés rechazado no inserta `TransactionConfirmed`.
 
 ```mermaid
 sequenceDiagram
@@ -260,15 +260,15 @@ sequenceDiagram
   participant Interests as interests-service
   participant Calculated as interests.calculated
 
-  Atm->>Core: POST /internal/accounts/{id}/withdrawals (sync)
-  Core->>Db: debit + TransactionConfirmed outbox
+  Atm->>Core: POST /internal/accounts/{id}/withdrawals (síncrono)
+  Core->>Db: débito + TransactionConfirmed en el outbox
   Core-->>Atm: 201 WithdrawalResponse
-  Core->>Confirmed: relay TransactionConfirmed type WITHDRAWAL
+  Core->>Confirmed: el relay publica TransactionConfirmed tipo WITHDRAWAL
 
   Interests->>Calculated: InterestCalculated
   Core->>Calculated: consume
-  Core->>Db: credit + InterestCreditApplied + TransactionConfirmed
-  Core->>Confirmed: relay TransactionConfirmed type INTEREST_CREDIT
+  Core->>Db: crédito + InterestCreditApplied + TransactionConfirmed
+  Core->>Confirmed: el relay publica TransactionConfirmed tipo INTEREST_CREDIT
 ```
 
-`TransactionConfirmed` payload: `eventId` (transaction id), `eventType`, `schemaVersion`, `accountId`, `type` (`WITHDRAWAL` | `INTEREST_CREDIT` | `PAYMENT_DEBIT` | `PAYMENT_CREDIT`), `amount`, `currency`, `occurredAt`. No card number, PIN, personal customer data, or ATM terminal id.
+Payload de `TransactionConfirmed`: `eventId` (id de la transacción), `eventType`, `schemaVersion`, `accountId`, `type` (`WITHDRAWAL` | `INTEREST_CREDIT` | `PAYMENT_DEBIT` | `PAYMENT_CREDIT`), `amount`, `currency` y `occurredAt`. No incluye número de tarjeta, PIN, datos personales del cliente ni id del terminal ATM.

@@ -44,6 +44,6 @@ Justificación:
 
 - Tres imágenes, tres puertos y tres contratos OpenAPI.
 - Los BFFs no acceden a bases de datos, no contienen reglas de negocio y no comparten DTOs entre ellos.
-- Cada BFF tiene circuit breaker, timeouts y reintentos solo en operaciones idempotentes hacia cada dependencia (ver `docs/architecture.md`, Fault tolerance).
+- Cada BFF tiene circuit breaker, timeouts y reintentos solo en operaciones idempotentes hacia cada dependencia (ver [Tolerancia a fallos](../architecture.md#tolerancia-a-fallos-bffs) en `docs/architecture.md`).
 - Se acepta duplicar adaptadores HTTP (cliente, mapeo de errores, filtro de correlación) entre BFFs. Lo único compartido es la librería `shared-security` (modelo de canales y scopes).
 - La verificación de PIN de `bff-atm` va directa al conector TLS de `core-service` (puerto 8453) y no pasa por el gateway, para no ampliar el borde de confianza del PIN.
