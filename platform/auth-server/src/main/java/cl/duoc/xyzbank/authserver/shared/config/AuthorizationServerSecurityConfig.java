@@ -117,7 +117,7 @@ public class AuthorizationServerSecurityConfig {
         http.authorizeHttpRequests(authorize -> authorize
                         // device revocation authenticates its caller itself (bff-mobile's
                         // client secret plus the device's token), not through a login session
-                        .requestMatchers("/actuator/health", "/error", "/devices/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/prometheus", "/error", "/devices/**").permitAll()
                         .anyRequest().authenticated())
                 .csrf(csrf -> csrf.ignoringRequestMatchers("/devices/**"))
                 .formLogin(Customizer.withDefaults());
