@@ -52,8 +52,6 @@ services:
   customers-service:
     environment:
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
-    ports:
-      - "8085:8085"
     volumes:
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
