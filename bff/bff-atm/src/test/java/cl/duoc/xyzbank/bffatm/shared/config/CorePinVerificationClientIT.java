@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.bffatm.shared.config;
 
+import io.micrometer.observation.ObservationRegistry;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.ClientCredentialsTokenInterceptor;
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.CorrelationIdClientInterceptor;
 import cl.duoc.xyzbank.bffatm.testsupport.AuthServerStub;
@@ -63,6 +64,7 @@ class CorePinVerificationClientIT {
     void succeedsOverTlsAndIsNeverReceivedOnThePlainHttpListener() throws Exception {
         RestClient client = new CoreServiceClientConfig()
                 .corePinVerificationClient(
+                        ObservationRegistry.NOOP,
                         "https://localhost:" + coreService.httpsPort(),
                         3000,
                         3000,
