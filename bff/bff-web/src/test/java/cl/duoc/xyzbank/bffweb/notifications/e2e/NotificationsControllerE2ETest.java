@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -23,7 +24,11 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMoc
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.contains;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "management.tracing.sampling.probability=1.0")
+// Spring Boot tests switch tracing off unless asked
+@AutoConfigureObservability
 @DisplayName("The Notifications controller")
 class NotificationsControllerE2ETest {
 
@@ -32,6 +37,7 @@ class NotificationsControllerE2ETest {
      * 1. A web customer reads their feed, as customers-service returns it, with their token relayed
      * 2. Another customer's feed is answered 404 (customers-service hides it) and surfaced as is
      * 3. A non-web caller is rejected
+     * 4. The call to customers-service carries the trace of the inbound request
      */
 
     private static final MockOidcProvider OIDC_PROVIDER = new MockOidcProvider();
@@ -99,6 +105,22 @@ class NotificationsControllerE2ETest {
         given().cookie("session", TestSessions.webSessionFor("customer-1"))
                 .get("/customers/{customerId}/notifications", "customer-2")
                 .then().statusCode(404).contentType("application/problem+json");
+    }
+
+    @Test
+    @DisplayName("sends customers-service the trace the inbound request arrived in")
+    void sendsCustomersServiceTheTraceTheInboundRequestArrivedIn() {
+        String traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+        CUSTOMERS_SERVICE.stubFor(get(urlEqualTo("/internal/customers/customer-1/notifications"))
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody("[]")));
+
+        given().cookie("session", TestSessions.webSessionFor("customer-1"))
+                .header("traceparent", "00-" + traceId + "-00f067aa0ba902b7-01")
+                .get("/customers/{customerId}/notifications", "customer-1")
+                .then().statusCode(200);
+
+        CUSTOMERS_SERVICE.verify(getRequestedFor(urlEqualTo("/internal/customers/customer-1/notifications"))
+                .withHeader("traceparent", com.github.tomakehurst.wiremock.client.WireMock.matching("00-" + traceId + "-[0-9a-f]{16}-0[01]")));
     }
 
     @Test

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -32,8 +33,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = {
                 "spring.config.import=optional:file:../../config-repo/api-gateway.yml",
                 "spring.cloud.config.enabled=false",
-                "eureka.client.enabled=false"
+                "eureka.client.enabled=false",
+                "management.tracing.sampling.probability=1.0"
         })
+// Spring Boot tests switch tracing off unless asked
+@AutoConfigureObservability
 @DisplayName("The api-gateway routes")
 class ApiGatewayRoutesIT {
 
@@ -44,6 +48,7 @@ class ApiGatewayRoutesIT {
      * 3. With two instances of a service, both receive requests
      * 4. A service slower than its route timeout gets 504 and another route is unaffected
      * 5. A service with no instance gets 503
+     * 6. A request carrying a trace context reaches the service inside the same trace
      */
 
     private static final WireMockServer CORE_ONE = start();
@@ -134,6 +139,20 @@ class ApiGatewayRoutesIT {
 
         client.get().uri("/interests-service/slow").exchange().expectStatus().isEqualTo(504);
         client.get().uri("/customers-service/fast").exchange().expectStatus().isOk();
+    }
+
+    @Test
+    @DisplayName("passes the caller's trace to the service as a child span of the same trace")
+    void passesTheCallersTraceToTheServiceAsAChildSpanOfTheSameTrace() {
+        String traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+        CUSTOMERS.stubFor(get(urlEqualTo("/traced")).willReturn(aResponse().withStatus(200)));
+
+        client.get().uri("/customers-service/traced")
+                .header("traceparent", "00-" + traceId + "-00f067aa0ba902b7-01")
+                .exchange().expectStatus().isOk();
+
+        CUSTOMERS.verify(getRequestedFor(urlEqualTo("/traced"))
+                .withHeader("traceparent", com.github.tomakehurst.wiremock.client.WireMock.matching("00-" + traceId + "-[0-9a-f]{16}-0[01]")));
     }
 
     @Test

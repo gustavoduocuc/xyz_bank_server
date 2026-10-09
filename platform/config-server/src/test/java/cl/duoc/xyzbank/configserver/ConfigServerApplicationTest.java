@@ -75,6 +75,18 @@ class ConfigServerApplicationTest {
                 "unknown apps must not receive interests-service resilience settings: " + response.getBody());
     }
 
+    @Test
+    @DisplayName("serves one console log pattern with trace, span and correlation ids to every application")
+    void servesOneConsoleLogPatternWithTraceSpanAndCorrelationIdsToEveryApplication() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/payments-service/default", String.class);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().contains("/application.yml"), response.getBody());
+        assertTrue(response.getBody().contains("traceId") && response.getBody().contains("spanId")
+                && response.getBody().contains("correlationId"), response.getBody());
+    }
+
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {
             "core-service", "customers-service", "payments-service", "interests-service",

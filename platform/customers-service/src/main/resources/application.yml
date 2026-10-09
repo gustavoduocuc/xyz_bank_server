@@ -26,8 +26,11 @@ spring:
       hibernate:
         default_schema: customers
   kafka:
+    template:
+      observation-enabled: true
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     listener:
+      observation-enabled: true
       auto-startup: ${FEATURE_NOTIFICATIONS_FEED:false}
       ack-mode: record
     consumer:
