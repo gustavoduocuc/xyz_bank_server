@@ -506,7 +506,7 @@ curl -sS http://127.0.0.1:9083/actuator/circuitbreakers   # bff-atm
 curl -sS http://127.0.0.1:9081/actuator/circuitbreakerevents/coreService
 ```
 
-Parámetros y su justificación: `docs/architecture.md` (Fault tolerance) y el `application.yml` de cada BFF.
+Parámetros y su justificación: [`docs/architecture.md`](docs/architecture.md#tolerancia-a-fallos-bffs) (Tolerancia a fallos) y el `application.yml` de cada BFF.
 
 Contratos en el repo: [`docs/contracts/`](docs/contracts/). Arquitectura: [`docs/architecture.md`](docs/architecture.md). ADRs: [001 BFF por canal](docs/adr/001-bff-strategy.md), [002 saga de intereses](docs/adr/002-event-architecture.md), [003 Kafka por defecto y DLT](docs/adr/003-kafka-default-and-dead-letter-topics.md), [004 descomposición en microservicios](docs/adr/004-service-decomposition.md).
 
