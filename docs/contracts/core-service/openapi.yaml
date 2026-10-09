@@ -23,8 +23,8 @@ paths:
       description: >
         Requires a bff-atm access token (client_credentials). The PIN is accepted only
         in the request body, never a query parameter or path segment. Served
-        exclusively over this operation's TLS-only connector (design.md
-        Decision 8); the same request over the plain-HTTP connector is
+        exclusively over this operation's TLS-only connector; the same
+        request over the plain-HTTP connector is
         rejected. On a third consecutive failure the card locks (423);
         further attempts, including a correct PIN, are rejected identically
         until a developer resets it (scripts/reset-dev-card-lock.sh — there
