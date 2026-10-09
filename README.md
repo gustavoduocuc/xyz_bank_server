@@ -1,6 +1,8 @@
 # XYZ Bank Server
 
-Plataforma BFF de XYZ Bank: tres backends por canal (`bff-web`, `bff-mobile`, `bff-atm`) frente a un `core-service` interno (Gestión de Cuentas), un `customers-service` (Gestión de Clientes) y un `interests-service` extraídos (con `config-server` y `eureka-server`), más un job de migración CSV hacia MySQL.
+Plataforma de microservicios de XYZ Bank: tres backends por canal (`bff-web`, `bff-mobile`, `bff-atm`) que entran por un `api-gateway` interno a tres microservicios de negocio — `core-service` (Gestión de Cuentas), `customers-service` (Gestión de Clientes) y `payments-service` (Procesamiento de Pagos) — más `interests-service`, `auth-server` (OAuth 2.0 / OIDC), `config-server` y `eureka-server`, con Kafka para eventos y tres jobs de Spring Batch que migran los procesos batch legacy hacia MySQL.
+
+Documentación de arquitectura: los cinco procesos críticos de la migración, los tres requerimientos de negocio con sus decisiones, la topología y los flujos están en [`docs/architecture.md`](docs/architecture.md). Decisiones: [ADR 001 — BFF por canal](docs/adr/001-bff-strategy.md), [ADR 002 — saga de intereses](docs/adr/002-event-architecture.md), [ADR 003 — Kafka por defecto y dead-letter topics](docs/adr/003-kafka-default-and-dead-letter-topics.md), [ADR 004 — descomposición en microservicios](docs/adr/004-service-decomposition.md). Jobs batch: [`data-migration/docs/jobs.md`](data-migration/docs/jobs.md). Despliegue en AWS: [`deploy/aws/README.md`](deploy/aws/README.md).
 
 **Autenticación y HTTPS están implementadas con configuración de desarrollo.** Cada canal se autentica con una credencial real — cookie de sesión (web), JWT de dispositivo (mobile), o certificado mTLS del terminal más un PIN de tarjeta (ATM) — pero todo el material de confianza es de dev/test: un usuario demo con contraseña fija, un secreto de cliente fijo para `bff-web`, un secreto de firma de sesión fijo, credenciales de servicio por BFF fijas, y una CA de desarrollo autofirmada con sus certificados y la clave de firma de tokens de `auth-server`. Estas últimas no están en el repositorio: cada desarrollador las genera en su máquina con `scripts/generate-dev-tls-certs.sh` (ver [Arranque local](#arranque-local)). Antes de un despliegue real hace falta: usuarios reales en el servidor de autorización, secretos y claves de firma provistos fuera del repo, una CA gestionada que emita certificados reales, y credenciales de servicio rotadas por BFF.
 
@@ -14,7 +16,7 @@ El login de `bff-web`/`bff-mobile` pasa por `auth-server` (Spring Authorization 
 
 ## Topología del proyecto
 
-Cada canal prueba la identidad del llamante con una credencial real en vez de una cabecera de confianza: cookie de sesión OAuth2/OIDC para web, JWT de dispositivo para mobile, y mTLS más una sesión verificada por PIN para ATM. Todo borde de cara al cliente es TLS; el borde BFF→plataforma sigue siendo HTTP plano salvo la única llamada que transporta un PIN, que es TLS-only por diseño. `bff-web` enruta el resumen de intereses a `interests-service` (flag `FEATURE_USE_INTERESTS_SERVICE`, default `true`). El GET de resumen sigue siendo síncrono: `interests-service` reenvía el Bearer del usuario a `core-service`. La acreditación anual, con `FEATURE_INTEREST_CREDIT_VIA_KAFKA` en `false` (default), sigue siendo el POST HTTP con scope `interests:write`. Con la flag en `true`, `interests-service` publica `InterestCalculated` y `core-service` responde por `interests.credit-results` (saga coreografiada; ver [`docs/adr/002-event-architecture.md`](docs/adr/002-event-architecture.md)).
+Cada canal prueba la identidad del llamante con una credencial real en vez de una cabecera de confianza: cookie de sesión OAuth2/OIDC para web, JWT de dispositivo para mobile, y mTLS más una sesión verificada por PIN para ATM. Todo borde de cara al cliente es TLS; el borde BFF→plataforma sigue siendo HTTP plano salvo la única llamada que transporta un PIN, que es TLS-only por diseño. `bff-web` enruta el resumen de intereses a `interests-service` (flag `FEATURE_USE_INTERESTS_SERVICE`, default `true`). El GET de resumen sigue siendo síncrono: `interests-service` reenvía el Bearer del usuario a `core-service`. La acreditación anual, con `FEATURE_INTEREST_CREDIT_VIA_KAFKA` en `false` (default fuera de Compose), es el POST HTTP con scope `interests:write`. Con la flag en `true`, `interests-service` publica `InterestCalculated` y `core-service` responde por `interests.credit-results` (saga coreografiada; ver [`docs/adr/002-event-architecture.md`](docs/adr/002-event-architecture.md)).
 
 ```mermaid
 flowchart LR
@@ -30,58 +32,62 @@ flowchart LR
     BffAtm[bff-atm :8083 mTLS + PIN session]
   end
 
-  subgraph platform [Platform]
-    AuthServer[auth-server :9000 OAuth2/OIDC]
-    ConfigServer[config-server :8888]
-    EurekaServer[eureka-server :8761]
+  AuthServer[auth-server :9000 OAuth2/OIDC]
+  Gateway[api-gateway :8090 rutas lb://]
+
+  subgraph services [Microservicios - OAuth2 resource servers]
+    CoreService[core-service :8080 Gestión de Cuentas]
+    CoreServicePin[core-service :8453 PIN-verification connector]
+    CustomersService[customers-service :8085 Gestión de Clientes]
+    PaymentsService[payments-service :8086 Procesamiento de Pagos]
     InterestsService[interests-service :8084]
-    CustomersService[customers-service :8085]
-    PaymentsService[payments-service :8086]
   end
 
-  CoreService[core-service :8080]
-  CoreServicePin[core-service :8453 PIN-verification connector]
+  subgraph infra [Spring Cloud]
+    ConfigServer[config-server :8888]
+    EurekaServer[eureka-server :8761]
+  end
+
   Kafka[(Kafka KRaft :9092)]
-  Postgres[(PostgreSQL 16)]
+  Postgres[(PostgreSQL 16, un esquema por servicio)]
   MySQL[(MySQL 8.4)]
-  Migration[data-migration one-shot]
+  Migration[data-migration Spring Batch]
 
   WebClient -- HTTPS --> BffWeb
   MobileClient -- HTTPS --> BffMobile
+  AtmClient -- HTTPS + mTLS --> BffAtm
   WebClient -- "HTTPS login (localhost:9000)" --> AuthServer
   MobileClient -- "HTTPS login (localhost:9000)" --> AuthServer
   BffWeb -- "HTTPS token + JWKS (auth-server:9000)" --> AuthServer
   BffMobile -- "HTTPS token + JWKS (auth-server:9000)" --> AuthServer
-  AtmClient -- HTTPS + mTLS --> BffAtm
-  BffWeb -- HTTP --> InterestsService
-  BffWeb -- HTTP --> CoreService
-  BffWeb -- "HTTP perfil" --> CustomersService
-  BffMobile -- HTTP --> CoreService
-  BffAtm -- HTTP --> CoreService
+  BffWeb -- HTTP --> Gateway
+  BffMobile -- HTTP --> Gateway
+  BffAtm -- HTTP --> Gateway
   BffAtm -- HTTPS --> CoreServicePin
-  InterestsService -- HTTP --> CoreService
+  Gateway --> CoreService
+  Gateway --> CustomersService
+  Gateway --> PaymentsService
+  Gateway --> InterestsService
+  CoreService -- "apertura: ¿existe el cliente?" --> CustomersService
+  PaymentsService -- "postings (Eureka)" --> CoreService
+  InterestsService -- "resumen, saldo" --> CoreService
   InterestsService -- "InterestCalculated" --> Kafka
   Kafka -- "InterestCalculated" --> CoreService
-  CoreService -- "InterestCreditApplied / Rejected" --> Kafka
+  CoreService -- "credit result, TransactionConfirmed, SecurityAlertRaised" --> Kafka
+  AuthServer -- "SecurityAlertRaised" --> Kafka
   Kafka -- "credit result" --> InterestsService
-  CoreService -- "TransactionConfirmed" --> Kafka
-  BffAtm -- "retiro síncrono HTTP" --> CoreService
-  InterestsService --> ConfigServer
-  InterestsService --> EurekaServer
-  CoreService --> EurekaServer
+  Kafka -- "transactions.confirmed, security.alerts" --> CustomersService
+  services -. "registro / config" .-> infra
+  Gateway -. "discovery" .-> EurekaServer
   CoreService --> Postgres
-  CustomersService -- "esquema customers" --> Postgres
-  CustomersService --> ConfigServer
-  CustomersService --> EurekaServer
-  PaymentsService -- "HTTP postings (Eureka)" --> CoreService
-  PaymentsService -- "esquema payments" --> Postgres
-  PaymentsService --> ConfigServer
-  PaymentsService --> EurekaServer
+  CustomersService --> Postgres
+  PaymentsService --> Postgres
+  InterestsService --> Postgres
   CoreServicePin -.-> CoreService
   Migration --> MySQL
 ```
 
-`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core en las llamadas HTTP (resumen, saldo y, con la saga de Kafka apagada, el crédito). Por defecto el crédito de intereses viaja por la saga de Kafka (3 particiones por tópico, reintentos acotados y dead-letter topics). Los tres BFFs también protegen sus llamadas a `core-service`, `interests-service` y `auth-server` con circuit breaker, timeout y reintentos solo donde es seguro (ver [Tolerancia a fallos de los BFFs](#tolerancia-a-fallos-de-los-bffs)). Kafka es un broker único en KRaft, sin ZooKeeper. Los tópicos `interests.calculated`, `interests.credit-results` y `transactions.confirmed` los crea `kafka-init` al arrancar. Cada movimiento de dinero confirmado en `core-service` (retiro ATM síncrono o crédito de interés) publica `TransactionConfirmed` vía outbox a `transactions.confirmed` (clave `accountId`). La flecha HTTP de intereses a core sigue siendo el camino del GET y del crédito síncrono. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
+`CoreServicePin` es un segundo conector Tomcat del mismo `core-service`, no un servicio aparte — comparte proceso y acceso a base de datos; se dibuja por separado solo para mostrar que ese conector exige TLS mientras el resto de `core-service` sigue en HTTP plano. `interests-service` toma configuración de `config-server` (repo nativo `config-repo/`), se registra en Eureka, descubre `core-service` por nombre de servicio (LoadBalancer), y aplica tolerancia a fallos con Resilience4j (circuit breaker) hacia core en las llamadas HTTP (resumen, saldo y, con la saga de Kafka apagada, el crédito). Por defecto el crédito de intereses viaja por la saga de Kafka (3 particiones por tópico, reintentos acotados y dead-letter topics). Los tres BFFs también protegen sus llamadas a `core-service`, `interests-service` y `auth-server` con circuit breaker, timeout y reintentos solo donde es seguro (ver [Tolerancia a fallos de los BFFs](#tolerancia-a-fallos-de-los-bffs)). Kafka es un broker único en KRaft, sin ZooKeeper. Los tópicos `interests.calculated`, `interests.credit-results`, `transactions.confirmed` y `security.alerts` los crea `kafka-init` al arrancar. Cada movimiento de dinero confirmado en `core-service` (retiro ATM, crédito de interés o asiento de un pago) publica `TransactionConfirmed` vía outbox a `transactions.confirmed` (clave `accountId`). Un bloqueo de tarjeta (`core-service`) o una reutilización de refresh token (`auth-server`) publica `SecurityAlertRaised` en `security.alerts`. `customers-service` consume ambos tópicos y arma el feed de notificaciones de cada cliente. La flecha HTTP de intereses a core sigue siendo el camino del GET y del crédito síncrono. Detalle completo de cada credencial por canal en `docs/contracts/*/openapi.yaml` y en `docs/architecture.md`.
 
 ## Arranque local
 
@@ -114,7 +120,7 @@ Eso levanta (los puertos marcados «override» solo los publica `docker-compose.
 | Kafka (KRaft) | 9092 (override) | Broker de la saga de intereses |
 | core-service | (interno; vía gateway) | API interna de dominio |
 | interests-service | 8084 (override) | Cálculo/acreditación de intereses anuales |
-| customers-service | 8085 (override) | Gestión de Clientes: perfiles (esquema `customers`) |
+| customers-service | (interno; vía gateway) | Gestión de Clientes: perfiles y feed de notificaciones (esquema `customers`) |
 | payments-service | (interno; vía gateway) | Procesamiento de Pagos: transferencias, depósitos y pagos de cuentas (esquema `payments`) |
 | api-gateway | 8090 (override, solo loopback) | Entrada interna de los BFFs a la plataforma: enruta `lb://` a `core-service`, `customers-service`, `payments-service` e `interests-service` |
 | bff-web | 8081 | Dashboard, historial e intereses |
@@ -122,7 +128,7 @@ Eso levanta (los puertos marcados «override» solo los publica `docker-compose.
 | bff-atm | 8083 | Saldo y retiro |
 | auth-server | 9000 | Servidor OAuth 2.0 / OIDC (login web y mobile), solo HTTPS |
 
-El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los tres tópicos y sus tres `.DLT` con 3 particiones cada uno. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. `customers-service` espera a PostgreSQL, `config-server`, `eureka-server` y `auth-server`, y `bff-web` espera a `customers-service`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`, `bff-mobile`, `bff-atm` e `interests-service` esperan a que `auth-server` esté sano.
+El job espera a que MySQL esté sano. `kafka-init` espera a que el broker esté sano y crea los cuatro tópicos y sus cuatro `.DLT` con 3 particiones cada uno. `core-service` espera a PostgreSQL, a que la migración termine con éxito, a Eureka y a `kafka-init`. `eureka-server` espera a `config-server`. `interests-service` espera a `config-server`, `eureka-server`, `core-service` y `kafka-init`. `customers-service` espera a PostgreSQL, `config-server`, `eureka-server` y `auth-server`, y `bff-web` espera a `customers-service`. Los BFFs esperan a que `core-service` reporte `/actuator/health` en UP; `bff-web` además espera a `interests-service`, y `bff-web`, `bff-mobile`, `bff-atm` e `interests-service` esperan a que `auth-server` esté sano.
 
 ### Gateway, Eureka y escalado horizontal
 
@@ -131,16 +137,16 @@ Los tres BFFs llaman a la plataforma por `api-gateway` con una sola variable, `P
 Todos los servicios de plataforma, el gateway y los BFFs se registran en Eureka y leen su configuración de `config-server` (un archivo por servicio en `config-repo/`). Para correr réplicas:
 
 ```bash
-docker compose up -d --scale core-service=2 --scale payments-service=2
+docker compose up -d --scale core-service=2 --scale customers-service=2 --scale payments-service=2
 ```
 
-Abre Eureka en http://localhost:8761 (override): `CORE-SERVICE` y `PAYMENTS-SERVICE` aparecen con dos instancias `UP` cada una. Por consola:
+Abre Eureka en http://localhost:8761 (override): `CORE-SERVICE`, `CUSTOMERS-SERVICE` y `PAYMENTS-SERVICE` aparecen con dos instancias `UP` cada una. Por consola:
 
 ```bash
 curl -sS -H 'Accept: application/json' http://localhost:8761/eureka/apps/CORE-SERVICE | jq '.application.instance | length'
 ```
 
-Los servicios de aplicación no fijan `container_name`, así que Compose puede crear las réplicas; `core-service` y `payments-service` no publican puertos de host (las réplicas no pueden compartirlos) y se alcanzan por el gateway. Los relays del outbox de varias réplicas de `core-service` toman cada evento con `SELECT ... FOR UPDATE SKIP LOCKED`, así que ninguno se publica dos veces; el orden por cuenta está garantizado dentro de un relay, y entre réplicas un evento posterior de la misma cuenta podría salir antes si el anterior está bloqueado por el otro relay (los consumidores son idempotentes por `eventId`). `interests-service` guarda sus cálculos en el esquema `interests` de PostgreSQL, no en memoria. Comprobación rápida con dos réplicas: `./scripts/smoke-atm-scaled.sh`.
+Los servicios de aplicación no fijan `container_name`, así que Compose puede crear las réplicas; `core-service`, `customers-service` y `payments-service` no publican puertos de host (las réplicas no pueden compartirlos) y se alcanzan por el gateway. Los consumidores Kafka de `customers-service` comparten grupo, así que las réplicas se reparten las particiones, y el feed es idempotente por `eventId`. Los relays del outbox de varias réplicas de `core-service` toman cada evento con `SELECT ... FOR UPDATE SKIP LOCKED`, así que ninguno se publica dos veces; el orden por cuenta está garantizado dentro de un relay, y entre réplicas un evento posterior de la misma cuenta podría salir antes si el anterior está bloqueado por el otro relay (los consumidores son idempotentes por `eventId`). `interests-service` guarda sus cálculos en el esquema `interests` de PostgreSQL, no en memoria. Comprobación rápida con dos réplicas: `./scripts/smoke-atm-scaled.sh`.
 
 ### Servidor de autorización (`auth-server`)
 
@@ -393,19 +399,19 @@ TOKEN=$(curl -sS --cacert dev/certs/ca.crt -u "customers-admin:$(grep ^CUSTOMERS
   -d grant_type=client_credentials https://localhost:9000/oauth2/token | jq -r .access_token)
 
 # Alta idempotente: repetir la misma Idempotency-Key devuelve el mismo cliente (201)
-curl -sS -X POST http://localhost:8085/internal/customers -H "Authorization: Bearer $TOKEN" \
+curl -sS -X POST http://localhost:8090/customers-service/internal/customers -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: alta-001' \
   -d '{"fullName":"Jane Doe","email":"jane@xyzbank.cl","phone":"+56911111111","address":"Av. Siempre Viva 1"}'
 
 # Modificación con bloqueo optimista: version es la última leída; una versión vieja responde 409
-curl -sS -X PATCH http://localhost:8085/internal/customers/<id> -H "Authorization: Bearer $TOKEN" \
+curl -sS -X PATCH http://localhost:8090/customers-service/internal/customers/<id> -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"email":"jane.doe@xyzbank.cl","version":0}'
 
 # Token válido para customers-service pero sin customers:write -> 403
 # (un token cuya audiencia no incluye customers-service, como el de bff-atm, recibe 401)
 READ_TOKEN=$(curl -sS --cacert dev/certs/ca.crt -u "customers-admin:$(grep ^CUSTOMERS_ADMIN_CLIENT_SECRET= .env | cut -d= -f2)" \
   -d grant_type=client_credentials -d scope=customers:read https://localhost:9000/oauth2/token | jq -r .access_token)
-curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8085/internal/customers \
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8090/customers-service/internal/customers \
   -H "Authorization: Bearer $READ_TOKEN" -H 'Content-Type: application/json' -H 'Idempotency-Key: alta-002' \
   -d '{"fullName":"X","email":"x@xyzbank.cl"}'
 ```
@@ -470,7 +476,7 @@ Health y OpenAPI:
 ```bash
 curl -sS http://localhost:8090/core-service/actuator/health
 curl -sS http://localhost:8084/actuator/health
-curl -sS http://localhost:8085/actuator/health
+curl -sS http://localhost:8090/customers-service/actuator/health
 curl -sS http://localhost:8090/payments-service/actuator/health
 curl -sS http://localhost:8888/actuator/health
 curl -sS http://localhost:8761/actuator/health
@@ -502,7 +508,7 @@ curl -sS http://127.0.0.1:9081/actuator/circuitbreakerevents/coreService
 
 Parámetros y su justificación: `docs/architecture.md` (Fault tolerance) y el `application.yml` de cada BFF.
 
-Contratos en el repo: [`docs/contracts/`](docs/contracts/). Arquitectura: [`docs/architecture.md`](docs/architecture.md). ADR de BFFs: [`docs/adr/001-bff-strategy.md`](docs/adr/001-bff-strategy.md). ADR de la saga de intereses: [`docs/adr/002-event-architecture.md`](docs/adr/002-event-architecture.md).
+Contratos en el repo: [`docs/contracts/`](docs/contracts/). Arquitectura: [`docs/architecture.md`](docs/architecture.md). ADRs: [001 BFF por canal](docs/adr/001-bff-strategy.md), [002 saga de intereses](docs/adr/002-event-architecture.md), [003 Kafka por defecto y DLT](docs/adr/003-kafka-default-and-dead-letter-topics.md), [004 descomposición en microservicios](docs/adr/004-service-decomposition.md).
 
 ## Tests
 

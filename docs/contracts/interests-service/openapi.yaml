@@ -1,0 +1,163 @@
+openapi: 3.0.3
+info:
+  title: interests-service — annual interest
+  description: >
+    Annual interest summary and annual interest application. interests-service
+    owns the calculation (its rate comes from config-server) and keeps each
+    calculation in the interests schema of the shared PostgreSQL; balances and
+    credits stay in core-service. Every endpoint requires a bearer access token
+    issued by auth-server whose audience includes interests-service, whose
+    client (`azp`) is the one registered for its channel, and that carries the
+    scope shown in the operation's description.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8084
+security:
+  - BearerAuth: []
+paths:
+  /accounts/{accountId}/interest-summary:
+    get:
+      summary: Annual interest summary of an account
+      description: >
+        Requires `web:interests:read`. The caller's token is relayed to
+        core-service, which only answers for an account of the token's
+        customer; another customer's account answers 404, like an unknown one.
+        Reads to core-service are retried and guarded by a circuit breaker.
+      operationId: getInterestSummary
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/Year'
+      responses:
+        '200':
+          description: The summary of that year
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterestSummaryResponse'
+        '401':
+          description: Missing, expired or invalid token, or a token whose client does not match its channel
+        '403':
+          description: The token lacks `web:interests:read`
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /accounts/{accountId}/interest-applications:
+    post:
+      summary: Apply the annual interest of a year
+      description: >
+        Requires `interests:write` (the `interests-service` client-credentials
+        token). Reads the balance from core-service and computes the amount.
+        With `FEATURE_INTEREST_CREDIT_VIA_KAFKA=true` (Compose default) it
+        publishes `InterestCalculated` and answers as soon as it is published:
+        the credit happens afterwards in core-service and its outcome travels on
+        `interests.credit-results`, so a 200 does not mean the account is
+        already credited. With the flag `false` it credits synchronously through
+        core-service. Applying the same account and year again never credits
+        twice (idempotency key `interest-{accountId}-{year}`, event id
+        `interest:{accountId}:{year}`).
+      operationId: applyAnnualInterest
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/Year'
+      responses:
+        '200':
+          description: The calculated summary (credited, or published for crediting)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterestSummaryResponse'
+        '401':
+          description: Missing, expired or invalid token
+        '403':
+          description: The token lacks `interests:write`
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: That year was already credited (synchronous path)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Year:
+      name: year
+      in: query
+      required: true
+      schema:
+        type: integer
+        example: 2025
+  responses:
+    NotFound:
+      description: No such account (or an account of another customer)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unprocessable:
+      description: Missing account id, or a year that is missing or not a number
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unavailable:
+      description: core-service or auth-server is unavailable, or its circuit breaker is open
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+  schemas:
+    InterestSummaryResponse:
+      type: object
+      required: [accountId, year, openingBalance, closingBalance, interestRate, interestAmount, currency]
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        year:
+          type: integer
+        openingBalance:
+          type: number
+        closingBalance:
+          type: number
+        interestRate:
+          type: number
+          description: Annual rate as a fraction (0.035 is 3.5 %)
+        interestAmount:
+          type: number
+        currency:
+          type: string
+          example: USD
+    ProblemDetail:
+      type: object
+      description: RFC 7807 problem details
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
