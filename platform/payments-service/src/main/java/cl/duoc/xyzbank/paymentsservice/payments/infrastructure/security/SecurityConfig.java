@@ -19,7 +19,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/prometheus").permitAll()
                         .requestMatchers(HttpMethod.POST, "/internal/transfers", "/internal/deposits",
                                 "/internal/bill-payments").hasAuthority("SCOPE_payments:write")
                         .requestMatchers(HttpMethod.GET, "/internal/payments/*").hasAuthority("SCOPE_payments:read")

@@ -4,6 +4,7 @@ import cl.duoc.xyzbank.interestsservice.interests.domain.entities.InterestCalcul
 import cl.duoc.xyzbank.interestsservice.interests.domain.entities.InterestCalculationStatus;
 import cl.duoc.xyzbank.interestsservice.interests.domain.repositories.InterestCalculationRepository;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -69,6 +70,9 @@ class InterestCreditResultDeadLetterIT {
     }
 
     @Autowired
+    private MeterRegistry meterRegistry;
+
+    @Autowired
     private InterestCalculationRepository calculations;
 
     @Value("${spring.embedded.kafka.brokers}")
@@ -95,6 +99,7 @@ class InterestCreditResultDeadLetterIT {
         assertEquals(RESULTS, header(dead, KafkaHeaders.DLT_ORIGINAL_TOPIC));
         assertNotNull(header(dead, KafkaHeaders.DLT_EXCEPTION_FQCN));
         assertTrue(waited.compareTo(TOTAL_BACKOFF) >= 0, "dead-lettered after " + waited + ", before the retries ran");
+        assertTrue(meterRegistry.get("kafka.dlt.messages").tag("topic", RESULTS).counter().count() >= 1.0);
         await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(200)).untilAsserted(() ->
                 assertEquals(
                         InterestCalculationStatus.APPLIED,

@@ -20,18 +20,21 @@ public class MakePaymentUseCase {
 
     private final PaymentRepository paymentRepository;
     private final PostingGateway postingGateway;
+    private final PaymentMetrics metrics;
     private final Clock clock;
 
-    public MakePaymentUseCase(PaymentRepository paymentRepository, PostingGateway postingGateway, Clock clock) {
+    public MakePaymentUseCase(
+            PaymentRepository paymentRepository, PostingGateway postingGateway, PaymentMetrics metrics, Clock clock) {
         this.paymentRepository = paymentRepository;
         this.postingGateway = postingGateway;
+        this.metrics = metrics;
         this.clock = clock;
     }
 
     public PaymentResponse execute(String idempotencyKey, PaymentRequest request) {
         requireValidKey(idempotencyKey);
         Payment payment = paymentRepository.findByIdempotencyKey(idempotencyKey)
-                .orElseGet(() -> paymentRepository.create(newPayment(idempotencyKey, request)));
+                .orElseGet(() -> recordedPending(newPayment(idempotencyKey, request)));
         if (payment.status() != PaymentStatus.PENDING) {
             return PaymentResponse.from(payment);
         }
@@ -39,7 +42,14 @@ public class MakePaymentUseCase {
         Instant now = Instant.now(clock);
         Payment settled = outcome == PostingOutcome.APPLIED ? payment.complete(now) : payment.reject(now);
         paymentRepository.update(settled);
+        metrics.statusEntered(settled.status());
         return PaymentResponse.from(settled);
+    }
+
+    private Payment recordedPending(Payment payment) {
+        Payment created = paymentRepository.create(payment);
+        metrics.statusEntered(created.status());
+        return created;
     }
 
     private static void requireValidKey(String idempotencyKey) {

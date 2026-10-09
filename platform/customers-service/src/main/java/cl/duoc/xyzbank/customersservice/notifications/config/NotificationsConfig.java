@@ -4,6 +4,7 @@ import cl.duoc.xyzbank.customersservice.notifications.application.GetNotificatio
 import cl.duoc.xyzbank.customersservice.notifications.application.RecordNotificationUseCase;
 import cl.duoc.xyzbank.customersservice.notifications.domain.NotificationRepository;
 import cl.duoc.xyzbank.customersservice.notifications.infrastructure.persistence.JdbcNotificationRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -11,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.CommonErrorHandler;
+import org.springframework.kafka.listener.ConsumerRecordRecoverer;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
@@ -43,14 +45,20 @@ public class NotificationsConfig {
     @Bean
     public CommonErrorHandler notificationsErrorHandler(
             KafkaTemplate<String, String> kafkaTemplate,
+            MeterRegistry meterRegistry,
             @Value("${notifications.kafka.retry.max-retries:3}") int maxRetries,
             @Value("${notifications.kafka.retry.initial-interval-ms:1000}") long initialIntervalMs,
             @Value("${notifications.kafka.retry.multiplier:2.0}") double multiplier) {
         DeadLetterPublishingRecoverer deadLetters = new DeadLetterPublishingRecoverer(
                 kafkaTemplate, (record, exception) -> new TopicPartition(record.topic() + DEAD_LETTER_SUFFIX, -1));
+        // kafka.dlt.messages{topic}: one increment per record sent to its dead-letter topic
+        ConsumerRecordRecoverer countedDeadLetters = (record, exception) -> {
+            meterRegistry.counter("kafka.dlt.messages", "topic", record.topic()).increment();
+            deadLetters.accept(record, exception);
+        };
         ExponentialBackOffWithMaxRetries backOff = new ExponentialBackOffWithMaxRetries(maxRetries);
         backOff.setInitialInterval(initialIntervalMs);
         backOff.setMultiplier(multiplier);
-        return new DefaultErrorHandler(deadLetters, backOff);
+        return new DefaultErrorHandler(countedDeadLetters, backOff);
     }
 }
