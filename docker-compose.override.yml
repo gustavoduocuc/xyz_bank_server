@@ -15,46 +15,64 @@ services:
       - "9092:9092"
 
   config-server:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     ports:
       - "8888:8888"
 
   eureka-server:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     ports:
       - "8761:8761"
 
   # Dev tools reach the platform services through the gateway, on loopback only. core-service and
   # payments-service publish no host ports of their own: replicas (--scale) cannot share them
   api-gateway:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     ports:
       - "127.0.0.1:8090:8090"
 
   core-service:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     volumes:
       - ./dev/certs/core-service/keystore.p12:/certs/keystore.p12:ro
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
   interests-service:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     ports:
       - "8084:8084"
     volumes:
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
   customers-service:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     ports:
       - "8085:8085"
     volumes:
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
   payments-service:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     volumes:
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
   auth-server:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     volumes:
       - ./dev/certs/auth-server/keystore.p12:/certs/keystore.p12:ro
       - ./dev/certs/auth-server/signing.p12:/certs/signing.p12:ro
 
   bff-web:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     ports:
       # Actuator (health, circuit-breaker state): internal management port, loopback only
       - "127.0.0.1:9081:9081"
@@ -63,6 +81,8 @@ services:
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
   bff-mobile:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     ports:
       - "127.0.0.1:9082:9082"
     volumes:
@@ -70,11 +90,30 @@ services:
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
 
   bff-atm:
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     ports:
       - "127.0.0.1:9083:9083"
     volumes:
       - ./dev/certs/bff-atm/keystore.p12:/certs/keystore.p12:ro
       - ./dev/certs/truststore.p12:/certs/truststore.p12:ro
+
+  # Observability (development only): traces at http://localhost:9411, metrics at http://localhost:9090
+  zipkin:
+    image: openzipkin/zipkin:3
+    restart: unless-stopped
+    networks: [internal]
+    ports:
+      - "9411:9411"
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    networks: [internal]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
 
 networks:
   internal:
