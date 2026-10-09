@@ -39,9 +39,11 @@ files are templates: values written as `${...}` are substituted at registration 
 - **Secrets**: every password and client secret is a Secrets Manager secret named
   `xyz-bank/<VARIABLE>` (for example `xyz-bank/CORE_DB_PASSWORD`, `xyz-bank/BFF_WEB_CLIENT_SECRET`),
   referenced from `secrets[].valueFrom`. No task definition contains a secret value.
-- **Scaling**: one ECS service per task definition. `core-service`, `payments-service`,
-  `api-gateway` and the BFFs run at least 2 tasks with target-tracking autoscaling on average CPU
-  (about 60%); the services are stateless and safe to scale (outbox relays use `SKIP LOCKED`).
+- **Scaling**: one ECS service per task definition. The three business microservices
+  (`core-service`, `customers-service`, `payments-service`), `api-gateway` and the BFFs run at
+  least 2 tasks with target-tracking autoscaling on average CPU (about 60%); the services are
+  stateless and safe to scale (outbox relays use `SKIP LOCKED`, and `customers-service`'s Kafka
+  consumers share one group and store each event once by `eventId`).
   `config-server` and `eureka-server` stay at 1 (2 for availability).
 - **Telemetry**: logs go to CloudWatch (`awslogs`, group `/ecs/xyz-bank/<service>`). Every service
   exposes `/actuator/prometheus` on its internal port and traces at 10% sampling; AWS-side
