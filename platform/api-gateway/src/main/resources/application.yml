@@ -2,6 +2,9 @@ server:
   port: 8090
 
 spring:
+  # Keeps the trace context across Reactor threads so the proxied call is a child of the inbound span
+  reactor:
+    context-propagation: auto
   application:
     name: api-gateway
   config:

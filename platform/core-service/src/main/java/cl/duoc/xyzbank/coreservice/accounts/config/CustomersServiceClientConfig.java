@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.coreservice.accounts.config;
 
 import cl.duoc.xyzbank.coreservice.shared.infrastructure.rest.AuthorizationForwardingInterceptor;
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,14 +22,14 @@ public class CustomersServiceClientConfig {
     @Bean
     @LoadBalanced
     @ConditionalOnProperty(name = "eureka.client.enabled", havingValue = "true")
-    public RestClient.Builder loadBalancedCustomersServiceClientBuilder() {
-        return RestClient.builder();
+    public RestClient.Builder loadBalancedCustomersServiceClientBuilder(ObservationRegistry observationRegistry) {
+        return RestClient.builder().observationRegistry(observationRegistry);
     }
 
     @Bean
     @ConditionalOnProperty(name = "eureka.client.enabled", havingValue = "false", matchIfMissing = true)
-    public RestClient.Builder plainCustomersServiceClientBuilder() {
-        return RestClient.builder();
+    public RestClient.Builder plainCustomersServiceClientBuilder(ObservationRegistry observationRegistry) {
+        return RestClient.builder().observationRegistry(observationRegistry);
     }
 
     @Bean

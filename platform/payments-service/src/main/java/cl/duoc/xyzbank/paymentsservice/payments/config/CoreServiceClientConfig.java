@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.paymentsservice.payments.config;
 
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -30,14 +31,14 @@ public class CoreServiceClientConfig {
     @Bean
     @LoadBalanced
     @ConditionalOnProperty(name = "eureka.client.enabled", havingValue = "true")
-    public RestClient.Builder loadBalancedCoreServiceClientBuilder() {
-        return RestClient.builder();
+    public RestClient.Builder loadBalancedCoreServiceClientBuilder(ObservationRegistry observationRegistry) {
+        return RestClient.builder().observationRegistry(observationRegistry);
     }
 
     @Bean
     @ConditionalOnProperty(name = "eureka.client.enabled", havingValue = "false", matchIfMissing = true)
-    public RestClient.Builder plainCoreServiceClientBuilder() {
-        return RestClient.builder();
+    public RestClient.Builder plainCoreServiceClientBuilder(ObservationRegistry observationRegistry) {
+        return RestClient.builder().observationRegistry(observationRegistry);
     }
 
     // Works outside a servlet request: the token belongs to payments-service, not to the caller

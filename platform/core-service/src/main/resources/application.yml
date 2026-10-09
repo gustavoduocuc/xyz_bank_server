@@ -28,8 +28,11 @@ spring:
   flyway:
     enabled: true
   kafka:
+    template:
+      observation-enabled: true
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     listener:
+      observation-enabled: true
       auto-startup: ${FEATURE_INTEREST_CREDIT_VIA_KAFKA:false}
       ack-mode: record
       # One consumer thread per partition: accounts are processed in parallel, one account in order
@@ -119,10 +122,6 @@ management:
   endpoint:
     health:
       show-details: never
-
-logging:
-  pattern:
-    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%X{correlationId}] [%15.15t] %-40.40logger{39} : %m%n"
 
 springdoc:
   api-docs:
