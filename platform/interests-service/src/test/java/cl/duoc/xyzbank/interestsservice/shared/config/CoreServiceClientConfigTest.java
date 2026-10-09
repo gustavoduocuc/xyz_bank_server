@@ -1,5 +1,6 @@
 package cl.duoc.xyzbank.interestsservice.shared.config;
 
+import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
@@ -17,7 +18,7 @@ class CoreServiceClientConfigTest {
     @Test
     @DisplayName("discovery-enabled RestClient builder is LoadBalanced when Eureka is enabled")
     void discoveryEnabledBuilderIsLoadBalancedWhenEurekaEnabled() throws Exception {
-        Method method = CoreServiceClientConfig.class.getDeclaredMethod("loadBalancedRestClientBuilder");
+        Method method = CoreServiceClientConfig.class.getDeclaredMethod("loadBalancedRestClientBuilder", ObservationRegistry.class);
         LoadBalanced loadBalanced = method.getAnnotation(LoadBalanced.class);
         ConditionalOnProperty condition = method.getAnnotation(ConditionalOnProperty.class);
 
@@ -31,7 +32,7 @@ class CoreServiceClientConfigTest {
     @Test
     @DisplayName("hermetic RestClient builder is used when Eureka is disabled")
     void hermeticBuilderWhenEurekaDisabled() throws Exception {
-        Method method = CoreServiceClientConfig.class.getDeclaredMethod("plainRestClientBuilder");
+        Method method = CoreServiceClientConfig.class.getDeclaredMethod("plainRestClientBuilder", ObservationRegistry.class);
         ConditionalOnProperty condition = method.getAnnotation(ConditionalOnProperty.class);
 
         assertNotNull(condition);
