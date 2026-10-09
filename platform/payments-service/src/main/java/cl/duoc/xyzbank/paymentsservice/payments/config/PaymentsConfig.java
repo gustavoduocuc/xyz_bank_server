@@ -4,6 +4,9 @@ import cl.duoc.xyzbank.paymentsservice.payments.application.GetPaymentUseCase;
 import cl.duoc.xyzbank.paymentsservice.payments.application.MakePaymentUseCase;
 import cl.duoc.xyzbank.paymentsservice.payments.application.PostingGateway;
 import cl.duoc.xyzbank.paymentsservice.payments.domain.PaymentRepository;
+import cl.duoc.xyzbank.paymentsservice.payments.application.PaymentMetrics;
+import cl.duoc.xyzbank.paymentsservice.payments.infrastructure.metrics.MicrometerPaymentMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,8 +16,14 @@ import java.time.Clock;
 public class PaymentsConfig {
 
     @Bean
-    public MakePaymentUseCase makePaymentUseCase(PaymentRepository paymentRepository, PostingGateway postingGateway) {
-        return new MakePaymentUseCase(paymentRepository, postingGateway, Clock.systemUTC());
+    public PaymentMetrics paymentMetrics(MeterRegistry meterRegistry) {
+        return new MicrometerPaymentMetrics(meterRegistry);
+    }
+
+    @Bean
+    public MakePaymentUseCase makePaymentUseCase(
+            PaymentRepository paymentRepository, PostingGateway postingGateway, PaymentMetrics paymentMetrics) {
+        return new MakePaymentUseCase(paymentRepository, postingGateway, paymentMetrics, Clock.systemUTC());
     }
 
     @Bean

@@ -8,6 +8,7 @@ import cl.duoc.xyzbank.paymentsservice.payments.application.PostingGateway;
 import cl.duoc.xyzbank.paymentsservice.payments.application.PostingOutcome;
 import cl.duoc.xyzbank.paymentsservice.payments.domain.Payment;
 import cl.duoc.xyzbank.paymentsservice.payments.domain.PaymentException;
+import cl.duoc.xyzbank.paymentsservice.payments.domain.PaymentStatus;
 import cl.duoc.xyzbank.paymentsservice.payments.domain.PaymentType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,7 +35,9 @@ class MakePaymentUseCaseTest {
 
     private final InMemoryPaymentRepository paymentRepository = new InMemoryPaymentRepository();
     private final StubPostingGateway gateway = new StubPostingGateway();
-    private final MakePaymentUseCase useCase = new MakePaymentUseCase(paymentRepository, gateway, CLOCK);
+    private final List<PaymentStatus> statusesEntered = new ArrayList<>();
+    private final MakePaymentUseCase useCase =
+            new MakePaymentUseCase(paymentRepository, gateway, statusesEntered::add, CLOCK);
 
     /*
      * Cases:
@@ -45,6 +48,8 @@ class MakePaymentUseCaseTest {
      * 5. An unavailable core-service leaves the payment PENDING and propagates CoreUnavailableException
      * 6. A missing key, a non-positive amount, a bad currency or a transfer to the same account
      *    throws validation and records nothing
+     * 7. Metrics: every status a payment enters is reported once (PENDING, then COMPLETED or REJECTED);
+     *    a repeated key of a settled payment reports nothing; a repeated PENDING one reports only its settling
      */
 
     @ParameterizedTest
@@ -57,6 +62,7 @@ class MakePaymentUseCaseTest {
 
         assertEquals("COMPLETED", response.status());
         assertEquals(type.name(), response.type());
+        assertEquals(List.of(PaymentStatus.PENDING, PaymentStatus.COMPLETED), statusesEntered);
         assertEquals(1, gateway.calls.size());
         assertEquals(response.id(), gateway.calls.get(0).id().toString());
     }
@@ -70,6 +76,7 @@ class MakePaymentUseCaseTest {
         PaymentResponse response = useCase.execute("key-1", request(type));
 
         assertEquals("REJECTED", response.status());
+        assertEquals(List.of(PaymentStatus.PENDING, PaymentStatus.REJECTED), statusesEntered);
         assertEquals("REJECTED", paymentRepository.findByIdempotencyKey("key-1").orElseThrow().status().name());
     }
 
@@ -82,6 +89,7 @@ class MakePaymentUseCaseTest {
         PaymentResponse second = useCase.execute("key-1", request(PaymentType.TRANSFER));
 
         assertEquals(first, second);
+        assertEquals(List.of(PaymentStatus.PENDING, PaymentStatus.COMPLETED), statusesEntered);
         assertEquals(1, gateway.calls.size());
         assertEquals(1, paymentRepository.size());
     }
@@ -96,6 +104,7 @@ class MakePaymentUseCaseTest {
         PaymentResponse response = useCase.execute("key-1", request(PaymentType.TRANSFER));
 
         assertEquals("COMPLETED", response.status());
+        assertEquals(List.of(PaymentStatus.PENDING, PaymentStatus.COMPLETED), statusesEntered);
         assertEquals(2, gateway.calls.size());
         assertEquals(gateway.calls.get(0).id(), gateway.calls.get(1).id());
         assertEquals(1, paymentRepository.size());
@@ -109,6 +118,7 @@ class MakePaymentUseCaseTest {
         assertThrows(CoreUnavailableException.class, () -> useCase.execute("key-1", request(PaymentType.DEPOSIT)));
 
         assertEquals("PENDING", paymentRepository.findByIdempotencyKey("key-1").orElseThrow().status().name());
+        assertEquals(List.of(PaymentStatus.PENDING), statusesEntered);
     }
 
     @Test
@@ -122,6 +132,7 @@ class MakePaymentUseCaseTest {
         assertInvalid("k", new PaymentRequest(PaymentType.DEPOSIT, null, "not-a-uuid", BigDecimal.TEN, "USD"));
         assertEquals(0, paymentRepository.size());
         assertEquals(0, gateway.calls.size());
+        assertEquals(List.of(), statusesEntered);
     }
 
     private void assertInvalid(String key, PaymentRequest request) {

@@ -2,6 +2,7 @@ package cl.duoc.xyzbank.customersservice.notifications.integration;
 
 import cl.duoc.xyzbank.customersservice.testsupport.AbstractPostgresIT;
 import cl.duoc.xyzbank.customersservice.testsupport.TestTokens;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.restassured.RestAssured;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -16,6 +17,7 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -42,7 +44,8 @@ class NotificationsKafkaIT extends AbstractPostgresIT {
      * 1. A card-lock alert and a withdrawal confirmation, as core-service publishes them, appear
      *    in the customer's feed, newest first
      * 2. An event delivered twice leaves one entry
-     * 3. A record that cannot be processed is retried and then published to the topic's .DLT
+     * 3. A record that cannot be processed is retried and then published to the topic's .DLT, and counted in
+     *    kafka.dlt.messages{topic="security.alerts"}
      */
 
     private static final String TRANSACTIONS = "transactions.confirmed";
@@ -64,6 +67,9 @@ class NotificationsKafkaIT extends AbstractPostgresIT {
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     @DynamicPropertySource
     static void registerKafka(DynamicPropertyRegistry registry) {
@@ -120,6 +126,7 @@ class NotificationsKafkaIT extends AbstractPostgresIT {
             });
         }
         assertTrue(deadLettered.get());
+        assertTrue(meterRegistry.get("kafka.dlt.messages").tag("topic", ALERTS).counter().count() >= 1.0);
     }
 
     private io.restassured.response.ValidatableResponse feedOf(String customerId) {

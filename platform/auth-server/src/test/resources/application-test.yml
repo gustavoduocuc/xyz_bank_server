@@ -1,3 +1,7 @@
+management:
+  server:
+    port: 0
+
 auth:
   signing:
     keystore-path: classpath:signing/signing.p12
