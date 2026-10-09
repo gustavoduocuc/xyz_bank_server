@@ -1,0 +1,169 @@
+<mxfile host="drawio">
+  <diagram id="arquitectura" name="Arquitectura XYZ Bank">
+    <mxGraphModel adaptiveColors="auto" grid="1" gridSize="10" page="1" pageWidth="1600" pageHeight="1100">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="&lt;b&gt;XYZ Bank — Arquitectura actual&lt;/b&gt;&lt;br&gt;BFF por canal · Spring Cloud · microservicios · Kafka · Spring Batch" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="40" y="10" width="560" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="clients" value="Clientes" style="swimlane;startSize=24;fillColor=#f5f5f5;strokeColor=#666666;html=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="70" width="840" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="cWeb" value="&lt;b&gt;Navegador web&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="clients">
+          <mxGeometry x="40" y="35" width="180" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="cMobile" value="&lt;b&gt;App móvil&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="clients">
+          <mxGeometry x="330" y="35" width="180" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="cAtm" value="&lt;b&gt;Cajero automático (ATM)&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="clients">
+          <mxGeometry x="620" y="35" width="180" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="public" value="Red pública — solo HTTPS" style="swimlane;startSize=24;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="1180" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="bffWeb" value="&lt;b&gt;bff-web&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;OIDC + PKCE, cookie HttpOnly&lt;br&gt;payloads completos y agregados&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="public">
+          <mxGeometry x="160" y="40" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="bffMobile" value="&lt;b&gt;bff-mobile&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;JWT ligado al dispositivo&lt;br&gt;payloads mínimos&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="public">
+          <mxGeometry x="450" y="40" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="bffAtm" value="&lt;b&gt;bff-atm&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;mTLS + sesión por PIN&lt;br&gt;PIN, saldo y retiro&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="public">
+          <mxGeometry x="740" y="40" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="auth" value="&lt;b&gt;auth-server&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;Spring Authorization Server&lt;br&gt;OAuth2/OIDC · RS256 · JWKS&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="public">
+          <mxGeometry x="10" y="40" width="130" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="authPg" value="&lt;b&gt;auth-postgres&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;clientes, autorizaciones,&lt;br&gt;refresh tokens&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=10;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="260" width="150" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="internal" value="Red interna — sin acceso desde Internet" style="swimlane;startSize=24;fillColor=#f8f8f8;strokeColor=#999999;html=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="440" width="1480" height="600" as="geometry"/>
+        </mxCell>
+        <mxCell id="gateway" value="&lt;b&gt;api-gateway&lt;/b&gt; (Spring Cloud Gateway)&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;/&amp;lt;servicio&amp;gt;/** → lb:// · reenvía Authorization, X-Correlation-Id, Idempotency-Key&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="internal">
+          <mxGeometry x="230" y="40" width="520" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="ms" value="Microservicios — OAuth2 resource servers · Resilience4j · escalables con --scale" style="swimlane;startSize=24;fillColor=#d5e8d4;strokeColor=#82b366;html=1;" vertex="1" parent="internal">
+          <mxGeometry x="20" y="150" width="1040" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="core" value="&lt;b&gt;core-service&lt;/b&gt;&lt;br&gt;Gestión de Cuentas&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;cuentas, movimientos, retiros,&lt;br&gt;outbox · conector TLS de PIN&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="ms">
+          <mxGeometry x="290" y="45" width="220" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="customers" value="&lt;b&gt;customers-service&lt;/b&gt;&lt;br&gt;Gestión de Clientes&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;perfil · feed de notificaciones&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="ms">
+          <mxGeometry x="20" y="45" width="210" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="payments" value="&lt;b&gt;payments-service&lt;/b&gt;&lt;br&gt;Procesamiento de Pagos&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;transferencias, depósitos, pagos&lt;br&gt;PENDING si core cae&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="ms">
+          <mxGeometry x="570" y="45" width="210" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="interests" value="&lt;b&gt;interests-service&lt;/b&gt;&lt;br&gt;Intereses anuales&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;resumen y cálculo · saga Kafka&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" vertex="1" parent="ms">
+          <mxGeometry x="820" y="45" width="200" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="sc" value="Spring Cloud" style="swimlane;startSize=24;fillColor=#ffe6cc;strokeColor=#d79b00;html=1;" vertex="1" parent="internal">
+          <mxGeometry x="1110" y="40" width="340" height="280" as="geometry"/>
+        </mxCell>
+        <mxCell id="config" value="&lt;b&gt;config-server&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;config-repo/: un archivo por servicio&lt;br&gt;timeouts, tasas, feature flags&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;" vertex="1" parent="sc">
+          <mxGeometry x="30" y="45" width="280" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="eureka" value="&lt;b&gt;eureka-server&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;registro y descubrimiento de instancias&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;" vertex="1" parent="sc">
+          <mxGeometry x="30" y="165" width="280" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="pg" value="&lt;b&gt;PostgreSQL 16&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;un esquema por servicio:&lt;br&gt;core · customers · payments · interests&lt;br&gt;Flyway&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="internal">
+          <mxGeometry x="40" y="380" width="280" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="kafka" value="&lt;b&gt;Apache Kafka (KRaft)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;interests.calculated · interests.credit-results&lt;br&gt;transactions.confirmed · security.alerts&lt;br&gt;3 particiones (clave accountId) + .DLT cada uno&lt;/font&gt;" style="shape=mxgraph.flowchart.direct_data;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="internal">
+          <mxGeometry x="420" y="385" width="380" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="batch" value="Migración batch" style="swimlane;startSize=24;fillColor=#e6e6e6;strokeColor=#666666;html=1;" vertex="1" parent="internal">
+          <mxGeometry x="880" y="360" width="570" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="csv" value="&lt;b&gt;CSV legacy&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;data-migration/data&lt;/font&gt;" style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="batch">
+          <mxGeometry x="15" y="50" width="120" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="dm" value="&lt;b&gt;data-migration&lt;/b&gt; (Spring Batch)&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;dailyTransactions · monthlyInterests · annualGeneration&lt;br&gt;particionado, skip/retry, reinicio&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;" vertex="1" parent="batch">
+          <mxGeometry x="165" y="45" width="230" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="mysql" value="&lt;b&gt;MySQL 8.4&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;reportes de migración&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=10;fillColor=#ffffff;" vertex="1" parent="batch">
+          <mxGeometry x="430" y="45" width="120" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="obs" value="&lt;b&gt;Observabilidad (todos los servicios):&lt;/b&gt; métricas Prometheus en /actuator/prometheus · trazas distribuidas HTTP y Kafka hacia Zipkin · logs con traceId, spanId y correlationId" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fillColor=#ffffff;strokeColor=#999999;dashed=1;" vertex="1" parent="internal">
+          <mxGeometry x="40" y="545" width="1410" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend" value="&lt;b&gt;Leyenda&lt;/b&gt;&lt;br&gt;── negro: llamada síncrona HTTP/HTTPS&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;── rojo: evento asíncrono Kafka&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#d79b00&quot;&gt;- - naranjo: registro / configuración&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;- - azul: login / tokens OAuth2&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=11;fillColor=#ffffff;strokeColor=#cccccc;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="70" width="250" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="1" source="cWeb" target="bffWeb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="1" source="cMobile" target="bffMobile">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" value="HTTPS + mTLS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="1" source="cAtm" target="bffAtm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" value="login OIDC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;dashed=1;strokeColor=#6c8ebf;fontColor=#6c8ebf;" edge="1" parent="1" source="cWeb" target="auth">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" value="token / JWKS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;dashed=1;strokeColor=#6c8ebf;fontColor=#6c8ebf;" edge="1" parent="public" source="bffWeb" target="auth">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;dashed=1;strokeColor=#6c8ebf;" edge="1" parent="public" source="bffMobile" target="auth">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;dashed=1;strokeColor=#6c8ebf;" edge="1" parent="public" source="bffAtm" target="auth">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;" edge="1" parent="1" source="auth" target="authPg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" value="HTTP + bearer" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="1" source="bffWeb" target="gateway">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;" edge="1" parent="1" source="bffMobile" target="gateway">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;" edge="1" parent="1" source="bffAtm" target="gateway">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" value="verificación de PIN (solo TLS)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeWidth=2;" edge="1" parent="1" source="bffAtm" target="core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" value="lb:// vía Eureka" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="internal" source="gateway" target="ms">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" value="¿existe el cliente?" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="ms" source="core" target="customers">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15" value="postings" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="ms" source="payments" target="core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16" value="saldo / resumen" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="ms" source="interests" target="core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e17" value="cada uno en su esquema" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="internal" source="ms" target="pg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" value="publica (outbox) / consume (idempotente por eventId)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#b85450;fontColor=#b85450;strokeWidth=2;startArrow=classic;" edge="1" parent="internal" source="ms" target="kafka">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e19" value="security.alerts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;strokeColor=#b85450;fontColor=#b85450;" edge="1" parent="1" source="auth" target="kafka">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e20" value="registro + config" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;dashed=1;strokeColor=#d79b00;fontColor=#d79b00;" edge="1" parent="internal" source="ms" target="sc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e21" value="descubrimiento" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;dashed=1;strokeColor=#d79b00;fontColor=#d79b00;" edge="1" parent="internal" source="gateway" target="sc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e22" value="registro + config" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;dashed=1;strokeColor=#d79b00;fontColor=#d79b00;" edge="1" parent="1" source="public" target="sc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e23" value="lee" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="batch" source="csv" target="dm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e24" value="reportes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;" edge="1" parent="batch" source="dm" target="mysql">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

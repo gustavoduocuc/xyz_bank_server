@@ -231,11 +231,11 @@ Tras un arranque limpio, PostgreSQL contiene un cliente y una cuenta fijos (Flyw
 ## Verificar la migración (MySQL)
 
 ```bash
-docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "SELECT * FROM migration_executions;"
-docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "SELECT COUNT(*) FROM daily_transaction_reports;"
-docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "SELECT COUNT(*) FROM account_balances;"
-docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "SELECT COUNT(*) FROM annual_audit_reports;"
-docker compose exec mysql mysql -umigration -pmigration xyz_bank_migration -e "SELECT * FROM daily_transaction_summaries ORDER BY summary_date LIMIT 10;"
+docker compose exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT * FROM migration_executions;"'
+docker compose exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM daily_transaction_reports;"'
+docker compose exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM account_balances;"'
+docker compose exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM annual_audit_reports;"'
+docker compose exec mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT * FROM daily_transaction_summaries ORDER BY summary_date LIMIT 10;"'
 ```
 
 `status = SUCCESS` en `migration_executions` para `dailyTransactionsJob`, `monthlyInterestsJob` y `annualGenerationJob` indica que el job ya corrió. Un segundo `docker compose up` reutiliza el volumen y el job vuelve a salir 0 (ya migrado) sin agregar filas.
@@ -296,6 +296,20 @@ sudo rm /usr/local/share/ca-certificates/xyz-bank-dev-ca.crt && sudo update-ca-c
 
 Sustituye nada: estos IDs coinciden con el seed. Los tres flujos (web, mobile y ATM) son ejecutables contra este stack.
 
+Todos estos flujos también están en la colección de Postman [`docs/collections/xyz-bank.postman_collection.json`](docs/collections/xyz-bank.postman_collection.json). Su descripción explica cómo configurar Postman. Para correrla por consola:
+
+```bash
+DEVICE_ID="postman-$(date +%s)"
+WEB=$(./scripts/dev-web-login.sh); MOB=$(./scripts/dev-mobile-login.sh "$DEVICE_ID")
+echo "[{\"name\":\"atm\",\"matches\":[\"https://localhost:8083/*\"],\"pfx\":{\"src\":\"$PWD/dev/certs/atm-terminal/keystore.p12\"},\"passphrase\":\"xyzbank-dev\"}]" > /tmp/atm-cert.json
+npx newman run docs/collections/xyz-bank.postman_collection.json --insecure --ssl-client-cert-list /tmp/atm-cert.json \
+  --env-var "deviceId=$DEVICE_ID" \
+  --env-var "webAccessToken=$(jq -r .session <<<"$WEB")" --env-var "webRefreshToken=$(jq -r .refreshToken <<<"$WEB")" \
+  --env-var "mobileSessionToken=$(jq -r .sessionToken <<<"$MOB")" --env-var "mobileRefreshToken=$(jq -r .refreshToken <<<"$MOB")"
+```
+
+La colección termina revocando el dispositivo mobile, que ya no puede volver a iniciar sesión; por eso cada corrida usa un `deviceId` nuevo.
+
 **bff-atm — verificar PIN, consultar saldo y retirar**
 
 La tarjeta demo (PIN `1234`) pertenece al cliente/cuenta del seed. Cada request debe presentar el certificado de cliente del terminal (mTLS):
@@ -336,9 +350,11 @@ La sesión expira a los 120 segundos: repite el paso 1 si el paso 2 o 3 devuelve
 3. Inicia sesión con `demo` / `demo-password`. `auth-server` vuelve a `https://localhost:8081/login/oauth2/code/oidc`, que responde `204` (página en blanco) y deja las cookies `session` y `refresh_token` (HttpOnly) y `XSRF-TOKEN`.
 4. Abre `https://localhost:8081/customers/11111111-1111-1111-1111-111111111111/dashboard`: el navegador reenvía la cookie `session` y obtienes el dashboard del cliente demo.
 
-Con la cookie ya obtenida (cópiala desde las DevTools del navegador), las mismas llamadas con `curl`:
+*Con `curl`, sin navegador:* [`scripts/dev-web-login.sh`](scripts/dev-web-login.sh) recorre las mismas redirecciones e imprime las cookies `session`, `refresh_token` y `XSRF-TOKEN` como JSON. El valor de `session` es el access token de `auth-server`, así que también sirve como Bearer hacia los servicios detrás de `api-gateway`.
 
 ```bash
+SESSION_COOKIE=$(./scripts/dev-web-login.sh | jq -r .session)
+
 curl -sS --cacert dev/certs/ca.crt \
   -b "session=$SESSION_COOKIE" \
   https://localhost:8081/customers/11111111-1111-1111-1111-111111111111/dashboard
