@@ -1,0 +1,53 @@
+{
+  "family": "xyz-bank-config-server",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512",
+  "runtimePlatform": {
+    "operatingSystemFamily": "LINUX",
+    "cpuArchitecture": "X86_64"
+  },
+  "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-execution",
+  "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-task",
+  "containerDefinitions": [
+    {
+      "name": "config-server",
+      "image": "${ECR_REGISTRY}/xyz-bank/config-server:${TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8888,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "TRACING_SAMPLING_PROBABILITY",
+          "value": "0.1"
+        }
+      ],
+      "secrets": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/xyz-bank/config-server",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8888/actuator/health | grep -q UP"
+        ],
+        "interval": 10,
+        "timeout": 5,
+        "retries": 10,
+        "startPeriod": 30
+      }
+    }
+  ]
+}
