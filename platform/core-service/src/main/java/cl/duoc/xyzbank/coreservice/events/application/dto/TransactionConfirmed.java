@@ -6,6 +6,7 @@ import java.time.LocalDate;
 public record TransactionConfirmed(
         String eventId,
         String accountId,
+        String customerId,
         ConfirmedMovementType type,
         BigDecimal amount,
         String currency,

@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.coreservice.shared.infrastructure.rest;
 
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
+import cl.duoc.xyzbank.coreservice.accounts.application.ports.CustomerDirectoryUnavailableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -19,5 +20,10 @@ public class DomainExceptionHandler {
         };
 
         return ProblemDetail.forStatusAndDetail(status, exception.getMessage());
+    }
+
+    @ExceptionHandler(CustomerDirectoryUnavailableException.class)
+    public ProblemDetail handleCustomerDirectoryUnavailable(CustomerDirectoryUnavailableException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
     }
 }

@@ -2,13 +2,14 @@ spring:
   application:
     name: xyz-bank-data-migration
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:xyz_bank_migration}
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:xyz_bank_migration}?rewriteBatchedStatements=true
     username: ${DB_USERNAME:migration}
     password: ${DB_PASSWORD:migration}
     driver-class-name: com.mysql.cj.jdbc.Driver
   sql:
     init:
-      mode: never
+      mode: always
+      schema-locations: classpath:db/schema.sql
   batch:
     jdbc:
       initialize-schema: always
@@ -22,9 +23,10 @@ migration:
     monthly-interests: ${MIGRATION_MONTHLY_INTERESTS:file:data/semana_3/intereses.csv}
     annual-accounts: ${MIGRATION_ANNUAL_ACCOUNTS:file:data/semana_3/cuentas_anuales.csv}
   batch:
-    chunk-size: 5
-    throttle-limit: 3
-    skip-limit: 2000
+    chunk-size: ${MIGRATION_CHUNK_SIZE:500}
+    throttle-limit: ${MIGRATION_THROTTLE_LIMIT:4}
+    max-restarts: ${MIGRATION_MAX_RESTARTS:3}
+    skip-limit: ${MIGRATION_SKIP_LIMIT:2000}
     retry-limit: 3
 
 logging:

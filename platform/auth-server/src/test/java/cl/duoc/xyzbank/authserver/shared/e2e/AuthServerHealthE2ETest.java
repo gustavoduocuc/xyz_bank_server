@@ -46,7 +46,7 @@ class AuthServerHealthE2ETest extends AbstractAuthServerIT {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/actuator/env", "/actuator/beans", "/actuator/configprops", "/actuator"})
+    @ValueSource(strings = {"/actuator/env", "/actuator/beans", "/actuator/configprops", "/actuator", "/actuator/prometheus"})
     @DisplayName("serves no other actuator endpoint")
     void servesNoOtherActuatorEndpoint(String path) {
         Response response = flow.request().get(path);

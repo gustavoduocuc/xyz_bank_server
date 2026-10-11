@@ -3,6 +3,7 @@ package com.xyzbank.migration.monthlyinterests.domain;
 import com.xyzbank.migration.shared.domain.DomainError;
 import com.xyzbank.migration.shared.domain.Id;
 import com.xyzbank.migration.shared.domain.Money;
+import com.xyzbank.migration.shared.domain.SourceLine;
 
 public final class Account {
 
@@ -11,16 +12,18 @@ public final class Account {
     private final Money balance;
     private final int age;
     private final AccountType type;
+    private final SourceLine sourceLine;
 
-    private Account(Id id, String name, Money balance, int age, AccountType type) {
+    private Account(Id id, String name, Money balance, int age, AccountType type, SourceLine sourceLine) {
         this.id = id;
         this.name = name;
         this.balance = balance;
         this.age = age;
         this.type = type;
+        this.sourceLine = sourceLine;
     }
 
-    public static Account create(String id, String name, double balance, int age, String type) {
+    public static Account create(String id, String name, double balance, int age, String type, SourceLine sourceLine) {
         Id accountId = Id.create(id);
         if (name == null || name.trim().isEmpty()) {
             throw DomainError.validation("Account name cannot be empty");
@@ -33,7 +36,7 @@ public final class Account {
             throw DomainError.validation("Account age must be between 18 and 100");
         }
         AccountType accountType = AccountType.from(type);
-        return new Account(accountId, name.trim(), money, age, accountType);
+        return new Account(accountId, name.trim(), money, age, accountType, sourceLine);
     }
 
     public boolean isSenior() {
@@ -59,6 +62,10 @@ public final class Account {
 
     public AccountType type() {
         return type;
+    }
+
+    public SourceLine sourceLine() {
+        return sourceLine;
     }
 
     public String idValue() {

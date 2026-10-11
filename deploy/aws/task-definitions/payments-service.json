@@ -1,0 +1,106 @@
+{
+  "family": "xyz-bank-payments-service",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "operatingSystemFamily": "LINUX",
+    "cpuArchitecture": "X86_64"
+  },
+  "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-execution",
+  "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-task",
+  "containerDefinitions": [
+    {
+      "name": "payments-service",
+      "image": "${ECR_REGISTRY}/xyz-bank/payments-service:${TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8086,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "AUTH_ISSUER",
+          "value": "${AUTH_PUBLIC_ISSUER}"
+        },
+        {
+          "name": "AUTH_JWK_SET_URI",
+          "value": "https://auth-server.xyz-bank.local:9000/oauth2/jwks"
+        },
+        {
+          "name": "AUTH_TOKEN_URI",
+          "value": "https://auth-server.xyz-bank.local:9000/oauth2/token"
+        },
+        {
+          "name": "CONFIG_SERVER_URL",
+          "value": "http://config-server.xyz-bank.local:8888"
+        },
+        {
+          "name": "CORE_SERVICE_BASE_URL",
+          "value": "http://core-service"
+        },
+        {
+          "name": "DB_HOST",
+          "value": "${RDS_POSTGRES_HOST}"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "core_service"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "DB_USERNAME",
+          "value": "core_service"
+        },
+        {
+          "name": "EUREKA_CLIENT_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "EUREKA_SERVER_URL",
+          "value": "http://eureka-server.xyz-bank.local:8761"
+        },
+        {
+          "name": "TRACING_SAMPLING_PROBABILITY",
+          "value": "0.1"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/CORE_DB_PASSWORD"
+        },
+        {
+          "name": "PAYMENTS_SERVICE_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/PAYMENTS_SERVICE_CLIENT_SECRET"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/xyz-bank/payments-service",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8086/actuator/health | grep -q UP"
+        ],
+        "interval": 10,
+        "timeout": 5,
+        "retries": 10,
+        "startPeriod": 40
+      }
+    }
+  ]
+}

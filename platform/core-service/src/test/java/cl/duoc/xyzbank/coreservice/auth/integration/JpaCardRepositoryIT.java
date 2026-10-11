@@ -1,7 +1,5 @@
 package cl.duoc.xyzbank.coreservice.auth.integration;
 
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.cards.domain.entities.Card;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
@@ -38,12 +36,8 @@ class JpaCardRepositoryIT extends AbstractCoreServiceIT {
     @Autowired
     private JpaCardRepository cardRepository;
 
-    @Autowired
-    private CustomerRepository customerRepository;
-
     private Id newCustomer() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Test Customer", "test.customer@xyzbank.cl"));
         return customerId;
     }
 

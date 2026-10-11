@@ -30,7 +30,7 @@ class ChannelClientTest {
      * 8. Rejects a client without a redirect URI
      * 9. Equals another client with the same attributes
      * 10. Differs from a client with a different redirect URI
-     * 11. A web client's tokens are meant for core-service and interests-service, and its refresh lasts 30 days
+     * 11. A web client's tokens are meant for core-service, interests-service and customers-service, and its refresh lasts 30 days
      * 12. A mobile client's tokens are meant for core-service only, and its refresh lasts 180 days
      */
 
@@ -149,11 +149,11 @@ class ChannelClientTest {
     }
 
     @Test
-    @DisplayName("aims web tokens at core-service and interests-service with a 30-day refresh")
-    void aimsWebTokensAtCoreServiceAndInterestsServiceWithAThirtyDayRefresh() {
+    @DisplayName("aims web tokens at core-service, interests-service and customers-service with a 30-day refresh")
+    void aimsWebTokensAtCoreInterestsAndCustomersServiceWithAThirtyDayRefresh() {
         ChannelClient client = ChannelClient.create("bff-web", Channel.WEB, ClientType.CONFIDENTIAL, WEB_REDIRECT_URI);
 
-        assertEquals(Set.of("core-service", "interests-service"), client.audiences());
+        assertEquals(Set.of("core-service", "interests-service", "customers-service"), client.audiences());
         assertEquals(Duration.ofDays(30), client.refreshTokenLifetime());
     }
 

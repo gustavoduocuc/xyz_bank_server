@@ -1,0 +1,11 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Configuración centralizada de bff-atm
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Balance and withdrawal go through api-gateway; PIN verification stays direct (application.yml).
+# design.md Decision 2: a connect to a live container takes ms, so 1 s fails fast when it is
+# gone; reads keep 3 s, which also narrows the chance of retrying a still-committing withdrawal
+core-service:
+  base-url: ${PLATFORM_GATEWAY_URL:http://localhost:8090}/core-service
+  connect-timeout-ms: 1000
+  read-timeout-ms: 3000

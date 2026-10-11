@@ -2,10 +2,10 @@ openapi: 3.0.3
 info:
   title: core-service — accounts
   description: >
-    Internal endpoints for customer profiles, account balances, and PIN
-    verification. core-service is the only component with database access;
-    these endpoints are internal-network-only and are not exposed through any
-    BFF. Every endpoint requires a bearer access token issued by auth-server.
+    Internal endpoints for accounts, balances, transactions, withdrawals,
+    interest credit and PIN verification (Account Management). Customer
+    profiles belong to customers-service. These endpoints are
+    internal-network-only and are not exposed through any BFF. Every endpoint requires a bearer access token issued by auth-server.
     Domain endpoints require the scope shown in that operation's description.
     PIN verification requires a bff-atm client token. ATM balance and
     withdrawal also require the X-Atm-Session header for the session
@@ -23,8 +23,8 @@ paths:
       description: >
         Requires a bff-atm access token (client_credentials). The PIN is accepted only
         in the request body, never a query parameter or path segment. Served
-        exclusively over this operation's TLS-only connector (design.md
-        Decision 8); the same request over the plain-HTTP connector is
+        exclusively over this operation's TLS-only connector; the same
+        request over the plain-HTTP connector is
         rejected. On a third consecutive failure the card locks (423);
         further attempts, including a correct PIN, are rejected identically
         until a developer resets it (scripts/reset-dev-card-lock.sh — there
@@ -51,26 +51,6 @@ paths:
           description: Incorrect PIN or unknown card (indistinguishable)
         '423':
           description: Card is locked (third consecutive failure, or already locked)
-  /internal/customers/{customerId}:
-    get:
-      summary: Get a customer's profile
-      description: Domain endpoint. Requires the `web:customers:read` scope.
-      operationId: getCustomerProfile
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/CustomerId'
-      responses:
-        '200':
-          description: The customer's profile
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CustomerProfileResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
   /internal/customers/{customerId}/accounts:
     get:
       summary: List the accounts owned by a customer
@@ -83,8 +63,9 @@ paths:
       responses:
         '200':
           description: >
-            The accounts owned by the customer. An empty array when the
-            customer exists but owns no accounts.
+            The accounts owned by the customer. An empty array when no
+            account is held for that identifier (customer profiles are owned
+            by customers-service). A non-owner gets 404.
           content:
             application/json:
               schema:
@@ -93,6 +74,99 @@ paths:
                   $ref: '#/components/schemas/AccountSummaryResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /internal/accounts:
+    post:
+      summary: Open an account for an existing customer
+      description: >
+        Domain endpoint. Requires the `accounts:write` scope (accounts-admin
+        channel). core-service asks customers-service whether the customer
+        exists, forwarding the caller's token: an unknown customer answers 422;
+        customers-service unreachable, slow or behind an open circuit answers
+        503 and nothing is opened. Repeating an Idempotency-Key returns the
+        account the first request opened (201, same id).
+      operationId: openAccount
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenAccountRequest'
+      responses:
+        '201':
+          description: The account opened under this Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /internal/accounts/{accountId}:
+    patch:
+      summary: Change an account's alias and its own daily withdrawal limit
+      description: >
+        Domain endpoint. Requires the `accounts:write` scope. `version` must be
+        the one the caller last read; a stale version, or a CLOSED account,
+        answers 409. Repeating the Idempotency-Key of the last change applied
+        returns the account as it is.
+      operationId: updateAccount
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAccountRequest'
+      responses:
+        '200':
+          description: The updated account, with the next version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /internal/accounts/{accountId}/closure:
+    post:
+      summary: Close an account with a zero balance
+      description: >
+        Domain endpoint. Requires the `accounts:write` scope. Moves the account
+        to CLOSED only when its balance is zero; a balance, an account already
+        CLOSED or a stale version answers 409. A CLOSED account rejects
+        withdrawals and interest credits with 409. Repeating the closure's
+        Idempotency-Key returns the closed account.
+      operationId: closeAccount
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseAccountRequest'
+      responses:
+        '200':
+          description: The closed account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
   /internal/accounts/{accountId}/balance:
@@ -311,6 +385,47 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+  /internal/postings:
+    post:
+      summary: Apply a payment's debit and/or credit entries
+      description: >
+        Called only by payments-service. Applies one or two entries (with two,
+        one DEBIT and one CREDIT on different accounts) in one database
+        transaction with optimistic locking on every account; when any entry
+        cannot be applied, none is. A debit has no ATM daily limit. Each entry
+        is recorded as a transaction and publishes TransactionConfirmed
+        (PAYMENT_DEBIT or PAYMENT_CREDIT). Idempotent by paymentId: repeating
+        it returns the original transactions and moves nothing. 404 for an
+        unknown account; 409 for a CLOSED account or a concurrent change; 422
+        for insufficient funds, a currency different from the account's, or a
+        malformed request. Domain endpoint. Requires the `postings:write` scope
+        (payments-service channel only).
+      operationId: applyPostings
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostingRequest'
+      responses:
+        '201':
+          description: The entries were applied (or replayed for a repeated paymentId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostingResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: Insufficient funds, a currency mismatch, or a malformed request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
 components:
   securitySchemes:
     BearerAuth:
@@ -335,6 +450,13 @@ components:
       required: true
       schema:
         type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 64
     AtmSession:
       name: X-Atm-Session
       in: header
@@ -359,24 +481,85 @@ components:
             $ref: '#/components/schemas/ProblemDetail'
     Conflict:
       description: >
-        The request conflicts with the current state: either the same
-        Idempotency-Key was reused with different parameters, or the
-        account was updated concurrently by another request.
+        The request conflicts with the current state: the same
+        Idempotency-Key was reused with different parameters, the account
+        was updated concurrently or the caller's version is stale, the
+        account is CLOSED (no withdrawal, interest credit or change), or it
+        cannot be closed because its balance is not zero.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ServiceUnavailable:
+      description: customers-service could not confirm the customer; nothing was created
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
   schemas:
-    CustomerProfileResponse:
+    OpenAccountRequest:
       type: object
-      required: [id, fullName, email]
+      required: [customerId, currency]
+      properties:
+        customerId:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        alias:
+          type: string
+          maxLength: 60
+    UpdateAccountRequest:
+      type: object
+      required: [version]
+      properties:
+        alias:
+          type: string
+          maxLength: 60
+        dailyWithdrawalLimit:
+          type: number
+          format: decimal
+          description: Positive, in the account's currency; omitted keeps the current limit
+        version:
+          type: integer
+          format: int64
+    CloseAccountRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          format: int64
+    AccountResponse:
+      type: object
+      required: [id, accountNumber, customerId, balance, currency, status, version]
       properties:
         id:
           type: string
-        fullName:
+        accountNumber:
           type: string
-        email:
+        customerId:
           type: string
+        balance:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, CLOSED]
+        alias:
+          type: string
+          nullable: true
+        dailyWithdrawalLimit:
+          type: number
+          format: decimal
+          nullable: true
+          description: The account's own limit; null means the configured default applies
+        version:
+          type: integer
+          format: int64
     AccountSummaryResponse:
       type: object
       required: [id, accountNumber, balance, currency]
@@ -567,6 +750,61 @@ components:
         atmSessionId:
           type: string
           description: Opaque id the ATM channel sends back as X-Atm-Session
+    PostingRequest:
+      type: object
+      required: [paymentId, entries]
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/PostingEntry'
+    PostingEntry:
+      type: object
+      required: [accountId, direction, amount, currency]
+      properties:
+        accountId:
+          type: string
+        direction:
+          type: string
+          enum: [DEBIT, CREDIT]
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+    PostingResponse:
+      type: object
+      required: [paymentId, entries]
+      properties:
+        paymentId:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            required: [transactionId, accountId, direction, amount, currency, balance]
+            properties:
+              transactionId:
+                type: string
+              accountId:
+                type: string
+              direction:
+                type: string
+                enum: [DEBIT, CREDIT]
+              amount:
+                type: number
+                format: decimal
+              currency:
+                type: string
+              balance:
+                type: number
+                format: decimal
+                description: The account's current balance
     ProblemDetail:
       type: object
       description: RFC 7807 problem details

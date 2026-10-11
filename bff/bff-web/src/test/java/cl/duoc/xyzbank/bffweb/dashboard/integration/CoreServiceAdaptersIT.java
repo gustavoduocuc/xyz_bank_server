@@ -1,10 +1,8 @@
 package cl.duoc.xyzbank.bffweb.dashboard.integration;
 
 import cl.duoc.xyzbank.bffweb.dashboard.application.dto.AccountBalance;
-import cl.duoc.xyzbank.bffweb.dashboard.application.dto.CustomerProfile;
 import cl.duoc.xyzbank.bffweb.dashboard.application.dto.RecentTransaction;
 import cl.duoc.xyzbank.bffweb.dashboard.infrastructure.adapters.HttpAccountsAdapter;
-import cl.duoc.xyzbank.bffweb.dashboard.infrastructure.adapters.HttpCustomerProfileAdapter;
 import cl.duoc.xyzbank.bffweb.dashboard.infrastructure.adapters.HttpTransactionsAdapter;
 import cl.duoc.xyzbank.bffweb.shared.infrastructure.adapters.CoreServiceCallException;
 import cl.duoc.xyzbank.bffweb.transactionhistory.application.dto.TransactionHistoryResponse;
@@ -33,13 +31,11 @@ class CoreServiceAdaptersIT {
 
     /*
      * Cases:
-     * 1. HttpCustomerProfileAdapter maps a 200 response correctly
-     * 2. HttpCustomerProfileAdapter raises CoreServiceCallException(404) on a 404 response
-     * 3. HttpAccountsAdapter maps a 200 response correctly
-     * 4. HttpAccountsAdapter raises CoreServiceCallException(404) on a 404 response
-     * 5. HttpTransactionsAdapter maps a 200 response correctly
-     * 6. HttpTransactionsAdapter raises CoreServiceCallException(404) on a 404 response
-     * 7. HttpTransactionsAdapter forwards from/to/type/cursor/pageSize unchanged
+     * 1. HttpAccountsAdapter maps a 200 response correctly
+     * 2. HttpAccountsAdapter raises CoreServiceCallException(404) on a 404 response
+     * 3. HttpTransactionsAdapter maps a 200 response correctly
+     * 4. HttpTransactionsAdapter raises CoreServiceCallException(404) on a 404 response
+     * 5. HttpTransactionsAdapter forwards from/to/type/cursor/pageSize unchanged
      */
 
     private WireMockServer wireMockServer;
@@ -55,36 +51,6 @@ class CoreServiceAdaptersIT {
     @AfterEach
     void stopWireMock() {
         wireMockServer.stop();
-    }
-
-    @Test
-    @DisplayName("HttpCustomerProfileAdapter maps a 200 response correctly")
-    void httpCustomerProfileAdapterMapsA200Response() {
-        wireMockServer.stubFor(get(urlEqualTo("/internal/customers/customer-1"))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("{\"id\":\"customer-1\",\"fullName\":\"Ana Perez\",\"email\":\"ana@example.com\"}")));
-
-        CustomerProfile profile = new HttpCustomerProfileAdapter(coreServiceClient).fetchProfile("customer-1");
-
-        assertEquals(new CustomerProfile("customer-1", "Ana Perez", "ana@example.com"), profile);
-    }
-
-    @Test
-    @DisplayName("HttpCustomerProfileAdapter raises CoreServiceCallException(404) on a 404 response")
-    void httpCustomerProfileAdapterRaisesCoreServiceCallExceptionOn404() {
-        wireMockServer.stubFor(get(urlEqualTo("/internal/customers/unknown"))
-                .willReturn(aResponse()
-                        .withStatus(404)
-                        .withHeader("Content-Type", "application/problem+json")
-                        .withBody("{\"detail\":\"Customer unknown not found\"}")));
-
-        CoreServiceCallException exception = assertThrows(
-                CoreServiceCallException.class,
-                () -> new HttpCustomerProfileAdapter(coreServiceClient).fetchProfile("unknown"));
-
-        assertEquals(404, exception.getStatus());
     }
 
     @Test

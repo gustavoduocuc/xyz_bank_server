@@ -7,7 +7,11 @@ public enum Channel {
     WEB(Set.of("web:accounts:read", "web:customers:read", "web:transactions:read", "web:interests:read")),
     MOBILE(Set.of("mobile:accounts:read", "mobile:transactions:read")),
     ATM(Set.of("atm:read-balance", "atm:withdraw")),
-    INTERESTS(Set.of("interests:write"));
+    INTERESTS(Set.of("interests:write")),
+    CUSTOMERS_ADMIN(Set.of("customers:read", "customers:write")),
+    ACCOUNTS_ADMIN(Set.of("accounts:write", "customers:read")),
+    PAYMENTS_ADMIN(Set.of("payments:write", "payments:read")),
+    PAYMENTS(Set.of("postings:write"));
 
     private final Set<String> scopes;
 

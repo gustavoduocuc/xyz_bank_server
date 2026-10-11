@@ -1,7 +1,5 @@
 package cl.duoc.xyzbank.coreservice.auth.e2e;
 
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.cards.domain.entities.Card;
 import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
@@ -45,9 +43,6 @@ class PinVerificationControllerE2ETest extends AbstractCoreServiceIT {
     private ListAppender<ILoggingEvent> logAppender;
 
     @Autowired
-    private CustomerRepository customerRepository;
-
-    @Autowired
     private CardRepository cardRepository;
 
     @BeforeEach
@@ -67,7 +62,6 @@ class PinVerificationControllerE2ETest extends AbstractCoreServiceIT {
 
     private SeededCard seedCard(int consecutiveFailures, boolean locked) {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Test Customer", "test.customer@xyzbank.cl"));
         Id cardNumber = Id.generate();
         cardRepository.save(Card.create(cardNumber, customerId, hasher.hash(PIN), consecutiveFailures, locked, 0L));
         return new SeededCard(cardNumber, customerId);

@@ -48,6 +48,8 @@ class DashboardCompressionE2ETest {
     @DynamicPropertySource
     static void coreServiceBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("core-service.base-url", CORE_SERVICE::baseUrl);
+        // The profile now comes from customers-service; one stub server answers both
+        registry.add("customers-service.base-url", CORE_SERVICE::baseUrl);
     }
 
     @LocalServerPort

@@ -1,6 +1,6 @@
 package cl.duoc.xyzbank.bffweb.interestview.integration;
 
-import cl.duoc.xyzbank.bffweb.dashboard.application.ports.CustomerProfilePort;
+import cl.duoc.xyzbank.bffweb.dashboard.application.ports.AccountsPort;
 import cl.duoc.xyzbank.bffweb.interestview.application.ports.InterestPort;
 import cl.duoc.xyzbank.bffweb.shared.infrastructure.adapters.CoreServiceCallException;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -26,6 +26,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(properties = {
         "resilience4j.retry.instances.interestsServiceRead.waitDuration=10ms",
@@ -71,7 +72,7 @@ class InterestsServiceResilienceIT {
     private InterestPort coreServiceInterests;
 
     @Autowired
-    private CustomerProfilePort profiles;
+    private AccountsPort accounts;
 
     @Autowired
     private CircuitBreakerRegistry circuitBreakers;
@@ -127,10 +128,10 @@ class InterestsServiceResilienceIT {
     void opensOnlyTheInterestsServiceBreakerAndKeepsServingCoreServiceReads() {
         INTERESTS_SERVICE.stubFor(get(urlPathEqualTo(SUMMARY_PATH))
                 .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
-        CORE_SERVICE.stubFor(get(urlPathEqualTo("/internal/customers/customer-1")).willReturn(aResponse()
+        CORE_SERVICE.stubFor(get(urlPathEqualTo("/internal/customers/customer-1/accounts")).willReturn(aResponse()
                 .withStatus(200)
                 .withHeader("Content-Type", "application/json")
-                .withBody("{\"id\":\"customer-1\",\"fullName\":\"Ana Perez\",\"email\":\"ana@example.com\"}")));
+                .withBody("[]")));
         CircuitBreaker interestsBreaker = circuitBreakers.circuitBreaker("interestsService");
 
         for (int request = 0; request < 5 && interestsBreaker.getState() != CircuitBreaker.State.OPEN; request++) {
@@ -140,7 +141,7 @@ class InterestsServiceResilienceIT {
 
         assertEquals(CircuitBreaker.State.OPEN, interestsBreaker.getState());
         assertThrows(CallNotPermittedException.class, () -> interestsService.fetchSummary("account-1", "2025"));
-        assertEquals("Ana Perez", profiles.fetchProfile("customer-1").fullName());
+        assertTrue(accounts.fetchAccountsForCustomer("customer-1").isEmpty());
         assertEquals(CircuitBreaker.State.CLOSED, circuitBreakers.circuitBreaker("coreService").getState());
     }
 

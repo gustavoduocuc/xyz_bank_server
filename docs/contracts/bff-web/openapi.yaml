@@ -63,6 +63,31 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+  /customers/{customerId}/notifications:
+    get:
+      summary: Customer notification feed
+      description: >
+        The customer's latest 50 security alerts and confirmed movements, newest
+        first, as customers-service reports them. Only the logged-in customer's
+        own feed is served.
+      operationId: getNotifications
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: The feed (empty when there is nothing yet)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
   /accounts/{accountId}/transactions:
     get:
       summary: Full transaction history
@@ -171,6 +196,31 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
   schemas:
+    Notification:
+      type: object
+      required: [eventId, kind, occurredAt]
+      properties:
+        eventId:
+          type: string
+          description: Id of the event that produced the entry; one entry per event id
+        kind:
+          type: string
+          enum: [TRANSACTION_CONFIRMED, CARD_LOCKED, REFRESH_TOKEN_REUSE]
+        occurredAt:
+          type: string
+          format: date-time
+        accountId:
+          type: string
+          description: Only on TRANSACTION_CONFIRMED
+        type:
+          type: string
+          description: Only on TRANSACTION_CONFIRMED (WITHDRAWAL, INTEREST_CREDIT, PAYMENT_DEBIT or PAYMENT_CREDIT)
+        amount:
+          type: number
+          description: Only on TRANSACTION_CONFIRMED
+        currency:
+          type: string
+          description: Only on TRANSACTION_CONFIRMED
     DashboardResponse:
       type: object
       required: [profile, accounts]

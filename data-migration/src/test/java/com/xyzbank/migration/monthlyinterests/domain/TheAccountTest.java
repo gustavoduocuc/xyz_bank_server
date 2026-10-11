@@ -3,6 +3,7 @@ package com.xyzbank.migration.monthlyinterests.domain;
 import com.xyzbank.migration.shared.domain.DomainError;
 import com.xyzbank.migration.shared.domain.Id;
 import com.xyzbank.migration.shared.domain.Money;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -27,7 +28,7 @@ class TheAccountTest {
 
         @Test
         void createsValidSavingsAccount() {
-            Account account = Account.create("101", "John Doe", 5000, 30, "ahorro");
+            Account account = Account.create("101", "John Doe", 5000, 30, "ahorro", SourceLine.of(1));
 
             assertEquals(Id.create("101"), account.id());
             assertEquals("John Doe", account.name());
@@ -38,43 +39,43 @@ class TheAccountTest {
 
         @Test
         void doesNotAllowZeroBalance() {
-            assertThrows(DomainError.class, () -> Account.create("104", "Alice Brown", 0, 45, "ahorro"));
+            assertThrows(DomainError.class, () -> Account.create("104", "Alice Brown", 0, 45, "ahorro", SourceLine.of(1)));
         }
 
         @Test
         void doesNotAllowNegativeBalance() {
-            assertThrows(DomainError.class, () -> Account.create("104", "Alice Brown", -10, 45, "ahorro"));
+            assertThrows(DomainError.class, () -> Account.create("104", "Alice Brown", -10, 45, "ahorro", SourceLine.of(1)));
         }
 
         @Test
         void doesNotAllowAgeOutsideRange() {
-            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 17, "ahorro"));
-            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 101, "ahorro"));
+            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 17, "ahorro", SourceLine.of(1)));
+            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 101, "ahorro", SourceLine.of(1)));
         }
 
         @Test
         void doesNotAllowUnknownAccountType() {
-            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 30, "corriente"));
-            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 30, "-1"));
-            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 30, "unknown"));
+            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 30, "corriente", SourceLine.of(1)));
+            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 30, "-1", SourceLine.of(1)));
+            assertThrows(DomainError.class, () -> Account.create("101", "John Doe", 5000, 30, "unknown", SourceLine.of(1)));
         }
 
         @Test
         void acceptsAccentedLoanType() {
-            Account account = Account.create("102", "Jane Smith", 7000, 40, "préstamo");
+            Account account = Account.create("102", "Jane Smith", 7000, 40, "préstamo", SourceLine.of(1));
 
             assertEquals(AccountType.LOAN, account.type());
         }
 
         @Test
         void doesNotAllowEmptyName() {
-            assertThrows(DomainError.class, () -> Account.create("101", "  ", 5000, 30, "ahorro"));
+            assertThrows(DomainError.class, () -> Account.create("101", "  ", 5000, 30, "ahorro", SourceLine.of(1)));
         }
 
         @Test
         void considersSeniorAccountFromAgeThreshold() {
-            Account junior = Account.create("101", "John Doe", 5000, 30, "ahorro");
-            Account senior = Account.create("108", "Steve Rogers", 10000, 80, "ahorro");
+            Account junior = Account.create("101", "John Doe", 5000, 30, "ahorro", SourceLine.of(1));
+            Account senior = Account.create("108", "Steve Rogers", 10000, 80, "ahorro", SourceLine.of(1));
 
             assertFalse(junior.isSenior());
             assertTrue(senior.isSenior());

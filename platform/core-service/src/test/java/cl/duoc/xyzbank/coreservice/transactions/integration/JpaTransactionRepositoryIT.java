@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.transactions.integration;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
@@ -47,9 +45,6 @@ class JpaTransactionRepositoryIT extends AbstractCoreServiceIT {
 
     @Autowired
     private JpaTransactionRepository transactionRepository;
-
-    @Autowired
-    private CustomerRepository customerRepository;
 
     @Autowired
     private AccountRepository accountRepository;
@@ -188,7 +183,6 @@ class JpaTransactionRepositoryIT extends AbstractCoreServiceIT {
 
     private Id aSavedAccountId() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Account Owner", customerId.getValue() + "@xyzbank.cl"));
         Account account = Account.create(
                 Id.generate(), AccountNumber.create(aUniqueAccountNumber()), customerId,
                 Money.create(new BigDecimal("1000.00"), "USD"));

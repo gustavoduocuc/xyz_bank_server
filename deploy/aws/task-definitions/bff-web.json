@@ -1,0 +1,110 @@
+{
+  "family": "xyz-bank-bff-web",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "operatingSystemFamily": "LINUX",
+    "cpuArchitecture": "X86_64"
+  },
+  "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-execution",
+  "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-task",
+  "containerDefinitions": [
+    {
+      "name": "bff-web",
+      "image": "${ECR_REGISTRY}/xyz-bank/bff-web:${TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8081,
+          "protocol": "tcp"
+        },
+        {
+          "containerPort": 9081,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "CONFIG_SERVER_URL",
+          "value": "http://config-server.xyz-bank.local:8888"
+        },
+        {
+          "name": "EUREKA_CLIENT_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "EUREKA_SERVER_URL",
+          "value": "http://eureka-server.xyz-bank.local:8761"
+        },
+        {
+          "name": "FEATURE_USE_INTERESTS_SERVICE",
+          "value": "true"
+        },
+        {
+          "name": "OIDC_AUTHORIZATION_URI",
+          "value": "${AUTH_PUBLIC_ISSUER}/oauth2/authorize"
+        },
+        {
+          "name": "OIDC_CLIENT_ID",
+          "value": "bff-web"
+        },
+        {
+          "name": "OIDC_ISSUER",
+          "value": "${AUTH_PUBLIC_ISSUER}"
+        },
+        {
+          "name": "OIDC_JWK_SET_URI",
+          "value": "https://auth-server.xyz-bank.local:9000/oauth2/jwks"
+        },
+        {
+          "name": "OIDC_TOKEN_URI",
+          "value": "https://auth-server.xyz-bank.local:9000/oauth2/token"
+        },
+        {
+          "name": "PLATFORM_GATEWAY_URL",
+          "value": "http://api-gateway.xyz-bank.local:8090"
+        },
+        {
+          "name": "TLS_KEYSTORE_PATH",
+          "value": "file:/certs/keystore.p12"
+        },
+        {
+          "name": "TRACING_SAMPLING_PROBABILITY",
+          "value": "0.1"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "OIDC_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/BFF_WEB_CLIENT_SECRET"
+        },
+        {
+          "name": "TLS_KEYSTORE_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/TLS_KEYSTORE_PASSWORD"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/xyz-bank/bff-web",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:9081/actuator/health | grep -q UP"
+        ],
+        "interval": 10,
+        "timeout": 5,
+        "retries": 10,
+        "startPeriod": 30
+      }
+    }
+  ]
+}

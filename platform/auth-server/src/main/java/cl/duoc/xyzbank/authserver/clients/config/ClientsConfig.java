@@ -40,7 +40,11 @@ public class ClientsConfig {
     public ServiceClientRepository serviceClientRepository(AuthClientsProperties properties) {
         return new ConfiguredServiceClientRepository(List.of(
                 ServiceClient.create(properties.atm().clientId(), Channel.ATM),
-                ServiceClient.create(properties.interests().clientId(), Channel.INTERESTS)));
+                ServiceClient.create(properties.interests().clientId(), Channel.INTERESTS),
+                ServiceClient.create(properties.customersAdmin().clientId(), Channel.CUSTOMERS_ADMIN),
+                ServiceClient.create(properties.accountsAdmin().clientId(), Channel.ACCOUNTS_ADMIN),
+                ServiceClient.create(properties.paymentsAdmin().clientId(), Channel.PAYMENTS_ADMIN),
+                ServiceClient.create(properties.paymentsService().clientId(), Channel.PAYMENTS)));
     }
 
     @Bean
@@ -63,7 +67,15 @@ public class ClientsConfig {
                 properties.web().clientId(), encoder.encode(properties.web().clientSecret()),
                 properties.mobile().clientId(), encoder.encode(properties.mobile().clientSecret()),
                 properties.atm().clientId(), encoder.encode(properties.atm().clientSecret()),
-                properties.interests().clientId(), encoder.encode(properties.interests().clientSecret())));
+                properties.interests().clientId(), encoder.encode(properties.interests().clientSecret()),
+                properties.customersAdmin().clientId(),
+                encoder.encode(properties.customersAdmin().clientSecret()),
+                properties.accountsAdmin().clientId(),
+                encoder.encode(properties.accountsAdmin().clientSecret()),
+                properties.paymentsAdmin().clientId(),
+                encoder.encode(properties.paymentsAdmin().clientSecret()),
+                properties.paymentsService().clientId(),
+                encoder.encode(properties.paymentsService().clientSecret())));
         ChannelClientSeeder seeder = new ChannelClientSeeder(
                 channelClientRepository, serviceClientRepository, mapper, registeredClientRepository);
         return seeder::seed;

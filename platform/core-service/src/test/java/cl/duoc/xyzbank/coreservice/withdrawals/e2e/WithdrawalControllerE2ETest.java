@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.withdrawals.e2e;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.cards.domain.entities.AtmSession;
@@ -66,9 +64,6 @@ class WithdrawalControllerE2ETest extends AbstractCoreServiceIT {
     private AccountRepository accountRepository;
 
     @Autowired
-    private CustomerRepository customerRepository;
-
-    @Autowired
     private CardRepository cardRepository;
 
     @Autowired
@@ -84,7 +79,6 @@ class WithdrawalControllerE2ETest extends AbstractCoreServiceIT {
     void configureRestAssured() {
         RestAssured.port = port;
         ownerId = Id.generate();
-        customerRepository.save(Customer.create(ownerId, "Jane Doe", "jane.doe+" + ownerId.getValue() + "@xyzbank.cl"));
         // What a verified PIN leaves behind: a card of the owner and an active ATM session for it
         Id cardId = Id.generate();
         cardRepository.save(Card.create(cardId, ownerId, "{noop}pin", 0, false, 0L));

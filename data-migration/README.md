@@ -1,11 +1,11 @@
 # XYZ Bank Data Migration
 
-Migración de datos bancarios con **Spring Boot 3.5** y **Spring Batch 5**. Procesa los CSV de `data/semana_3` mediante tres jobs independientes (Reader → Processor → Writer), con persistencia JDBC en **MySQL**, skip/retry personalizados y process steps multithread.
+Migración de datos bancarios con **Spring Boot 3.5** y **Spring Batch 5**. Procesa los CSV de `data/semana_3` mediante tres jobs independientes (Reader → Processor → Writer), con persistencia JDBC idempotente en **MySQL**, skip/retry personalizados, **particionado local** por rangos de líneas y **reanudación automática** desde el último chunk confirmado.
 
 Documentación ampliada:
 
 - **Plataforma completa (MySQL + PostgreSQL + config-server + eureka-server + core-service + interests-service + BFFs):** Compose en la raíz del repo — ver el [README raíz](../README.md). Ese es el camino soportado para levantar todo.
-- [docs/jobs.md](docs/jobs.md) — diagramas y flujo de cada job
+- [docs/jobs.md](docs/jobs.md) — diagramas, reinicio, idempotencia, rendimiento antes/después y equivalencia con el legacy
 - [docs/mysql.md](docs/mysql.md) — Docker MySQL, conexión y consultas de reportes
 - [docs/entrega/](docs/entrega/) — documentos de entrega del grupo
 
@@ -29,43 +29,56 @@ Hexagonal por módulo. Dominio sin Spring. Batch e adapters JDBC en infraestruct
 ```
 src/main/java/com/xyzbank/migration/
 ├── shared/
+│   ├── domain/                 SourceLine, Money, BusinessDate, Id
 │   ├── application/ports/      MigrationExecutionPort
 │   └── infrastructure/
-│       ├── adapters/           JdbcMigrationExecutionAdapter
-│       └── batch/              Guard, ledger, skip/retry, CsvFieldNormalizer
+│       ├── adapters/           JdbcMigrationExecutionAdapter, FirstWinsUpsert
+│       └── batch/              Guard, ledger, skip/retry, partitioner, MigrationStepFactory,
+│                               JobRestartLauncher, RunAllMigrationsRunner
 ├── dailytransactions/
-│   ├── application/ports/      DailyReportWriter
+│   ├── application/ports/      DailyReportWriter, DailyReportPublication, DailySummaryProjection
 │   └── infrastructure/
-│       ├── adapters/           JdbcDailyReportWriter
+│       ├── adapters/           JdbcDailyReportWriter (staging), JdbcDailyReportPublication,
+│       │                       JdbcDailySummaryProjection
 │       └── batch/              dailyTransactionsJob
 ├── monthlyinterests/ ...       AccountBalanceWriter → JdbcAccountBalanceWriter
-└── annualreports/ ...          AnnualAuditWriter → JdbcAnnualAuditWriter
+└── annualreports/ ...          AnnualMovementStore → JdbcAnnualMovementStore,
+                                AnnualAuditConsolidation → JdbcAnnualAuditConsolidation
 ```
 
 ## Jobs (resumen)
 
-| Job | Guard | Process | Tabla MySQL |
-|---|---|---|---|
-| `dailyTransactionsJob` | `checkDailyMigrationNotDone` | `processDailyTransactions` | `daily_transaction_reports` |
-| `monthlyInterestsJob` | `checkMonthlyMigrationNotDone` | `calculateMonthlyInterests` | `account_balances` |
-| `annualGenerationJob` | `checkAnnualMigrationNotDone` | `compileAnnualAudit` | `annual_audit_reports` |
+| Job | Steps | Tablas MySQL |
+|---|---|---|
+| `dailyTransactionsJob` | guard → `processDailyTransactionsManager` → `publishDailyTransactions` → `summarizeDailyTransactions` | `daily_transaction_lines` (staging), `daily_transaction_reports`, `daily_transaction_summaries` |
+| `monthlyInterestsJob` | guard → `calculateMonthlyInterestsManager` | `account_balances` |
+| `annualGenerationJob` | guard → `stageAnnualMovementsManager` → `consolidateAnnualAudit` | `annual_movements` (staging), `annual_audit_reports` |
 
-Si el job ya tiene `SUCCESS` en `migration_executions`, se omite el process (`ALREADY_MIGRATED`). Cada lanzamiento usa `RunIdIncrementer` para crear una nueva instancia Batch y consultar el ledger. Detalle en [docs/jobs.md](docs/jobs.md).
+Si el job ya tiene `SUCCESS` en `migration_executions`, se omite el process (`ALREADY_MIGRATED`). Detalle en [docs/jobs.md](docs/jobs.md).
+
+**Resumen diario:** `daily_transaction_summaries` guarda por fecha el total de débitos, el total de créditos, la cantidad de transacciones y la cantidad de anomalías. Se recalcula completa en cada corrida.
+
+## Reejecución automática e idempotencia
+
+- `RunAllMigrationsRunner` (`MIGRATION_RUN_ALL=true`) lanza los tres jobs en orden con `JobRestartLauncher`. Si la última ejecución de un job para el mismo CSV quedó `FAILED`/`STOPPED`, o `STARTED` porque el proceso murió, la **reinicia** con `JobOperator.restart`: solo corren los rangos sin terminar, desde su último chunk confirmado.
+- Máximo `MIGRATION_MAX_RESTARTS` reinicios por job (default 3, contados en el `JobRepository`, también entre procesos). Si se agotan, no se lanzan los jobs siguientes y el proceso sale con código 1. En Compose, `restart: "on-failure:3"` vuelve a levantar el contenedor.
+- Todas las escrituras son upserts por lote (`INSERT … ON DUPLICATE KEY UPDATE` + `batchUpdate`); ante claves repetidas gana la fila de menor línea del CSV. Reprocesar un CSV no duplica ni falla.
 
 ## Escalado y resiliencia
 
-| Parámetro | Default | Descripción |
-|---|---|---|
-| `migration.batch.chunk-size` | `5` | Tamaño de chunk |
-| `migration.batch.throttle-limit` | `3` | Hilos del `TaskExecutor` en el process step |
-| `migration.batch.skip-limit` | `2000` | Tope de skips de dominio/parse |
-| `migration.batch.retry-limit` | `3` | Reintentos JDBC transitorios |
+| Parámetro | Variable de entorno | Default | Descripción |
+|---|---|---|---|
+| `migration.batch.chunk-size` | `MIGRATION_CHUNK_SIZE` | `500` | Filas por commit |
+| `migration.batch.throttle-limit` | `MIGRATION_THROTTLE_LIMIT` | `4` | Rangos en paralelo por job |
+| `migration.batch.max-restarts` | `MIGRATION_MAX_RESTARTS` | `3` | Reinicios por job antes de salir con código 1 |
+| `migration.batch.skip-limit` | `MIGRATION_SKIP_LIMIT` | `2000` | Tope de skips de dominio/parse por rango |
+| `migration.batch.retry-limit` | — | `3` | Reintentos JDBC transitorios |
 
-Los process steps usan **multithreading** (`SynchronizedItemStreamReader` + `TaskExecutorRepeatTemplate`), `DomainSkipPolicy`, `TransientDataAccessRetryPolicy`, `ExponentialBackOffPolicy` (1s ×2 hasta 10s), `LoggingRetryListener` (log INFO con `attempt` y `thread` en cada reintento JDBC) y listeners de métricas (`Step metrics ... throughputPerSec`). No hay particionado: MT cubre el requisito de escalado paralelo.
+Cada job se **particiona localmente**: `CsvLineRangePartitioner` divide el CSV en `throttle-limit` rangos y cada rango es un worker single-thread con su propia posición de lectura (reiniciable). Se mantienen `DomainSkipPolicy`, `TransientDataAccessRetryPolicy`, `ExponentialBackOffPolicy` (1s ×2 hasta 10s), `LoggingRetryListener` y las métricas (`Step metrics ... throughputPerSec`).
 
 Los readers normalizan el CSV con `CsvFieldNormalizer` (trim de texto/fechas, decimales `1500,50` / `1.500,50` / `1,500.50`, escala a 2 decimales). Si el monto no se puede corregir, se lanza `DomainError` y el ítem se omite.
 
-Para comparar parámetros y elegir la config óptima, ver la tabla y checklist en [docs/jobs.md](docs/jobs.md#comparación-de-parámetros-configuración-óptima-local).
+Con `data/performance`, los tres jobs pasan de 30,2 s / 4,6 s / 9,3 s a 2,0 s / 0,3 s / 0,7 s (chunk 500, 4 rangos). Tabla completa en [docs/jobs.md](docs/jobs.md#rendimiento-antes--después).
 
 ## Reglas de negocio
 
@@ -113,7 +126,7 @@ También se omiten:
 - fechas inválidas
 - duplicados
 
-Los retiros/compras con montos negativos son válidos. El writer consolida **una fila por `cuenta_id`** en `annual_audit_reports` (no una por línea del CSV).
+Los retiros/compras con montos negativos son válidos. Cada movimiento aceptado se guarda en `annual_movements` y `consolidateAnnualAudit` escribe **una fila por `cuenta_id`** en `annual_audit_reports` (no una por línea del CSV).
 
 ### Normalización de CSV
 
@@ -141,13 +154,21 @@ Conexión: `localhost:3306`, DB `xyz_bank_migration`, user/password `migration`/
 
 ```bash
 # En Windows (CMD / PowerShell):
-.\mvnw.cmd test
+.\mvnw.cmd verify
 
 # En Linux / macOS:
-./mvnw test
+./mvnw verify
 ```
 
-### 3. Correr un job
+`test` corre los unitarios. `verify` agrega los `*IT` (adapters JDBC, jobs, reinicio, equivalencia con el legacy), que usan **MySQL 8.4 con Testcontainers** y necesitan Docker; sin Docker se omiten.
+
+### 3. Correr los tres jobs (con reinicio automático)
+
+```bash
+MIGRATION_RUN_ALL=true ./mvnw spring-boot:run
+```
+
+### 3b. Correr un job suelto (sin reinicio automático)
 
 ```bash
 # En Windows (CMD / PowerShell):
@@ -168,12 +189,12 @@ Por defecto `spring.batch.job.enabled=false`.
 ```bash
 python3 scripts/generate-performance-data.py
 
-# Comparar throttle-limit=1 vs 3 (revertir entre corridas)
-./mvnw spring-boot:run -Dspring-boot.run.profiles=performance \
-  -Dspring-boot.run.arguments="--spring.batch.job.enabled=true --spring.batch.job.name=dailyTransactionsJob --migration.batch.throttle-limit=1"
+# Revertir entre corridas y variar MIGRATION_THROTTLE_LIMIT / MIGRATION_CHUNK_SIZE
+MIGRATION_RUN_ALL=true MIGRATION_SKIP_LIMIT=100000 MIGRATION_THROTTLE_LIMIT=4 \
+  ./mvnw spring-boot:run -Dspring-boot.run.profiles=performance
 ```
 
-Los CSV grandes viven en `data/performance/` (ignorados por git). En los logs buscá `Step metrics` y `Starting job=... chunkSize=... throttleLimit=...`. Detalle y tabla de comparación: [docs/jobs.md](docs/jobs.md#comparación-de-parámetros-configuración-óptima-local).
+Los CSV grandes viven en `data/performance/` (ignorados por git). En los logs buscá `Step metrics` y `Starting job=... chunkSize=... throttleLimit=...`. Tabla antes/después: [docs/jobs.md](docs/jobs.md#rendimiento-antes--después).
 
 ### 5. Ver reportes migrados
 
@@ -193,11 +214,19 @@ docker compose exec -T mysql mysql -umigration -pmigration xyz_bank_migration < 
 Get-Content scripts\revert-migration.sql | docker compose exec -T mysql mysql -umigration -pmigration xyz_bank_migration
 ```
 
-Luego vuelve a ejecutar el job deseado. El script limpia tablas de negocio, `migration_executions` y metadatos `BATCH_*`.
+Luego vuelve a ejecutar el job deseado. El script limpia tablas de negocio y de staging, `migration_executions` y metadatos `BATCH_*`.
+
+### Volúmenes creados antes de esta versión
+
+Las tablas de negocio ganaron la columna `source_line` y hay tablas nuevas (`daily_transaction_lines`, `daily_transaction_summaries`, `annual_movements`). La aplicación crea las tablas que faltan al arrancar, pero **no altera** tablas existentes. Si tu volumen MySQL es anterior, recrealo una vez (los datos se vuelven a migrar desde los CSV):
+
+```bash
+docker compose down -v && docker compose up -d
+```
 
 ## Datos de entrada
 
-Default: **semana_3** (~1000 filas por CSV, con ruido intencional). También existen `data/semana_1`, `data/semana_2` y CSVs sintéticos en `data/performance/` (generados). Los tests unitarios de job siguen usando `semana_2`.
+Default: **semana_3** (~1000 filas por CSV, con ruido intencional). También existen `data/semana_1`, `data/semana_2` y CSVs sintéticos en `data/performance/` (generados). Los ITs de job usan fixtures chicos en `src/test/resources/fixtures/`, y los de equivalencia/reinicio usan `semana_3` contra los golden files de `src/test/resources/expected/semana_3/`.
 
 | Archivo | Job |
 |---|---|
@@ -205,4 +234,4 @@ Default: **semana_3** (~1000 filas por CSV, con ruido intencional). También exi
 | [`data/semana_3/intereses.csv`](data/semana_3/intereses.csv) | monthlyInterestsJob |
 | [`data/semana_3/cuentas_anuales.csv`](data/semana_3/cuentas_anuales.csv) | annualGenerationJob |
 
-Fechas aceptadas: `yyyy-MM-dd`, `yyyy/MM/dd`, `dd-MM-yyyy`, `dd/MM/yyyy`. `skip-limit` por defecto es `2000` para absorber el ruido de semana_3.
+Fechas aceptadas: `yyyy-MM-dd`, `yyyy/MM/dd`, `dd-MM-yyyy`, `dd/MM/yyyy`. `skip-limit` por defecto es `2000` (por rango) para absorber el ruido de semana_3.

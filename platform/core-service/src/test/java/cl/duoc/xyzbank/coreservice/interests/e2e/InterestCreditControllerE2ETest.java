@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.interests.e2e;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
@@ -49,16 +47,12 @@ class InterestCreditControllerE2ETest extends AbstractCoreServiceIT {
     @Autowired
     private AccountRepository accountRepository;
 
-    @Autowired
-    private CustomerRepository customerRepository;
-
     private Id ownerId;
 
     @BeforeEach
     void configureRestAssured() {
         RestAssured.port = port;
         ownerId = Id.generate();
-        customerRepository.save(Customer.create(ownerId, "Jane Doe", "jane.doe+" + ownerId.getValue() + "@xyzbank.cl"));
     }
 
     private RequestSpecification asInterestsService() {

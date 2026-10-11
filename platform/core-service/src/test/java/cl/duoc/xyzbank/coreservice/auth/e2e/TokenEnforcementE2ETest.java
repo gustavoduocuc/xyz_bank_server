@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.auth.e2e;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.cards.domain.entities.AtmSession;
@@ -57,6 +55,10 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
      * 10. An unknown, expired or missing ATM session is rejected with 401
      * 11. An ATM session cannot reach another customer's account (404)
      * 12. PIN verification refuses a call without a token (401) and another channel's token (403)
+     * 13. A web token reaches its own account and customer accounts
+     * 14. A web token gets 404 for someone else's account, someone else's customer accounts, an unknown
+     *     account and an unknown transaction, and for a withdrawal against someone else's account
+     * 15. A blank identifier is a malformed request (400 from the controller), not an unowned resource (404)
      */
 
     private static final String ANY_ACCOUNT = UUID.randomUUID().toString();
@@ -65,9 +67,6 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
 
     @LocalServerPort
     private int port;
-
-    @Autowired
-    private CustomerRepository customerRepository;
 
     @Autowired
     private AccountRepository accountRepository;
@@ -100,10 +99,11 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
     @Test
     @DisplayName("rejects a token with insufficient scope with 403")
     void rejectsATokenWithInsufficientScopeWith403() {
-        String webTokenWithoutCustomersScope = TestAccessTokens.token("bff-web", Channel.WEB)
-                .subject(ANY_CUSTOMER).scopes(Set.of("web:accounts:read")).sign();
+        String webTokenWithoutAccountsScope = TestAccessTokens.token("bff-web", Channel.WEB)
+                .subject(ANY_CUSTOMER).scopes(Set.of("web:customers:read")).sign();
 
-        bearer(webTokenWithoutCustomersScope).get("/internal/customers/{id}", ANY_CUSTOMER).then().statusCode(403);
+        bearer(webTokenWithoutAccountsScope).get("/internal/customers/{id}/accounts", ANY_CUSTOMER)
+                .then().statusCode(403);
     }
 
     @Test
@@ -213,6 +213,44 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
                 .post("/internal/auth/atm/pin-verifications").then().statusCode(403);
     }
 
+    @Test
+    @DisplayName("lets a web token reach its own account and its own customer accounts")
+    void letsAWebTokenReachItsOwnAccountAndItsOwnCustomerAccounts() {
+        Id customer = aCustomer();
+        Id account = anAccountOf(customer);
+
+        bearer(TestAccessTokens.web(customer.getValue()))
+                .get("/internal/accounts/{id}/balance", account.getValue()).then().statusCode(200);
+        bearer(TestAccessTokens.web(customer.getValue()))
+                .get("/internal/customers/{id}/accounts", customer.getValue()).then().statusCode(200);
+    }
+
+    @Test
+    @DisplayName("answers 404 to a web token for someone else's or an unknown resource")
+    void answers404ToAWebTokenForSomeoneElsesOrAnUnknownResource() {
+        Id caller = aCustomer();
+        Id othersAccount = anAccountOf(aCustomer());
+        String token = TestAccessTokens.web(caller.getValue());
+
+        bearer(token).get("/internal/accounts/{id}/balance", othersAccount.getValue()).then().statusCode(404);
+        bearer(token).get("/internal/customers/{id}/accounts", aCustomer().getValue()).then().statusCode(404);
+        bearer(token).get("/internal/accounts/{id}/balance", Id.generate().getValue()).then().statusCode(404);
+        bearer(token).get("/internal/transactions/{id}", Id.generate().getValue()).then().statusCode(404);
+        bearer(TestAccessTokens.atm())
+                .header("X-Atm-Session", anAtmSessionOf(caller, Instant.now()).getId().getValue())
+                .contentType(ContentType.JSON)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .body("{\"amount\":10.00,\"currency\":\"USD\"}")
+                .post("/internal/accounts/{id}/withdrawals", othersAccount.getValue())
+                .then().statusCode(404);
+    }
+
+    @Test
+    @DisplayName("treats a blank account id as malformed, not as an unowned resource")
+    void treatsABlankAccountIdAsMalformedNotAsAnUnownedResource() {
+        bearer(TestAccessTokens.web(ANY_CUSTOMER)).get("/internal/accounts/%20/balance").then().statusCode(400);
+    }
+
     private static RequestSpecification overPinConnector(RequestSpecification request) {
         return request.baseUri("https://localhost").port(PIN_VERIFICATION_TLS_PORT).relaxedHTTPSValidation();
     }
@@ -223,7 +261,6 @@ class TokenEnforcementE2ETest extends AbstractCoreServiceIT {
 
     private Id aCustomer() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "ATM Customer", customerId.getValue() + "@xyzbank.cl"));
         return customerId;
     }
 

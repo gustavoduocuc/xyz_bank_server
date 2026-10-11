@@ -1,0 +1,18 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Configuración centralizada de payments-service
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Access tokens are verified with auth-server's public keys only; no signing secret here.
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH_ISSUER:https://localhost:9000}
+          jwk-set-uri: ${AUTH_JWK_SET_URI:https://localhost:9000/oauth2/jwks}
+          audiences:
+            - payments-service
+
+# core-service is resolved by its Eureka id when Eureka is enabled
+core-service:
+  base-url: ${CORE_SERVICE_BASE_URL:http://localhost:8080}

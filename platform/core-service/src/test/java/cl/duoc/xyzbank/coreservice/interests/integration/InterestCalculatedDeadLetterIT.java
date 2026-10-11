@@ -1,9 +1,7 @@
 package cl.duoc.xyzbank.coreservice.interests.integration;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.AccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.domain.repositories.CustomerRepository;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.interests.domain.repositories.ProcessedInterestEventRepository;
@@ -13,6 +11,7 @@ import cl.duoc.xyzbank.testsupport.AbstractKafkaPostgresIT;
 import cl.duoc.xyzbank.testsupport.KafkaTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
 import org.junit.jupiter.api.DisplayName;
@@ -46,7 +45,8 @@ class InterestCalculatedDeadLetterIT extends AbstractKafkaPostgresIT {
     /*
      * Cases (event-messaging spec, "A failing message is retried a bounded number of times and
      * then dead-lettered"), with the retry delays shortened to 50 ms / 100 ms / 200 ms:
-     * 1. An invalid payload ends on interests.calculated.DLT with its key, payload and failure
+     * 1. An invalid payload ends on interests.calculated.DLT with its key, payload and failure, and is counted in
+     *    kafka.dlt.messages{topic="interests.calculated"}
      *    headers only after the retries, credits nothing, and a valid event for the same account
      *    published right after it is credited (its partition was not blocked)
      * 2. An event for an unknown account is a business rejection: InterestCreditRejected, and
@@ -96,10 +96,10 @@ class InterestCalculatedDeadLetterIT extends AbstractKafkaPostgresIT {
     }
 
     @Autowired
-    private AccountRepository accountRepository;
+    private MeterRegistry meterRegistry;
 
     @Autowired
-    private CustomerRepository customerRepository;
+    private AccountRepository accountRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -123,6 +123,7 @@ class InterestCalculatedDeadLetterIT extends AbstractKafkaPostgresIT {
         assertEquals(CALCULATED, header(dead, KafkaHeaders.DLT_ORIGINAL_TOPIC));
         assertNotNull(header(dead, KafkaHeaders.DLT_EXCEPTION_FQCN));
         assertTrue(waited.compareTo(TOTAL_BACKOFF) >= 0, "dead-lettered after " + waited + ", before the retries ran");
+        assertTrue(meterRegistry.get("kafka.dlt.messages").tag("topic", CALCULATED).counter().count() >= 1.0);
 
         JsonNode result = objectMapper.readTree(
                 KafkaTestSupport.recordsWithKey(KAFKA.getBootstrapServers(), RESULTS, accountId, 1).getFirst().value());
@@ -217,7 +218,6 @@ class InterestCalculatedDeadLetterIT extends AbstractKafkaPostgresIT {
 
     private Account aSavedAccount(String accountNumber) {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Dead Letter Customer", customerId.getValue() + "@xyzbank.cl"));
         Account account = Account.create(
                 Id.generate(),
                 AccountNumber.create(accountNumber),

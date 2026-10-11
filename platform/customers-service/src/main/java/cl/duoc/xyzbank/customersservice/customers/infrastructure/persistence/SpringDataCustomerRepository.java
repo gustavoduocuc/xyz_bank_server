@@ -1,0 +1,11 @@
+package cl.duoc.xyzbank.customersservice.customers.infrastructure.persistence;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+import java.util.UUID;
+
+interface SpringDataCustomerRepository extends JpaRepository<CustomerJpaEntity, UUID> {
+
+    Optional<CustomerJpaEntity> findByIdempotencyKey(String idempotencyKey);
+}

@@ -1,12 +1,9 @@
 package cl.duoc.xyzbank.coreservice.accounts.unit;
 
 import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Account;
-import cl.duoc.xyzbank.coredomain.accounts.domain.entities.Customer;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.AccountNumber;
 import cl.duoc.xyzbank.coredomain.accounts.domain.valueobjects.Money;
 import cl.duoc.xyzbank.coredomain.accounts.unit.InMemoryAccountRepository;
-import cl.duoc.xyzbank.coredomain.accounts.unit.InMemoryCustomerRepository;
-import cl.duoc.xyzbank.coredomain.shared.domain.DomainException;
 import cl.duoc.xyzbank.coredomain.shared.domain.Id;
 import cl.duoc.xyzbank.coreservice.accounts.application.dto.AccountSummaryResponse;
 import cl.duoc.xyzbank.coreservice.accounts.application.usecases.ListAccountsForCustomerUseCase;
@@ -17,7 +14,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("The ListAccountsForCustomer use case")
@@ -27,20 +23,18 @@ class ListAccountsForCustomerUseCaseTest {
      * Cases:
      * 1. Returns every account owned by the customer
      * 2. Returns an empty list when the customer owns no accounts
-     * 3. Throws not found for an unknown customer id
+     * 3. Returns an empty list for an unknown customer id
      * 4. Excludes accounts owned by other customers
      */
 
-    private final InMemoryCustomerRepository customerRepository = new InMemoryCustomerRepository();
     private final InMemoryAccountRepository accountRepository = new InMemoryAccountRepository();
     private final ListAccountsForCustomerUseCase useCase =
-            new ListAccountsForCustomerUseCase(customerRepository, accountRepository);
+            new ListAccountsForCustomerUseCase(accountRepository);
 
     @Test
     @DisplayName("returns every account owned by the customer")
     void returnsEveryAccountOwnedByTheCustomer() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Jane Doe", "jane.doe@xyzbank.cl"));
         accountRepository.save(anAccountFor(customerId, "1111111111"));
         accountRepository.save(anAccountFor(customerId, "2222222222"));
 
@@ -53,7 +47,6 @@ class ListAccountsForCustomerUseCaseTest {
     @DisplayName("returns an empty list when the customer owns no accounts")
     void returnsAnEmptyListWhenTheCustomerOwnsNoAccounts() {
         Id customerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Jane Doe", "jane.doe@xyzbank.cl"));
 
         List<AccountSummaryResponse> accounts = useCase.execute(customerId.getValue());
 
@@ -61,12 +54,11 @@ class ListAccountsForCustomerUseCaseTest {
     }
 
     @Test
-    @DisplayName("throws not found for an unknown customer id")
-    void throwsNotFoundForAnUnknownCustomerId() {
-        DomainException exception = assertThrows(
-                DomainException.class, () -> useCase.execute(Id.generate().getValue()));
+    @DisplayName("returns an empty list for an unknown customer id")
+    void returnsAnEmptyListForAnUnknownCustomerId() {
+        List<AccountSummaryResponse> accounts = useCase.execute(Id.generate().getValue());
 
-        assertEquals(DomainException.Type.NOT_FOUND, exception.getType());
+        assertTrue(accounts.isEmpty());
     }
 
     @Test
@@ -74,7 +66,6 @@ class ListAccountsForCustomerUseCaseTest {
     void excludesAccountsOwnedByOtherCustomers() {
         Id customerId = Id.generate();
         Id otherCustomerId = Id.generate();
-        customerRepository.save(Customer.create(customerId, "Jane Doe", "jane.doe@xyzbank.cl"));
         accountRepository.save(anAccountFor(customerId, "1111111111"));
         accountRepository.save(anAccountFor(otherCustomerId, "9999999999"));
 

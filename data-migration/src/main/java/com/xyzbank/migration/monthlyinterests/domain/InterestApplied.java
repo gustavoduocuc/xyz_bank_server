@@ -1,6 +1,7 @@
 package com.xyzbank.migration.monthlyinterests.domain;
 
 import com.xyzbank.migration.shared.domain.Money;
+import com.xyzbank.migration.shared.domain.SourceLine;
 
 public final class InterestApplied {
 
@@ -44,6 +45,10 @@ public final class InterestApplied {
 
     public double previousBalanceValue() {
         return account.balance().amount();
+    }
+
+    public SourceLine sourceLine() {
+        return account.sourceLine();
     }
 
     public double finalBalanceValue() {

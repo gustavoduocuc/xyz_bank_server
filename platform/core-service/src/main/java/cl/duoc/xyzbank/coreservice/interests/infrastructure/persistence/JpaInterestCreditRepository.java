@@ -54,6 +54,7 @@ public class JpaInterestCreditRepository implements InterestCreditRepository {
         transactionConfirmedPublisher.publish(new TransactionConfirmed(
                 transaction.getId().getValue(),
                 account.getId().getValue(),
+                account.getCustomerId().getValue(),
                 ConfirmedMovementType.INTEREST_CREDIT,
                 transaction.getAmount().getAmount(),
                 transaction.getAmount().getCurrency(),

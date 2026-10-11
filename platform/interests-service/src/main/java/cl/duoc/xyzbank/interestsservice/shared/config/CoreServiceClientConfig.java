@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.interestsservice.shared.config;
 
 import cl.duoc.xyzbank.interestsservice.shared.infrastructure.rest.BearerTokenClientInterceptor;
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
@@ -15,14 +16,14 @@ public class CoreServiceClientConfig {
     @Bean
     @LoadBalanced
     @ConditionalOnProperty(name = "eureka.client.enabled", havingValue = "true", matchIfMissing = true)
-    public RestClient.Builder loadBalancedRestClientBuilder() {
-        return RestClient.builder();
+    public RestClient.Builder loadBalancedRestClientBuilder(ObservationRegistry observationRegistry) {
+        return RestClient.builder().observationRegistry(observationRegistry);
     }
 
     @Bean
     @ConditionalOnProperty(name = "eureka.client.enabled", havingValue = "false")
-    public RestClient.Builder plainRestClientBuilder() {
-        return RestClient.builder();
+    public RestClient.Builder plainRestClientBuilder(ObservationRegistry observationRegistry) {
+        return RestClient.builder().observationRegistry(observationRegistry);
     }
 
     @Bean

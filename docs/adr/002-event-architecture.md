@@ -46,7 +46,7 @@ Si el proceso muere entre publicar y consumir el resultado, ese estado se pierde
 ## Consecuencias
 
 - El GET de resumen y la lectura de saldo siguen en HTTP. Con la flag encendida, el circuit breaker de `creditInterest` no interviene. El de `fetchInterestSummary` y `fetchAccountBalance` sí.
-- El listener de `core-service` no pasa por `EnforcementFilter`. El POST HTTP sigue exigiendo `interests:write`.
+- El listener de `core-service` no pasa por la cadena de seguridad HTTP (resource server). El POST HTTP sigue exigiendo `interests:write`.
 - En desarrollo no hay ACLs de Kafka. Quien alcance el broker puede producir en `interests.calculated`. Pendiente de producción: solo `interests-service` produce en `interests.calculated` y solo `core-service` produce en `interests.credit-results` y `transactions.confirmed`.
 - La durabilidad del cierre del cálculo en `interests-service` queda pendiente junto con esas ACLs. No se agrega base ni outbox en ese servicio en este cambio.
 
@@ -62,6 +62,7 @@ Contrato del evento `TransactionConfirmed` (`schemaVersion` 1):
 | `eventType` | `TransactionConfirmed` |
 | `schemaVersion` | `1` |
 | `accountId` | Cuenta afectada |
+| `customerId` | Dueño de la cuenta (identificador, no dato personal); permite atribuir el movimiento sin leer el esquema de otro servicio. Aditivo: `schemaVersion` sigue en `1`, y las filas del outbox escritas antes de este campo se publican sin él |
 | `type` | `WITHDRAWAL` o `INTEREST_CREDIT` |
 | `amount` | Monto del movimiento |
 | `currency` | Moneda |
@@ -74,3 +75,32 @@ El retiro ATM sigue siendo síncrono: `bff-atm` → `POST /internal/accounts/{id
 En un crédito de interés exitoso (camino Kafka), `InterestCreditApplied` y `TransactionConfirmed` se escriben en la misma transacción de PostgreSQL. El relay enruta por `event_type`: resultados de interés a `interests.credit-results`, confirmaciones a `transactions.confirmed`.
 
 La publicación de `TransactionConfirmed` se controla con `FEATURE_TRANSACTION_CONFIRMED_EVENTS` / `app.events.transaction-confirmed.enabled`, independiente de `FEATURE_INTEREST_CREDIT_VIA_KAFKA`. No se implementan consumidores de negocio (reportes, anomalías) en esta fase.
+
+## Extensión: security.alerts y feed de notificaciones
+
+`SecurityAlertRaised` (`schemaVersion` 1) avisa de algo relevante para la seguridad de un cliente. Va en el tópico `security.alerts`, con clave `customerId` (las alertas de un cliente quedan ordenadas en una partición), 3 particiones y `security.alerts.DLT`, ambos creados por `kafka-init`.
+
+| Campo | Descripción |
+|---|---|
+| `eventId` | UUID del evento |
+| `eventType` | `SecurityAlertRaised` |
+| `schemaVersion` | `1` |
+| `alertType` | `CARD_LOCKED` o `REFRESH_TOKEN_REUSE` |
+| `customerId` | Cliente afectado |
+| `occurredAt` | Instante del hecho (ISO-8601) |
+
+No incluye número de tarjeta, PIN, tokens ni identificadores de dispositivo.
+
+- `CARD_LOCKED` lo escribe `core-service` en su outbox, en la misma transacción que bloquea la tarjeta, solo en la transición de desbloqueada a bloqueada (los intentos posteriores no repiten la alerta). El mismo relay lo publica.
+- `REFRESH_TOKEN_REUSE` lo publica `auth-server` directamente cuando revoca un login por reuso de un refresh token. No usa outbox: tiene su propia base de datos y ningún relay, y la publicación es de mejor esfuerzo (si el broker no responde, el login queda revocado igual y la alerta se pierde). Es el único productor sin garantía de entrega.
+- `customers-service` consume `transactions.confirmed` y `security.alerts` (grupo `customers-service-notifications`) y guarda una entrada por `eventId` en su esquema (`INSERT … ON CONFLICT DO NOTHING`), así que la reentrega no duplica. Un registro que falla se reintenta 3 veces y pasa a `<tópico>.DLT`; los DLT no se reprocesan. El feed se lee en `GET /internal/customers/{id}/notifications` (últimas 50 entradas) y `bff-web` lo expone en `GET /customers/{id}/notifications`.
+- `FEATURE_SECURITY_ALERTS` (core-service y auth-server) y `FEATURE_NOTIFICATIONS_FEED` (customers-service) están en `true` en Compose y en `false` por defecto en cada servicio.
+
+## Catálogo de eventos
+
+| Tópico | Evento | Productor | Consumidores | Clave | Particiones | DLT |
+|---|---|---|---|---|---|---|
+| `interests.calculated` | `InterestCalculated` | `interests-service` | `core-service` | `accountId` | 3 | `interests.calculated.DLT` |
+| `interests.credit-results` | `InterestCreditApplied`, `InterestCreditRejected` | `core-service` (outbox) | `interests-service` | `accountId` | 3 | `interests.credit-results.DLT` |
+| `transactions.confirmed` | `TransactionConfirmed` | `core-service` (outbox) | `customers-service` | `accountId` | 3 | `transactions.confirmed.DLT` |
+| `security.alerts` | `SecurityAlertRaised` (`CARD_LOCKED`, `REFRESH_TOKEN_REUSE`) | `core-service` (outbox), `auth-server` (directo) | `customers-service` | `customerId` | 3 | `security.alerts.DLT` |

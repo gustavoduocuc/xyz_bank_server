@@ -1,0 +1,2419 @@
+{
+  "info": {
+    "name": "XYZ Bank — API completa",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Requests contra el stack local (`docker compose up --build`).\n\n**Antes de correr:**\n1. Postman → Settings → General → desactiva *SSL certificate verification* (la CA de desarrollo es autofirmada).\n2. Postman → Settings → Certificates → agrega `localhost:8083` con el PFX `dev/certs/atm-terminal/keystore.p12`, passphrase `xyzbank-dev` (mTLS de bff-atm).\n3. Ejecuta `./scripts/dev-web-login.sh` y copia `session` → `webAccessToken` y `refreshToken` → `webRefreshToken`.\n4. Elige un `deviceId` nuevo (por ejemplo `postman-1`), ponlo en la variable `deviceId`, ejecuta `./scripts/dev-mobile-login.sh <deviceId>` y copia `sessionToken` → `mobileSessionToken` y `refreshToken` → `mobileRefreshToken`. La última request de la carpeta 03 revoca ese dispositivo, así que cada corrida necesita un `deviceId` nuevo.\n5. Corre la carpeta 01 (tokens de servicio) y después el resto en orden, o toda la colección con el Runner.\n\nLos secretos de las variables son los de `.env.example`; si cambiaste tu `.env`, actualízalos.\n`runId` cambia en cada corrida, así que las Idempotency-Key y los emails no chocan con corridas anteriores."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('runId')) { pm.collectionVariables.set('runId', Date.now().toString()); }"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Iniciar corrida (nuevo runId)",
+      "item": [
+        {
+          "name": "nuevo runId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{eurekaUrl}}/actuator/health",
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Genera un `runId` nuevo para que las Idempotency-Key no repitan respuestas de una corrida anterior."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('runId', Date.now().toString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "00 · Salud, Spring Cloud y discovery",
+      "item": [
+        {
+          "name": "config-server — health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{configServerUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "config-server — configuración de interests-service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{configServerUrl}}/interests-service/default",
+            "description": "Configuración centralizada servida desde `config-repo/`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "eureka — health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{eurekaUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "eureka — instancias registradas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{eurekaUrl}}/eureka/apps",
+            "description": "Con `--scale core-service=2` aparecen dos instancias de CORE-SERVICE."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const apps = pm.response.json().applications.application.map(a => a.name);",
+                  "['CORE-SERVICE','CUSTOMERS-SERVICE','PAYMENTS-SERVICE','INTERESTS-SERVICE','API-GATEWAY'].forEach(n =>",
+                  "  pm.test(n + ' registrado', () => pm.expect(apps).to.include(n)));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "core-service — health (vía gateway)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/core-service/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "customers-service — health (vía gateway)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/customers-service/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "payments-service — health (vía gateway)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/payments-service/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "interests-service — health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{interestsUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "core-service — métricas Prometheus (vía gateway)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/core-service/actuator/prometheus"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "auth-server — health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{authUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "auth-server — OIDC discovery",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{authUrl}}/.well-known/openid-configuration"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "auth-server — JWKS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{authUrl}}/oauth2/jwks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "bff-web — health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bffWebUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "bff-mobile — health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bffMobileUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "bff-atm — health (requiere certificado mTLS)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bffAtmUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "noauth"
+      }
+    },
+    {
+      "name": "01 · Tokens de servicio (auth-server)",
+      "item": [
+        {
+          "name": "customers-admin — token (customers:read customers:write)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{authUrl}}/oauth2/token",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{customersAdminClientId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{customersAdminClientSecret}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('customersAdminToken', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "customers-admin — token solo lectura (customers:read)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{authUrl}}/oauth2/token",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                },
+                {
+                  "key": "scope",
+                  "value": "customers:read",
+                  "type": "text"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{customersAdminClientId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{customersAdminClientSecret}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('customersReadOnlyToken', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "accounts-admin — token (accounts:write customers:read)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{authUrl}}/oauth2/token",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{accountsAdminClientId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{accountsAdminClientSecret}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('accountsAdminToken', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "payments-admin — token (payments:write payments:read)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{authUrl}}/oauth2/token",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{paymentsAdminClientId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{paymentsAdminClientSecret}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('paymentsAdminToken', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "interests-service — token (interests:write)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{authUrl}}/oauth2/token",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                }
+              ]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{interestsClientId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{interestsClientSecret}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('interestsToken', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "bff-web pidiendo un scope de mobile → invalid_scope",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/html"
+              }
+            ],
+            "url": "{{authUrl}}/oauth2/authorize?response_type=code&client_id=bff-web&redirect_uri={{bffWebUrl}}/login/oauth2/code/oidc&scope=openid%20mobile:accounts:read&state=s&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256",
+            "description": "Un cliente de canal no puede pedir scopes de otro canal."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 302', () => pm.response.to.have.status(302));",
+                  "pm.test('redirige con error=invalid_scope', () => pm.expect(pm.response.headers.get('Location')).to.include('error=invalid_scope'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        }
+      ],
+      "auth": {
+        "type": "noauth"
+      },
+      "description": "Corre esta carpeta primero: guarda los tokens `client_credentials` en variables de la colección."
+    },
+    {
+      "name": "02 · bff-web (cookie de sesión)",
+      "item": [
+        {
+          "name": "dashboard del cliente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "session={{webAccessToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffWebUrl}}/customers/{{customerId}}/dashboard"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "historial de movimientos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "session={{webAccessToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffWebUrl}}/accounts/{{accountId}}/transactions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "historial filtrado y paginado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "session={{webAccessToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffWebUrl}}/accounts/{{accountId}}/transactions?type=DEBIT&pageSize=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "resumen anual de intereses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "session={{webAccessToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffWebUrl}}/accounts/{{accountId}}/interest-summary?year={{interestYear}}",
+            "description": "bff-web lo obtiene de interests-service (`FEATURE_USE_INTERESTS_SERVICE=true`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "feed de notificaciones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "session={{webAccessToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffWebUrl}}/customers/{{customerId}}/notifications",
+            "description": "Lo arma customers-service consumiendo `transactions.confirmed` y `security.alerts`. Después de un retiro ATM aparece un aviso nuevo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "sin cookie de sesión → rechazado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffWebUrl}}/customers/{{customerId}}/dashboard"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 401 o 422', () => pm.expect(pm.response.code).to.be.oneOf([401, 422]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "renovar sesión (refresh token + CSRF)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "refresh_token={{webRefreshToken}}; XSRF-TOKEN=postman-csrf"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "postman-csrf"
+              }
+            ],
+            "url": "{{bffWebUrl}}/session/refresh",
+            "description": "Rota el refresh token: reenviar el refresh token anterior cuenta como reutilización y revoca el login. Esta request guarda los tokens nuevos."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 204', () => pm.response.to.have.status(204));",
+                  "const session = pm.cookies.get('session');",
+                  "const refresh = pm.cookies.get('refresh_token');",
+                  "if (session) pm.collectionVariables.set('webAccessToken', session);",
+                  "if (refresh) pm.collectionVariables.set('webRefreshToken', refresh);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bffWebUrl}}/v3/api-docs"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "noauth"
+      },
+      "description": "Requiere `webAccessToken` y `webRefreshToken`: ejecuta `./scripts/dev-web-login.sh` y copia `session` y `refreshToken`."
+    },
+    {
+      "name": "03 · bff-mobile (JWT ligado al dispositivo)",
+      "item": [
+        {
+          "name": "resumen de cuenta (payload mínimo)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileSessionToken}}"
+              },
+              {
+                "key": "X-Device-Id",
+                "value": "{{deviceId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffMobileUrl}}/accounts/{{accountId}}/summary"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "otro dispositivo → rechazado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileSessionToken}}"
+              },
+              {
+                "key": "X-Device-Id",
+                "value": "otro-dispositivo"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffMobileUrl}}/accounts/{{accountId}}/summary"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 401 o 403 o 422', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 422]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "renovar sesión",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{bffMobileUrl}}/session/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{mobileRefreshToken}}\",\n  \"deviceId\": \"{{deviceId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('mobileSessionToken', body.sessionToken);",
+                  "pm.collectionVariables.set('mobileRefreshToken', body.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bffMobileUrl}}/v3/api-docs"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "revocar este dispositivo (cierra la sesión)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{mobileSessionToken}}"
+              },
+              {
+                "key": "X-Device-Id",
+                "value": "{{deviceId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffMobileUrl}}/devices/{{deviceId}}/revocations",
+            "description": "Déjala al final: un dispositivo revocado no puede volver a iniciar sesión, así que la próxima corrida necesita otro `deviceId`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "noauth"
+      },
+      "description": "Requiere `mobileSessionToken` y `mobileRefreshToken`: ejecuta `./scripts/dev-mobile-login.sh <deviceId>` con el mismo valor de la variable `deviceId` y copia `sessionToken` y `refreshToken`."
+    },
+    {
+      "name": "04 · bff-atm (mTLS + PIN)",
+      "item": [
+        {
+          "name": "verificar PIN → sesión de 120 s",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{bffAtmUrl}}/pin-verifications",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cardNumber\": \"{{cardNumber}}\",\n  \"pin\": \"{{cardPin}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('atmSessionToken', pm.response.json().sessionToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "consultar saldo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{atmSessionToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffAtmUrl}}/accounts/{{accountId}}/balance"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "retirar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{atmSessionToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "retiro-{{runId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{bffAtmUrl}}/accounts/{{accountId}}/withdrawals",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10.0,\n  \"currency\": \"USD\"\n}"
+            },
+            "description": "Publica `TransactionConfirmed` (WITHDRAWAL) en Kafka."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "retirar — reintento con la misma Idempotency-Key (no debita dos veces)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{atmSessionToken}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "retiro-{{runId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{bffAtmUrl}}/accounts/{{accountId}}/withdrawals",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10.0,\n  \"currency\": \"USD\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "saldo sin sesión → rechazado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{bffAtmUrl}}/accounts/{{accountId}}/balance"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 401 o 422', () => pm.expect(pm.response.code).to.be.oneOf([401, 422]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PIN incorrecto → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{bffAtmUrl}}/pin-verifications",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cardNumber\": \"{{cardNumber}}\",\n  \"pin\": \"0000\"\n}"
+            },
+            "description": "Tres seguidos bloquean la tarjeta (423). Desbloqueo: `./scripts/reset-dev-card-lock.sh`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bffAtmUrl}}/v3/api-docs"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "noauth"
+      },
+      "description": "Postman → Settings → Certificates: agrega `localhost:8083` con el PFX `dev/certs/atm-terminal/keystore.p12` (passphrase `xyzbank-dev`)."
+    },
+    {
+      "name": "05 · customers-service — Gestión de Clientes (vía gateway)",
+      "item": [
+        {
+          "name": "perfil del cliente demo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{gatewayUrl}}/customers-service/internal/customers/{{customerId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "alta de cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "alta-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/customers-service/internal/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Cliente Postman\",\n  \"email\": \"postman-{{runId}}@xyzbank.cl\",\n  \"phone\": \"+56911111111\",\n  \"address\": \"Av. Siempre Viva 742\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('newCustomerId', body.id);",
+                  "pm.collectionVariables.set('newCustomerVersion', body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "alta — reintento con la misma Idempotency-Key (mismo cliente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "alta-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/customers-service/internal/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Cliente Postman\",\n  \"email\": \"postman-{{runId}}@xyzbank.cl\",\n  \"phone\": \"+56911111111\",\n  \"address\": \"Av. Siempre Viva 742\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));",
+                  "pm.test('devuelve el mismo cliente', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('newCustomerId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "modificar contacto (bloqueo optimista)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/customers-service/internal/customers/{{newCustomerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman-{{runId}}-nuevo@xyzbank.cl\",\n  \"version\": {{newCustomerVersion}}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "modificar con versión vieja → 409",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/customers-service/internal/customers/{{newCustomerId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+56922222222\",\n  \"version\": {{newCustomerVersion}}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "alta sin scope customers:write → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "alta-ro-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/customers-service/internal/customers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"X\",\n  \"email\": \"x-{{runId}}@xyzbank.cl\"\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customersReadOnlyToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "sin token → 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{gatewayUrl}}/customers-service/internal/customers/{{customerId}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "feed de notificaciones del cliente demo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{gatewayUrl}}/customers-service/internal/customers/{{customerId}}/notifications"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{customersAdminToken}}",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "06 · core-service — Gestión de Cuentas (vía gateway)",
+      "item": [
+        {
+          "name": "cuentas del cliente (token web)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/customers/{{customerId}}/accounts",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{webAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "saldo (token web)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts/{{accountId}}/balance",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{webAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "movimientos (token web)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts/{{accountId}}/transactions",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{webAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cuenta inexistente → 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts/{{unknownId}}/balance",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{webAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "abrir cuenta (consulta a customers-service)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "apertura-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"currency\": \"USD\",\n  \"alias\": \"Ahorro Postman\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('newAccountId', body.id);",
+                  "pm.collectionVariables.set('newAccountVersion', body.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "abrir — reintento con la misma Idempotency-Key (misma cuenta)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "apertura-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"currency\": \"USD\",\n  \"alias\": \"Ahorro Postman\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));",
+                  "pm.test('devuelve la misma cuenta', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('newAccountId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "abrir para un cliente inexistente → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "apertura-x-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{unknownId}}\",\n  \"currency\": \"USD\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cambiar alias y límite diario",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "cambio-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts/{{newAccountId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alias\": \"Viajes\",\n  \"dailyWithdrawalLimit\": 800.0,\n  \"version\": {{newAccountVersion}}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('newAccountVersion', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "abrir y cerrar una cuenta con saldo cero",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "apertura-cierre-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"currency\": \"USD\",\n  \"alias\": \"Para cerrar\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('closableAccountId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cerrar cuenta con saldo cero",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "cierre-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts/{{closableAccountId}}/closure",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 0\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('queda CLOSED', () => pm.expect(pm.response.json().status).to.eql('CLOSED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{accountsAdminToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "description": "Las lecturas exigen un token de usuario dueño de la cuenta (`webAccessToken`); las escrituras, `accounts-admin`."
+    },
+    {
+      "name": "07 · payments-service — Procesamiento de Pagos (vía gateway)",
+      "item": [
+        {
+          "name": "depósito a la cuenta nueva",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "deposito-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/payments-service/internal/deposits",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destinationAccountId\": \"{{newAccountId}}\",\n  \"amount\": 200.0,\n  \"currency\": \"USD\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));",
+                  "pm.test('COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "transferencia cuenta nueva → cuenta demo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "transferencia-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/payments-service/internal/transfers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountId\": \"{{newAccountId}}\",\n  \"destinationAccountId\": \"{{accountId}}\",\n  \"amount\": 50.0,\n  \"currency\": \"USD\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('paymentId', body.id);",
+                  "pm.test('COMPLETED', () => pm.expect(body.status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "transferencia — reintento con la misma Idempotency-Key (no mueve saldo dos veces)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "transferencia-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/payments-service/internal/transfers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountId\": \"{{newAccountId}}\",\n  \"destinationAccountId\": \"{{accountId}}\",\n  \"amount\": 50.0,\n  \"currency\": \"USD\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));",
+                  "pm.test('mismo pago', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('paymentId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "pago de cuenta sin fondos → REJECTED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "pago-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/payments-service/internal/bill-payments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceAccountId\": \"{{newAccountId}}\",\n  \"amount\": 999999.0,\n  \"currency\": \"USD\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 201', () => pm.response.to.have.status(201));",
+                  "pm.test('REJECTED', () => pm.expect(pm.response.json().status).to.eql('REJECTED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "consultar pago",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{gatewayUrl}}/payments-service/internal/payments/{{paymentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cerrar la cuenta nueva con saldo → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "cierre-con-saldo-{{runId}}"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/core-service/internal/accounts/{{newAccountId}}/closure",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{newAccountVersion}}\n}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accountsAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{paymentsAdminToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "description": "Usa `newAccountId`, creada en la carpeta 06."
+    },
+    {
+      "name": "08 · interests-service — intereses anuales",
+      "item": [
+        {
+          "name": "resumen anual (token web)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{interestsUrl}}/accounts/{{accountId}}/interest-summary?year={{interestYear}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{webAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "aplicar interés anual (saga Kafka)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{interestsUrl}}/accounts/{{accountId}}/interest-applications?year={{applyYear}}",
+            "description": "Con la saga encendida (default en Compose) un 200 significa que `InterestCalculated` se publicó; core-service acredita después. Solo se aplica una vez por año: en corridas siguientes cambia `applyYear`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200 o 409', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "aplicar — reintento del mismo año (idempotente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{interestsUrl}}/accounts/{{accountId}}/interest-applications?year={{applyYear}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200 o 409', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "aplicar sin scope interests:write → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}"
+              }
+            ],
+            "url": "{{interestsUrl}}/accounts/{{accountId}}/interest-applications?year={{applyYear}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{webAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{interestsToken}}",
+            "type": "string"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "authUrl",
+      "value": "https://localhost:9000"
+    },
+    {
+      "key": "gatewayUrl",
+      "value": "http://localhost:8090"
+    },
+    {
+      "key": "bffWebUrl",
+      "value": "https://localhost:8081"
+    },
+    {
+      "key": "bffMobileUrl",
+      "value": "https://localhost:8082"
+    },
+    {
+      "key": "bffAtmUrl",
+      "value": "https://localhost:8083"
+    },
+    {
+      "key": "interestsUrl",
+      "value": "http://localhost:8084"
+    },
+    {
+      "key": "configServerUrl",
+      "value": "http://localhost:8888"
+    },
+    {
+      "key": "eurekaUrl",
+      "value": "http://localhost:8761"
+    },
+    {
+      "key": "customerId",
+      "value": "11111111-1111-1111-1111-111111111111"
+    },
+    {
+      "key": "accountId",
+      "value": "22222222-2222-2222-2222-222222222222"
+    },
+    {
+      "key": "unknownId",
+      "value": "99999999-9999-9999-9999-999999999999"
+    },
+    {
+      "key": "cardNumber",
+      "value": "77777777-7777-7777-7777-777777777777"
+    },
+    {
+      "key": "cardPin",
+      "value": "1234"
+    },
+    {
+      "key": "deviceId",
+      "value": "postman-device"
+    },
+    {
+      "key": "interestYear",
+      "value": "2025"
+    },
+    {
+      "key": "applyYear",
+      "value": "2026"
+    },
+    {
+      "key": "correlationId",
+      "value": "postman-xyz-bank"
+    },
+    {
+      "key": "customersAdminClientId",
+      "value": "customers-admin"
+    },
+    {
+      "key": "customersAdminClientSecret",
+      "value": "dev-customers-admin-client-secret"
+    },
+    {
+      "key": "accountsAdminClientId",
+      "value": "accounts-admin"
+    },
+    {
+      "key": "accountsAdminClientSecret",
+      "value": "dev-accounts-admin-client-secret"
+    },
+    {
+      "key": "paymentsAdminClientId",
+      "value": "payments-admin"
+    },
+    {
+      "key": "paymentsAdminClientSecret",
+      "value": "dev-payments-admin-client-secret"
+    },
+    {
+      "key": "interestsClientId",
+      "value": "interests-service"
+    },
+    {
+      "key": "interestsClientSecret",
+      "value": "dev-interests-service-client-secret"
+    },
+    {
+      "key": "webAccessToken",
+      "value": ""
+    },
+    {
+      "key": "webRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "mobileSessionToken",
+      "value": ""
+    },
+    {
+      "key": "mobileRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "atmSessionToken",
+      "value": ""
+    },
+    {
+      "key": "customersAdminToken",
+      "value": ""
+    },
+    {
+      "key": "customersReadOnlyToken",
+      "value": ""
+    },
+    {
+      "key": "accountsAdminToken",
+      "value": ""
+    },
+    {
+      "key": "paymentsAdminToken",
+      "value": ""
+    },
+    {
+      "key": "interestsToken",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "newCustomerId",
+      "value": ""
+    },
+    {
+      "key": "newCustomerVersion",
+      "value": ""
+    },
+    {
+      "key": "newAccountId",
+      "value": ""
+    },
+    {
+      "key": "newAccountVersion",
+      "value": ""
+    },
+    {
+      "key": "closableAccountId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    }
+  ]
+}

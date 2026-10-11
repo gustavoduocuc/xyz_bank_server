@@ -47,6 +47,8 @@ class InboundTokenE2ETest {
      * 4. An expired or foreign-signed token is rejected with 401
      * 5. An interest application with a web token is rejected with 403
      * 6. An interest application with an interests:write token is processed
+     * 7. A token from another issuer, or issued to a client other than its channel's, is rejected with 401
+     * 8. A web token without web:interests:read is rejected with 403
      */
 
     private static final String SUMMARY_PATH = "/internal/accounts/account-1/interest-summary";
@@ -71,7 +73,7 @@ class InboundTokenE2ETest {
         registry.add("core-service.base-url", () -> coreServiceMock.baseUrl());
         registry.add("eureka.client.enabled", () -> "false");
         registry.add("spring.cloud.config.enabled", () -> "false");
-        registry.add("auth.jwk-set-uri", TestAuthServer::jwkSetUri);
+        registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", TestAuthServer::jwkSetUri);
         registry.add("auth.token-uri", TestAuthServer::tokenUri);
     }
 
@@ -121,16 +123,30 @@ class InboundTokenE2ETest {
         return Stream.of(
                 TestAccessTokens.token("bff-web", Channel.WEB).subject("customer-1")
                         .expiredAt(Instant.parse("2020-01-01T00:00:00Z")).sign(),
-                TestAccessTokens.token("bff-web", Channel.WEB).subject("customer-1").signedWithForeignKey().sign());
+                TestAccessTokens.token("bff-web", Channel.WEB).subject("customer-1").signedWithForeignKey().sign(),
+                TestAccessTokens.token("bff-web", Channel.WEB).subject("customer-1")
+                        .issuer("https://impostor.example").sign(),
+                TestAccessTokens.token("bff-mobile", Channel.WEB).subject("customer-1").sign());
     }
 
     @ParameterizedTest
     @MethodSource("invalidTokens")
-    @DisplayName("rejects an expired or foreign-signed token with 401")
-    void rejectsAnExpiredOrForeignSignedToken(String token) {
+    @DisplayName("rejects an expired, foreign-signed, wrong-issuer or wrong-client token with 401")
+    void rejectsAnInvalidToken(String token) {
         given().header("Authorization", "Bearer " + token)
                 .get("/accounts/account-1/interest-summary?year=2025")
                 .then().statusCode(401);
+    }
+
+    @Test
+    @DisplayName("rejects a web token without the interests scope with 403")
+    void rejectsAWebTokenWithoutTheInterestsScope() {
+        String token = TestAccessTokens.token("bff-web", Channel.WEB).subject("customer-1")
+                .scopes(java.util.Set.of("web:accounts:read")).sign();
+
+        given().header("Authorization", "Bearer " + token)
+                .get("/accounts/account-1/interest-summary?year=2025")
+                .then().statusCode(403);
     }
 
     @Test

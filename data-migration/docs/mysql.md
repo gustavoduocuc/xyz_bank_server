@@ -65,6 +65,9 @@ SELECT * FROM migration_executions;
 -- Reporte diario
 SELECT * FROM daily_transaction_reports ORDER BY transaction_date, transaction_id;
 
+-- Resumen diario (débitos, créditos, transacciones y anomalías por fecha)
+SELECT * FROM daily_transaction_summaries ORDER BY summary_date;
+
 -- Saldos con interés
 SELECT * FROM account_balances ORDER BY account_id;
 

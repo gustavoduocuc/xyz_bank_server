@@ -1,6 +1,7 @@
 package cl.duoc.xyzbank.coreservice.interests.infrastructure.kafka;
 
 import org.apache.kafka.clients.admin.NewTopic;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -10,6 +11,7 @@ import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.CommonErrorHandler;
+import org.springframework.kafka.listener.ConsumerRecordRecoverer;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
@@ -60,14 +62,20 @@ public class KafkaInterestsConfig {
     @Bean
     public CommonErrorHandler interestCalculatedErrorHandler(
             KafkaTemplate<String, String> kafkaTemplate,
+            MeterRegistry meterRegistry,
             @Value("${interests.kafka.retry.max-retries:3}") int maxRetries,
             @Value("${interests.kafka.retry.initial-interval-ms:1000}") long initialIntervalMs,
             @Value("${interests.kafka.retry.multiplier:2.0}") double multiplier) {
         DeadLetterPublishingRecoverer deadLetters = new DeadLetterPublishingRecoverer(
                 kafkaTemplate, (record, exception) -> new TopicPartition(record.topic() + DEAD_LETTER_SUFFIX, -1));
+        // kafka.dlt.messages{topic}: one increment per record sent to its dead-letter topic
+        ConsumerRecordRecoverer countedDeadLetters = (record, exception) -> {
+            meterRegistry.counter("kafka.dlt.messages", "topic", record.topic()).increment();
+            deadLetters.accept(record, exception);
+        };
         ExponentialBackOffWithMaxRetries backOff = new ExponentialBackOffWithMaxRetries(maxRetries);
         backOff.setInitialInterval(initialIntervalMs);
         backOff.setMultiplier(multiplier);
-        return new DefaultErrorHandler(deadLetters, backOff);
+        return new DefaultErrorHandler(countedDeadLetters, backOff);
     }
 }

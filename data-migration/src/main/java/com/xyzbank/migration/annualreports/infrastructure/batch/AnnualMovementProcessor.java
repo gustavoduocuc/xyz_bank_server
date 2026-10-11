@@ -3,6 +3,7 @@ package com.xyzbank.migration.annualreports.infrastructure.batch;
 import com.xyzbank.migration.annualreports.domain.AnnualMovement;
 import com.xyzbank.migration.annualreports.domain.DuplicateMovementDetector;
 import com.xyzbank.migration.shared.domain.DomainError;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import com.xyzbank.migration.shared.infrastructure.batch.CsvFieldNormalizer;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.lang.NonNull;
@@ -27,7 +28,8 @@ public class AnnualMovementProcessor implements ItemProcessor<AnnualMovementLine
                 CsvFieldNormalizer.text(line.fecha()),
                 CsvFieldNormalizer.text(line.transaccion()),
                 amount,
-                CsvFieldNormalizer.text(line.descripcion())
+                CsvFieldNormalizer.text(line.descripcion()),
+                SourceLine.of(line.sourceLine())
         );
 
         if (duplicateMovementDetector.isDuplicate(movement.businessKey())) {

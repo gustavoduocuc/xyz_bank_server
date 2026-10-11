@@ -5,6 +5,7 @@ import com.xyzbank.migration.monthlyinterests.domain.DuplicateAccountDetector;
 import com.xyzbank.migration.monthlyinterests.domain.InterestApplied;
 import com.xyzbank.migration.monthlyinterests.domain.InterestRatePolicy;
 import com.xyzbank.migration.shared.domain.DomainError;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import com.xyzbank.migration.shared.infrastructure.batch.CsvFieldNormalizer;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.lang.NonNull;
@@ -32,7 +33,8 @@ public class MonthlyInterestProcessor implements ItemProcessor<InterestAccountLi
                 CsvFieldNormalizer.text(line.nombre()),
                 balance,
                 line.edad(),
-                CsvFieldNormalizer.text(line.tipo())
+                CsvFieldNormalizer.text(line.tipo()),
+                SourceLine.of(line.sourceLine())
         );
 
         if (duplicateAccountDetector.isDuplicate(account.idValue())) {

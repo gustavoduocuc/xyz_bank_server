@@ -1,6 +1,7 @@
 package com.xyzbank.migration.monthlyinterests.domain;
 
 import com.xyzbank.migration.shared.domain.Money;
+import com.xyzbank.migration.shared.domain.SourceLine;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +16,7 @@ class TheInterestRatePolicyTest {
      * 3. Applies 1.5% to loans
      * 4. Applies 0.8% to mortgages
      * 5. Calculates final balance with inferred rate
+     * 6. Keeps the source line of the account
      */
 
     @Nested
@@ -22,40 +24,49 @@ class TheInterestRatePolicyTest {
 
         @Test
         void appliesOnePercentToSavingsUnderSixtyFive() {
-            Account account = Account.create("101", "John Doe", 5000, 30, "ahorro");
+            Account account = Account.create("101", "John Doe", 5000, 30, "ahorro", SourceLine.of(1));
 
             assertEquals(0.01, InterestRatePolicy.rateFor(account));
         }
 
         @Test
         void appliesOneAndHalfPercentToSavingsSixtyFiveOrOlder() {
-            Account account = Account.create("108", "Steve Rogers", 10000, 80, "ahorro");
+            Account account = Account.create("108", "Steve Rogers", 10000, 80, "ahorro", SourceLine.of(1));
 
             assertEquals(0.015, InterestRatePolicy.rateFor(account));
         }
 
         @Test
         void appliesOneAndHalfPercentToLoans() {
-            Account account = Account.create("102", "Jane Smith", 8000, 25, "prestamo");
+            Account account = Account.create("102", "Jane Smith", 8000, 25, "prestamo", SourceLine.of(1));
 
             assertEquals(0.015, InterestRatePolicy.rateFor(account));
         }
 
         @Test
         void appliesPointEightPercentToMortgages() {
-            Account account = Account.create("105", "Charlie Green", 7000, 35, "hipoteca");
+            Account account = Account.create("105", "Charlie Green", 7000, 35, "hipoteca", SourceLine.of(1));
 
             assertEquals(0.008, InterestRatePolicy.rateFor(account));
         }
 
         @Test
         void calculatesFinalBalanceWithInferredRate() {
-            Account account = Account.create("101", "John Doe", 5000, 30, "ahorro");
+            Account account = Account.create("101", "John Doe", 5000, 30, "ahorro", SourceLine.of(1));
 
             InterestApplied applied = InterestRatePolicy.apply(account);
 
             assertEquals(0.01, applied.rate());
             assertEquals(Money.create(5050), applied.finalBalance());
+        }
+
+        @Test
+        void keepsTheSourceLineOfTheAccount() {
+            Account account = Account.create("101", "John Doe", 5000, 30, "ahorro", SourceLine.of(12));
+
+            InterestApplied applied = InterestRatePolicy.apply(account);
+
+            assertEquals(SourceLine.of(12), applied.sourceLine());
         }
     }
 }

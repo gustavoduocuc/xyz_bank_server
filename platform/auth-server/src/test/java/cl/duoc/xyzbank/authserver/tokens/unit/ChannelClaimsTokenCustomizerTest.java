@@ -129,7 +129,7 @@ class ChannelClaimsTokenCustomizerTest {
                 "bff-web", OidcParameterNames.ID_TOKEN, JwtClaimsSet.builder().subject("demo").audience(List.of("bff-web")), null);
 
         assertEquals("bff-web", accessToken.getClaimAsString("azp"));
-        assertEquals(Set.of("core-service", "interests-service"), Set.copyOf(accessToken.getAudience()));
+        assertEquals(Set.of("core-service", "interests-service", "customers-service"), Set.copyOf(accessToken.getAudience()));
         assertEquals(List.of("bff-web"), idToken.getAudience());
         assertNull(idToken.getClaim("azp"));
     }

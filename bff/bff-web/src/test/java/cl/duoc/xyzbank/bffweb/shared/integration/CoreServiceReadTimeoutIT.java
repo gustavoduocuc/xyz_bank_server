@@ -1,6 +1,6 @@
 package cl.duoc.xyzbank.bffweb.shared.integration;
 
-import cl.duoc.xyzbank.bffweb.dashboard.application.ports.CustomerProfilePort;
+import cl.duoc.xyzbank.bffweb.dashboard.application.ports.AccountsPort;
 import cl.duoc.xyzbank.bffweb.shared.infrastructure.adapters.CoreServiceCallException;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -40,7 +40,7 @@ class CoreServiceReadTimeoutIT {
      *    before core-service's own (much later) answer
      */
 
-    private static final String PROFILE_PATH = "/internal/customers/customer-1";
+    private static final String ACCOUNTS_PATH = "/internal/customers/customer-1/accounts";
     private static final WireMockServer CORE_SERVICE = new WireMockServer(wireMockConfig().dynamicPort());
 
     static {
@@ -53,7 +53,7 @@ class CoreServiceReadTimeoutIT {
     }
 
     @Autowired
-    private CustomerProfilePort profiles;
+    private AccountsPort accounts;
 
     @Autowired
     private CircuitBreakerRegistry circuitBreakers;
@@ -72,19 +72,19 @@ class CoreServiceReadTimeoutIT {
     @Test
     @DisplayName("gives up on a slow read after the timeout and the permitted retries")
     void givesUpOnASlowReadAfterTheTimeoutAndThePermittedRetries() {
-        CORE_SERVICE.stubFor(get(urlPathEqualTo(PROFILE_PATH)).willReturn(aResponse()
+        CORE_SERVICE.stubFor(get(urlPathEqualTo(ACCOUNTS_PATH)).willReturn(aResponse()
                 .withStatus(200)
                 .withHeader("Content-Type", "application/json")
-                .withBody("{\"id\":\"customer-1\",\"fullName\":\"Ana Perez\",\"email\":\"ana@example.com\"}")
+                .withBody("[]")
                 .withFixedDelay(5_000)));
         Instant start = Instant.now();
 
         CoreServiceCallException failure = assertThrows(
-                CoreServiceCallException.class, () -> profiles.fetchProfile("customer-1"));
+                CoreServiceCallException.class, () -> accounts.fetchAccountsForCustomer("customer-1"));
 
         Duration elapsed = Duration.between(start, Instant.now());
         assertEquals(503, failure.getStatus());
-        CORE_SERVICE.verify(3, getRequestedFor(urlPathEqualTo(PROFILE_PATH)));
+        CORE_SERVICE.verify(3, getRequestedFor(urlPathEqualTo(ACCOUNTS_PATH)));
         assertTrue(elapsed.compareTo(Duration.ofSeconds(3)) < 0, "took " + elapsed);
     }
 }

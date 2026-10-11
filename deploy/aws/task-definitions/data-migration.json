@@ -1,0 +1,59 @@
+{
+  "family": "xyz-bank-data-migration",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "operatingSystemFamily": "LINUX",
+    "cpuArchitecture": "X86_64"
+  },
+  "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-execution",
+  "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/xyz-bank-ecs-task",
+  "containerDefinitions": [
+    {
+      "name": "data-migration",
+      "image": "${ECR_REGISTRY}/xyz-bank/data-migration:${TAG}",
+      "essential": true,
+      "portMappings": [],
+      "environment": [
+        {
+          "name": "DB_HOST",
+          "value": "${RDS_MYSQL_HOST}"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "xyz_bank_migration"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "3306"
+        },
+        {
+          "name": "DB_USERNAME",
+          "value": "migration"
+        },
+        {
+          "name": "MIGRATION_RUN_ALL",
+          "value": "true"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:xyz-bank/MYSQL_PASSWORD"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/xyz-bank/data-migration",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

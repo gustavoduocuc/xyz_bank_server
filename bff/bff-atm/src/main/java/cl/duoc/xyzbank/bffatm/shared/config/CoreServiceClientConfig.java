@@ -6,6 +6,7 @@ import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.ClientCredentialsTokenI
 import cl.duoc.xyzbank.bffatm.shared.infrastructure.rest.CorrelationIdClientInterceptor;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.retry.RetryRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -49,6 +50,7 @@ public class CoreServiceClientConfig {
     @Bean
     @Primary
     public RestClient coreServiceClient(
+            ObservationRegistry observationRegistry,
             @Value("${core-service.base-url}") String baseUrl,
             @Value("${core-service.connect-timeout-ms}") int connectTimeoutMs,
             @Value("${core-service.read-timeout-ms}") int readTimeoutMs,
@@ -60,6 +62,7 @@ public class CoreServiceClientConfig {
         requestFactory.setConnectTimeout(connectTimeoutMs);
         requestFactory.setReadTimeout(readTimeoutMs);
         return RestClient.builder()
+                .observationRegistry(observationRegistry)
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
                 .requestInterceptor(correlationIdClientInterceptor)
@@ -77,6 +80,7 @@ public class CoreServiceClientConfig {
      */
     @Bean
     public RestClient corePinVerificationClient(
+            ObservationRegistry observationRegistry,
             @Value("${core-service.pin-verification-base-url}") String baseUrl,
             @Value("${core-service.connect-timeout-ms}") int connectTimeoutMs,
             @Value("${core-service.read-timeout-ms}") int readTimeoutMs,
@@ -94,6 +98,7 @@ public class CoreServiceClientConfig {
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
         return RestClient.builder()
+                .observationRegistry(observationRegistry)
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
                 .requestInterceptor(correlationIdClientInterceptor)

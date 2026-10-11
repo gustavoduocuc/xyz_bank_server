@@ -70,7 +70,7 @@ class TheDailyTransactionProcessorTest {
         }
 
         private DailyTransactionLine line(String id, String fecha, Double monto, String tipo) {
-            return new DailyTransactionLine(id, fecha, monto, tipo);
+            return new DailyTransactionLine(id, fecha, monto, tipo, 2);
         }
     }
 }

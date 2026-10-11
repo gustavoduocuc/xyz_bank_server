@@ -57,7 +57,7 @@ class TheMonthlyInterestProcessorTest {
         }
 
         private InterestAccountLine line(String id, String name, Double balance, Integer age, String type) {
-            return new InterestAccountLine(id, name, balance, age, type);
+            return new InterestAccountLine(id, name, balance, age, type, 2);
         }
     }
 }

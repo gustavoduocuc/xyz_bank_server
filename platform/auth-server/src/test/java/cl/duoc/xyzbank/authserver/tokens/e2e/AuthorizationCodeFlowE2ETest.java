@@ -165,7 +165,7 @@ class AuthorizationCodeFlowE2ETest extends AbstractAuthServerIT {
 
         var claims = accessToken.getJWTClaimsSet();
         assertEquals("bff-web", claims.getStringClaim("azp"));
-        assertEquals(Set.of("core-service", "interests-service"), Set.copyOf(claims.getAudience()));
+        assertEquals(Set.of("core-service", "interests-service", "customers-service"), Set.copyOf(claims.getAudience()));
         assertEquals(Duration.ofMinutes(15),
                 Duration.between(claims.getIssueTime().toInstant(), claims.getExpirationTime().toInstant()));
     }

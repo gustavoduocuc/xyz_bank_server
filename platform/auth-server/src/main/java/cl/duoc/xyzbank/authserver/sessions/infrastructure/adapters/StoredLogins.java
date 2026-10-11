@@ -26,11 +26,12 @@ public class StoredLogins implements CurrentRefreshTokens, LoginRevoker {
     }
 
     @Override
-    public void revoke(String authorizationId) {
-        Optional.ofNullable(authorizations.findById(authorizationId)).ifPresent(this::remove);
+    public Optional<String> revoke(String authorizationId) {
+        return Optional.ofNullable(authorizations.findById(authorizationId)).map(this::remove);
     }
 
-    private void remove(OAuth2Authorization authorization) {
+    private String remove(OAuth2Authorization authorization) {
         authorizations.remove(authorization);
+        return authorization.getPrincipalName();
     }
 }

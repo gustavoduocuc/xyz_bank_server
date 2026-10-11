@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class InMemoryAccountRepository implements AccountRepository {
 
     private final Map<String, Account> accounts = new ConcurrentHashMap<>();
+    private final Map<String, String> accountIdsByOpeningKey = new ConcurrentHashMap<>();
 
     public InMemoryAccountRepository() {
     }
@@ -35,5 +36,24 @@ public class InMemoryAccountRepository implements AccountRepository {
         return accounts.values().stream()
                 .filter(account -> account.getCustomerId().equals(customerId))
                 .toList();
+    }
+
+    @Override
+    public Optional<Account> findByOpeningIdempotencyKey(String idempotencyKey) {
+        return Optional.ofNullable(accountIdsByOpeningKey.get(idempotencyKey)).map(accounts::get);
+    }
+
+    @Override
+    public Account saveOpened(Account account, String openingIdempotencyKey) {
+        String existing = accountIdsByOpeningKey.putIfAbsent(openingIdempotencyKey, account.getId().getValue());
+        if (existing != null) {
+            return accounts.get(existing);
+        }
+        save(account);
+        return account;
+    }
+
+    public int size() {
+        return accounts.size();
     }
 }

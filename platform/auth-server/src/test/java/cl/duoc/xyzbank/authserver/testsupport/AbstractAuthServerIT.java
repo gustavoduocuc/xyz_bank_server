@@ -23,7 +23,8 @@ public abstract class AbstractAuthServerIT {
     protected static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("auth_server")
             .withUsername("auth_server")
-            .withPassword("auth_server");
+            .withPassword("auth_server")
+            .withReuse(true);
 
     static {
         POSTGRES.start();

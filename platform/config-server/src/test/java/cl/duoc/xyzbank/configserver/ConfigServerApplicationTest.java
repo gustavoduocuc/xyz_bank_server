@@ -2,6 +2,8 @@ package cl.duoc.xyzbank.configserver;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -71,5 +73,30 @@ class ConfigServerApplicationTest {
         assertFalse(
                 response.getBody().contains("coreServiceInterests"),
                 "unknown apps must not receive interests-service resilience settings: " + response.getBody());
+    }
+
+    @Test
+    @DisplayName("serves one console log pattern with trace, span and correlation ids to every application")
+    void servesOneConsoleLogPatternWithTraceSpanAndCorrelationIdsToEveryApplication() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/payments-service/default", String.class);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().contains("/application.yml"), response.getBody());
+        assertTrue(response.getBody().contains("traceId") && response.getBody().contains("spanId")
+                && response.getBody().contains("correlationId"), response.getBody());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {
+            "core-service", "customers-service", "payments-service", "interests-service",
+            "api-gateway", "bff-web", "bff-mobile", "bff-atm"})
+    @DisplayName("serves a property source from the application's own file")
+    void servesAPropertySourceFromTheApplicationsOwnFile(String application) {
+        ResponseEntity<String> response = restTemplate.getForEntity("/" + application + "/default", String.class);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().contains("/" + application + ".yml"), response.getBody());
     }
 }

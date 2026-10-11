@@ -36,6 +36,17 @@ public final class InterestCalculation {
                 eventId, accountId, period, amount, currency, InterestCalculationStatus.PENDING, null);
     }
 
+    public static InterestCalculation restore(
+            String eventId,
+            String accountId,
+            int period,
+            BigDecimal amount,
+            String currency,
+            InterestCalculationStatus status,
+            String reason) {
+        return new InterestCalculation(eventId, accountId, period, amount, currency, status, reason);
+    }
+
     public void apply() {
         if (isClosed()) {
             return;

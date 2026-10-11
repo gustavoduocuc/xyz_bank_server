@@ -5,6 +5,7 @@ import cl.duoc.xyzbank.coredomain.cards.domain.repositories.CardRepository;
 import cl.duoc.xyzbank.coredomain.cards.domain.services.PinHasher;
 import cl.duoc.xyzbank.coreservice.auth.application.ports.AtmSessionLookup;
 import cl.duoc.xyzbank.coreservice.auth.application.usecases.VerifyPinUseCase;
+import cl.duoc.xyzbank.coreservice.events.application.ports.SecurityAlertPublisher;
 import cl.duoc.xyzbank.coreservice.auth.infrastructure.adapters.StoredAtmSessionLookup;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,7 +31,10 @@ public class AuthConfig {
 
     @Bean
     public VerifyPinUseCase verifyPinUseCase(
-            CardRepository cardRepository, PinHasher pinHasher, AtmSessionRepository atmSessionRepository) {
-        return new VerifyPinUseCase(cardRepository, pinHasher, atmSessionRepository, Clock.systemUTC());
+            CardRepository cardRepository,
+            PinHasher pinHasher,
+            AtmSessionRepository atmSessionRepository,
+            SecurityAlertPublisher securityAlerts) {
+        return new VerifyPinUseCase(cardRepository, pinHasher, atmSessionRepository, securityAlerts, Clock.systemUTC());
     }
 }
